@@ -572,7 +572,14 @@ def test_explicit_sparse_zeros_are_removed_without_mutating_input(counts):
 
 
 def test_dense_zarr_input_is_eagerly_converted(counts, tmp_path):
-    X = zarr.create_array(tmp_path / "counts.zarr", data=counts.toarray())
+    dense = counts.toarray()
+    X = zarr.open_array(
+        str(tmp_path / "counts.zarr"),
+        mode="w",
+        shape=dense.shape,
+        dtype=dense.dtype,
+    )
+    X[...] = dense
     expected = residual_pca_matrix(counts, n_comps=2, dtype="float64")
 
     with pytest.warns(UserWarning, match="Dense input was converted to CSR"):
