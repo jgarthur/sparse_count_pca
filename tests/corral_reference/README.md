@@ -25,3 +25,7 @@ The fixture passes a genes-by-cells matrix to corral, as its API expects, and
 uses the standardized residual type with no variance-stabilizing transform.
 `set.seed()` makes its IRLBA path reproducible. Normal Python tests use only
 the checked-in values and do not require R or corral.
+
+The external fixture includes both standard and principal coordinates. The
+package stores only principal coordinates; the test derives standard
+coordinates by dividing by singular values before comparing with the fixture.

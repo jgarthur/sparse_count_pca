@@ -1,16 +1,16 @@
-# Shifted CLR reference implementation
+# Count-shifted CLR reference
 
-`oracle.py` contains the formula implementation copied from `do_pf()` and
-`norm_clr()` in the authors' BHGP_2022 reference repository:
+The dense oracle in `oracle.py` follows the current PFlog count-scale formula:
 
-- Repository: <https://github.com/pachterlab/BHGP_2022>
-- Commit: `bde2ad7d34ef05241b4d907e8c6ba251f5974c34`
-- Source file: `scripts/norm_sparse.py`
+```text
+center_rows(log1p(4 * alpha * X))
+```
 
-That pinned revision computes `u = x / sum(x)` and then returns
-`log(u + c) - mean(log(u + c))`, matching the equation in the June 10, 2026
-paper. The next repository revision changed the default proportional-fitting
-target to mean cell depth, so the commit is intentionally pinned rather than
-tracking the current branch.
+This is equivalent to `clr(X + 1 / (4 * alpha))`. The formula and sparse
+implementation are documented by the upstream
+[`pachterlab/BHGP_2022`](https://github.com/pachterlab/BHGP_2022/tree/ddb3602120f7bc422cf68bd0e13cded6c1a2b0dc)
+repository at commit `ddb3602120f7bc422cf68bd0e13cded6c1a2b0dc` (June 24,
+2026) and by [`cleartools/scclr`](https://github.com/cleartools/scclr).
 
-The copied code remains under the upstream BSD 2-Clause license in `LICENSE`.
+The oracle is an independent dense implementation written for this test suite;
+no upstream source code is copied.

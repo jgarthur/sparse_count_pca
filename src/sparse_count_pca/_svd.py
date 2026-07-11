@@ -73,22 +73,3 @@ def compute_truncated_svd(
         singular_values=singular_values.astype(np.float64, copy=False),
         right_vectors=Vt,
     )
-
-
-def compute_svd(
-    A: LinearOperator,
-    n_comps: int,
-    *,
-    solver: Solver,
-    random_state: int | None,
-    tol: float,
-) -> tuple[FloatArray, NDArray[np.float64], FloatArray]:
-    """Backward-compatible tuple interface for truncated SVD."""
-    result = compute_truncated_svd(
-        A,
-        n_comps,
-        solver=solver,
-        random_state=random_state,
-        tol=tol,
-    )
-    return result.left_vectors, result.singular_values, result.right_vectors

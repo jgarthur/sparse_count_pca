@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_residual_pca._clip import _clipped_zero_locations, apply_clipping
+from sparse_count_pca._clip import _clipped_zero_locations, apply_clipping
 
 
 def _brute_force_locations(X, u, v, threshold):
@@ -146,7 +146,7 @@ def test_apply_clipping_reuses_precomputed_row_support(monkeypatch):
     def unexpected_repeat(*args, **kwargs):
         pytest.fail("apply_clipping rebuilt the CSR row-support vector")
 
-    monkeypatch.setattr("sparse_residual_pca._clip.np.repeat", unexpected_repeat)
+    monkeypatch.setattr("sparse_count_pca._clip.np.repeat", unexpected_repeat)
     S = apply_clipping(
         X,
         residual_nonzero=np.array([0.2, 0.3]),

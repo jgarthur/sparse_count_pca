@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_residual_pca import (
+from sparse_count_pca import (
     correspondence_analysis,
     correspondence_analysis_matrix,
 )
@@ -14,7 +14,7 @@ def _dense_ca_matrix(X):
     P = X / total
     row_masses = P.sum(axis=1)
     column_masses = P.sum(axis=0)
-    standardized = (P - np.outer(row_masses, column_masses))
+    standardized = P - np.outer(row_masses, column_masses)
     standardized /= np.sqrt(np.outer(row_masses, column_masses))
     return standardized, row_masses, column_masses
 
@@ -30,11 +30,11 @@ def test_correspondence_analysis_matches_dense_oracle(counts):
     np.testing.assert_allclose(
         result.operator @ np.eye(counts.shape[1]), expected, atol=1e-12
     )
-    np.testing.assert_allclose(
-        result.singular_values, singular_values[:2], rtol=1e-10
-    )
+    np.testing.assert_allclose(result.singular_values, singular_values[:2], rtol=1e-10)
     np.testing.assert_allclose(result.row_masses, row_masses)
     np.testing.assert_allclose(result.column_masses, column_masses)
+    assert not hasattr(result, "row_standard_coordinates")
+    assert not hasattr(result, "column_standard_coordinates")
     np.testing.assert_allclose(
         np.abs(result.row_principal_coordinates),
         np.abs(U[:, :2] * singular_values[:2] / np.sqrt(row_masses)[:, None]),
@@ -43,11 +43,7 @@ def test_correspondence_analysis_matches_dense_oracle(counts):
     )
     np.testing.assert_allclose(
         np.abs(result.column_principal_coordinates),
-        np.abs(
-            Vt[:2].T
-            * singular_values[:2]
-            / np.sqrt(column_masses)[:, None]
-        ),
+        np.abs(Vt[:2].T * singular_values[:2] / np.sqrt(column_masses)[:, None]),
         rtol=1e-9,
         atol=1e-9,
     )
@@ -74,9 +70,7 @@ def test_ca_row_principal_coordinates_equal_unscaled_pearson_scores_over_sqrt_de
     expected = np.outer(row_totals, X.sum(axis=0) / X.sum())
     pearson = (X - expected) / np.sqrt(expected)
     U, singular_values, _ = np.linalg.svd(pearson, full_matrices=False)
-    expected_coordinates = (
-        U[:, :2] * singular_values[:2] / np.sqrt(row_totals)[:, None]
-    )
+    expected_coordinates = U[:, :2] * singular_values[:2] / np.sqrt(row_totals)[:, None]
     result = correspondence_analysis_matrix(counts, n_comps=2)
     np.testing.assert_allclose(
         np.abs(result.row_principal_coordinates),

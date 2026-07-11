@@ -1,6 +1,6 @@
 import numpy as np
 
-from sparse_residual_pca import correspondence_analysis_matrix
+from sparse_count_pca import correspondence_analysis_matrix
 
 EXPECTED_SINGULAR_VALUES = np.array([0.636028804403228, 0.428984435895091])
 EXPECTED_TOTAL_INERTIA = 0.626893939393939
@@ -63,13 +63,15 @@ def test_correspondence_analysis_matches_corral(counts):
         atol=1e-14,
     )
     _assert_axes_equal_up_to_sign(
-        result.row_standard_coordinates, EXPECTED_ROW_STANDARD
+        result.row_principal_coordinates / result.singular_values,
+        EXPECTED_ROW_STANDARD,
     )
     _assert_axes_equal_up_to_sign(
         result.row_principal_coordinates, EXPECTED_ROW_PRINCIPAL
     )
     _assert_axes_equal_up_to_sign(
-        result.column_standard_coordinates, EXPECTED_COLUMN_STANDARD
+        result.column_principal_coordinates / result.singular_values,
+        EXPECTED_COLUMN_STANDARD,
     )
     _assert_axes_equal_up_to_sign(
         result.column_principal_coordinates, EXPECTED_COLUMN_PRINCIPAL

@@ -3,9 +3,10 @@ import pytest
 import zarr
 from scipy import sparse
 
-from sparse_residual_pca import residual_pca_matrix
-from sparse_residual_pca._operator import ResidualLinearOperator
-from sparse_residual_pca._residuals import ALPHA_EPS
+from sparse_count_pca import residual_pca_matrix
+from sparse_count_pca._operator import SparseLowRankLinearOperator
+from sparse_count_pca._representation import SparseLowRankMatrix
+from sparse_count_pca._residuals import ALPHA_EPS
 from tests._oracles import _compare_subspaces, _materialize_dense_residual
 
 
@@ -138,9 +139,7 @@ def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts):
         alpha=np.array(0.1),
         dtype="float64",
     )
-    np.testing.assert_allclose(
-        zero_dimensional.singular_values, scalar.singular_values
-    )
+    np.testing.assert_allclose(zero_dimensional.singular_values, scalar.singular_values)
 
 
 def test_uncentered_operator_matches_dense(counts):
@@ -148,8 +147,10 @@ def test_uncentered_operator_matches_dense(counts):
         counts, n_comps=2, dtype="float64", return_operator=True
     )
     centered = result.operator
-    uncentered = ResidualLinearOperator(
-        centered.S, centered.u, centered.v, center=False, dtype="float64"
+    uncentered = SparseLowRankLinearOperator(
+        SparseLowRankMatrix(centered.S, centered.left, centered.right),
+        center=False,
+        dtype="float64",
     )
     dense = _materialize_dense_residual(counts)
     np.testing.assert_allclose(uncentered @ np.eye(counts.shape[1]), dense, atol=1e-10)
@@ -158,9 +159,7 @@ def test_uncentered_operator_matches_dense(counts):
     )
 
 
-@pytest.mark.parametrize(
-    ("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)]
-)
+@pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
     n_obs, n_vars = 101, 4
     rows = np.array([0, 3, 10, 25, 50, 75, 90, 100])
@@ -169,15 +168,13 @@ def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
     S = sparse.csr_matrix((data, (rows, cols)), shape=(n_obs, n_vars))
     u = np.linspace(-2.0, -0.25, n_obs)
     v = np.array([0.4, 0.8, 1.2, 1.6])
-    operator = ResidualLinearOperator(S, u, v, center=True, dtype=dtype)
-
-    stored_centered = (
-        operator @ np.eye(n_vars, dtype=dtype)
-    ).astype(np.float64)
-    expected = np.sum(stored_centered**2)
-    assert operator.frobenius_squared_centered() == pytest.approx(
-        expected, rel=rtol
+    operator = SparseLowRankLinearOperator(
+        SparseLowRankMatrix(S, u, v), center=True, dtype=dtype
     )
+
+    stored_centered = (operator @ np.eye(n_vars, dtype=dtype)).astype(np.float64)
+    expected = np.sum(stored_centered**2)
+    assert operator.frobenius_squared_centered() == pytest.approx(expected, rel=rtol)
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -215,7 +212,7 @@ def test_identical_rows_raise_zero_centered_variance_before_arpack(dtype, monkey
         pytest.fail("ARPACK was called for a zero-variance matrix")
 
     monkeypatch.setattr(
-        "sparse_residual_pca._matrix.compute_truncated_svd", fail_if_called
+        "sparse_count_pca._pca.compute_truncated_svd", fail_if_called
     )
     with pytest.warns(UserWarning, match="Dense input was converted to CSR"):
         with pytest.raises(ValueError, match="zero centered variance"):
@@ -244,9 +241,7 @@ def test_exact_symmetric_clipping_matches_dense(counts):
     )
 
 
-@pytest.mark.parametrize(
-    ("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)]
-)
+@pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     result = residual_pca_matrix(
         counts,
@@ -255,9 +250,9 @@ def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
         dtype=dtype,
         return_operator=True,
     )
-    stored_centered = (
-        result.operator @ np.eye(counts.shape[1], dtype=dtype)
-    ).astype(np.float64)
+    stored_centered = (result.operator @ np.eye(counts.shape[1], dtype=dtype)).astype(
+        np.float64
+    )
     expected = np.sum(stored_centered**2) / (counts.shape[0] - 1)
     assert result.total_variance == pytest.approx(expected, rel=rtol)
 
@@ -448,8 +443,8 @@ def test_default_operator_dtype_is_float64(counts):
     assert result.components.dtype == np.float64
     assert result.operator.dtype == np.dtype("float64")
     assert result.params["dtype"] == "float64"
-    direct = ResidualLinearOperator(
-        sparse.csr_matrix(np.eye(3)), np.ones(3), np.ones(3)
+    direct = SparseLowRankLinearOperator(
+        SparseLowRankMatrix(sparse.csr_matrix(np.eye(3)), np.ones(3), np.ones(3))
     )
     assert direct.dtype == np.dtype("float64")
 
@@ -472,10 +467,12 @@ def test_operator_dtype_rejects_types_other_than_float32_and_float64(counts, dty
     with pytest.raises(ValueError, match="dtype must be float32 or float64"):
         residual_pca_matrix(counts, n_comps=2, dtype=dtype)
     with pytest.raises(ValueError, match="dtype must be float32 or float64"):
-        ResidualLinearOperator(
-            sparse.csr_matrix(np.eye(3)),
-            np.ones(3),
-            np.ones(3),
+        SparseLowRankLinearOperator(
+            SparseLowRankMatrix(
+                sparse.csr_matrix(np.eye(3)),
+                np.ones(3),
+                np.ones(3),
+            ),
             dtype=dtype,
         )
 

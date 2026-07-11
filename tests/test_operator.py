@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_residual_pca._operator import SparseLowRankLinearOperator
-from sparse_residual_pca._representation import SparseLowRankMatrix
+from sparse_count_pca._operator import SparseLowRankLinearOperator
+from sparse_count_pca._representation import SparseLowRankMatrix
 
 
 @pytest.mark.parametrize("rank", [0, 1, 3])

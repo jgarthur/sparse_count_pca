@@ -5,7 +5,7 @@ import pytest
 from anndata import AnnData
 from scipy import sparse
 
-from sparse_residual_pca import __version__, residual_pca, residual_pca_matrix
+from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
 
 
 def test_default_outputs_and_copy(adata):

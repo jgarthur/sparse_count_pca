@@ -1,4 +1,4 @@
-# Sparse-plus-low-rank spectral analysis package spec
+# sparse-count-pca package specification
 
 ## Scope
 
@@ -15,47 +15,118 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
-* shifted CLR PCA
+* fixed-count shifted-log PCA
+* fixed-count shifted-CLR PCA
+* fixed-composition shifted-CLR PCA
 * Dirichlet-log PCA
 * Dirichlet-CLR PCA
 * classical correspondence analysis with principal coordinates
 
 The package does **not** expose the usual standard negative-binomial residuals because their zero-count terms do not factorize into sparse-plus-rank-one form.
 
+PCA is the primary analysis contract. Correspondence analysis remains as a
+closely related spectral decomposition with its own result type. That result
+stores principal coordinates only; standard coordinates are derived by
+dividing principal coordinates by singular values when needed.
+
 ## Public API
 
 ```python
-import sparse_residual_pca as srp
+import sparse_count_pca as scp
 
-srp.residual_pca(adata, ...)
-srp.residual_pca_matrix(X, ...)
-srp.shifted_clr_pca(adata, ...)
-srp.shifted_clr_pca_matrix(X, ...)
-srp.dirichlet_log_pca(adata, ...)
-srp.dirichlet_log_pca_matrix(X, ...)
-srp.dirichlet_clr_pca(adata, ...)
-srp.dirichlet_clr_pca_matrix(X, ...)
-srp.correspondence_analysis(adata, ...)
-srp.correspondence_analysis_matrix(X, ...)
-srp.ResidualPCAResult
-srp.CorrespondenceAnalysisResult
+scp.residual_pca(adata, ...)
+scp.residual_pca_matrix(X, ...)
+scp.shifted_log_pca(adata, count_shift=...)
+scp.shifted_log_pca_matrix(X, count_shift=...)
+scp.shifted_clr_pca(adata, count_shift=...)
+scp.shifted_clr_pca_matrix(X, count_shift=...)
+scp.proportion_shifted_clr_pca(adata, composition_shift=...)
+scp.proportion_shifted_clr_pca_matrix(X, composition_shift=...)
+scp.dirichlet_log_pca(adata, ...)
+scp.dirichlet_log_pca_matrix(X, ...)
+scp.dirichlet_clr_pca(adata, ...)
+scp.dirichlet_clr_pca_matrix(X, ...)
+scp.correspondence_analysis(adata, ...)
+scp.correspondence_analysis_matrix(X, ...)
+scp.PCAResult
+scp.CorrespondenceAnalysisResult
 ```
 
 No public `pp` namespace for v1. The package should feel like a small tool rather than a full Scanpy replacement.
+
+## Log-transform semantics
+
+Shift parameters are keyword-only, required, finite, and positive. The API
+does not use a bare `pseudocount` parameter because its scale would be
+ambiguous.
+
+### Fixed-count shifted log
+
+For `count_shift=a`, `shifted_log` analyzes
+
+```math
+Z_{ij} = \log(1 + X_{ij}/a).
+```
+
+This is an exactly sparse, zero-at-zero gauge of `log(X + a)`. Ordinary PCA
+column centering removes the omitted constant `log(a)`.
+
+### Fixed-count shifted CLR
+
+For `count_shift=a`, `shifted_clr` analyzes
+
+```math
+Z_{ij}
+= \log(X_{ij}+a)
+- \frac{1}{G}\sum_k\log(X_{ik}+a).
+```
+
+Current PFlog is this transform with `a = 1 / (4 * alpha)`, evaluated sparsely
+as row-centered `log1p(4 * alpha * X)`. It supports zero-total rows.
+
+### Fixed-composition shifted CLR
+
+For `composition_shift=tau`, `proportion_shifted_clr` analyzes
+
+```math
+Z_i = \operatorname{clr}(X_i / s_i + \tau\mathbf 1)
+    = \operatorname{clr}(X_i + s_i\tau\mathbf 1),
+```
+
+where `s_i` is the row total. Its effective raw-count shift varies by cell. It
+is invariant to deterministic row rescaling and rejects zero-total rows.
+
+### Dirichlet transforms
+
+For total concentration `A` and prior composition `p`, the prior counts are
+`a_j = A p_j`. `dirichlet_log` analyzes
+
+```math
+\log\frac{X_{ij}+a_j}{s_i+A},
+```
+
+and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar fixed-count shifted CLR is
+the uniform-prior special case `A = G * count_shift`.
+
+All normalization quantities and CLR row means use the full selected input
+matrix. `mask_var` is applied only afterward to select PCA columns.
 
 ## Package layout
 
 ```text
 src/
-  sparse_residual_pca/
+  sparse_count_pca/
     __init__.py
     _anndata.py
-    _matrix.py
+    _counts.py
+    _pca.py
+    _residual_pca.py
     _operator.py
     _representation.py
     _residuals.py
-    _shifted_clr.py
-    _dirichlet.py
+    _log_transforms.py
+    _log_pca.py
+    _dirichlet_pca.py
     _correspondence.py
     _clip.py
     _svd.py
@@ -65,6 +136,10 @@ tests/
   conftest.py
   _oracles.py
   test_dirichlet.py
+  test_log_pca.py
+  test_residual_anndata.py
+  test_residual_pca.py
+  test_residual_scanpy.py
   townes_reference/
     README.md
     generate_reference.R
@@ -72,7 +147,9 @@ tests/
   shifted_clr_reference/
     README.md
     oracle.py
-    LICENSE
+  proportion_shifted_clr_reference/
+    README.md
+    oracle.py
   corral_reference/
     README.md
     generate_reference.R
@@ -85,14 +162,14 @@ holds dense oracle helpers used by the test suite (`_materialize_dense_residual`
 `_dense_scaled_nb_deviance`, `_compare_subspaces`) so test-only code is not
 installed in the runtime package.
 
-`__init__.py` exposes the residual PCA, shifted CLR PCA, Dirichlet PCA, and
-correspondence-analysis functions and their result types.
+`__init__.py` exposes the residual, log, CLR, Dirichlet, and correspondence
+analysis functions and their result types.
 
 ```python
-from ._anndata import residual_pca
-from ._matrix import ResidualPCAResult, residual_pca_matrix
+from ._pca import PCAResult
+from ._residual_pca import residual_pca, residual_pca_matrix
 
-__all__ = ["ResidualPCAResult", "residual_pca", "residual_pca_matrix"]
+__all__ = ["PCAResult", "residual_pca", "residual_pca_matrix"]
 ```
 
 The `src/` layout prevents repository-root imports from succeeding unless the
@@ -100,13 +177,13 @@ package has been installed into the active environment.
 
 ### Distribution contents
 
-The wheel contains only `src/sparse_residual_pca`.
+The wheel contains only `src/sparse_count_pca`.
 
-The source distribution contains package sources, ordinary tests, the
-shifted CLR reference oracle and its license, `README.md`, `SPEC.md`, and
-`pyproject.toml`. It excludes editor configuration, lock files, local
-development scripts, and `tests/townes_reference`. The Townes reference files
-are repository-only provenance and regression tooling.
+The source distribution contains package sources, ordinary tests, transform
+reference formulas, `README.md`, the `docs/` tree, and `pyproject.toml`. It
+excludes editor configuration, lock files, local development scripts, and
+`tests/townes_reference`. The Townes reference files are repository-only
+provenance and regression tooling.
 
 ## Dependencies
 
@@ -192,7 +269,7 @@ Return type:
 
 ```python
 @dataclass
-class ResidualPCAResult:
+class PCAResult:
     scores: np.ndarray
     components: np.ndarray
     loadings: np.ndarray
@@ -441,10 +518,10 @@ For backed AnnData inputs, `copy=True` returns an in-memory object because
 ### `return_operator`
 
 `residual_pca_matrix(..., return_operator=True)` populates `result.operator`
-with the exact `ResidualLinearOperator` passed to ARPACK, post-clipping and
-centered. It is intended for tests and custom downstream SVDs. The AnnData
-API does not expose `return_operator` and never writes the operator into
-`adata`.
+with the exact `SparseLowRankLinearOperator` passed to ARPACK, post-clipping
+and centered. Matrix APIs for other PCA transforms follow the same rule. It is
+intended for tests and custom downstream SVDs. The AnnData API does not expose
+`return_operator` and never writes the operator into `adata`.
 
 ### Centering
 
@@ -488,7 +565,7 @@ This means PCA loadings always align with `adata.var_names`, so `.varm[...]` can
 Recommended user behavior:
 
 ```python
-srp.residual_pca(adata, layer="counts", ...)
+scp.residual_pca(adata, layer="counts", ...)
 ```
 
 `use_raw=True` is supported for Scanpy compatibility, but `layer="counts"` is preferred because `.raw` is not guaranteed to contain raw integer counts.
@@ -777,8 +854,9 @@ where:
 * `V` has shape `(n_vars_used, rank)`
 * rank zero is permitted
 
-Residual transforms and shifted CLR produce rank-one representations.
-Dirichlet log and Dirichlet CLR produce representations of rank at most two.
+Residual transforms and both shifted CLR transforms produce rank-one
+representations. Shifted log produces a rank-zero representation. Dirichlet
+log and Dirichlet CLR produce representations of rank at most two.
 The generic form supports transforms with multiple implicit components. Row
 scaling, column scaling, and column selection preserve the sparse-plus-low-rank
 form.
@@ -825,7 +903,6 @@ class SparseLowRankLinearOperator(scipy.sparse.linalg.LinearOperator):
 
     if center=False.
 
-    ResidualLinearOperator remains a compatibility wrapper for rank one.
     """
 ```
 
@@ -1317,7 +1394,7 @@ explained_variance = singular_values**2 / (n_obs - 1)
 explained_variance_ratio = explained_variance / total_variance
 ```
 
-## Testing strategy
+## Verification contracts
 
 ### 1. Dense oracle tests
 
@@ -1497,16 +1574,3 @@ checkout. `tests/townes_reference/generate_reference.R` is a manual
 regeneration script that requires the path to the upstream `functions.R` as
 its sole argument. The adjacent README records the upstream repository,
 commit, source file, and regeneration command.
-
-## V1 implementation order
-
-1. `residual_pca_matrix` with Poisson Pearson, no clipping.
-2. `ResidualLinearOperator`, centering, ARPACK SVD, sign flipping.
-3. AnnData wrapper `residual_pca`.
-4. Analytic total variance and explained variance ratio.
-5. Exact upper and symmetric clipping with a support-growth guard.
-6. Poisson deviance.
-7. Binomial Pearson/deviance.
-8. Scaled-NB Pearson/deviance.
-9. Scanpy comparison tests.
-10. Package docs and examples.

@@ -122,9 +122,7 @@ class SparseLowRankLinearOperator(LinearOperator):
                 values[rows] += self._S_csc.data[start:stop]
                 means[column] = math.fsum(values.astype(np.float64)) / n_obs
             else:
-                sparse_sum = math.fsum(
-                    self._S_csc.data[start:stop].astype(np.float64)
-                )
+                sparse_sum = math.fsum(self._S_csc.data[start:stop].astype(np.float64))
                 baseline_sum = float(
                     self._left_sum_float64 @ self._right_float64[column]
                 )
@@ -150,8 +148,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             v = self._right_float64[column]
             offset = float(v @ self._left_mean_float64) - float(center[column])
             baseline_total = float(
-                v @ self._left_centered_gram_float64 @ v
-                + n_obs * offset * offset
+                v @ self._left_centered_gram_float64 @ v + n_obs * offset * offset
             )
             baseline_support = self._left_float64[rows] @ v - float(center[column])
             actual_support = (
@@ -165,9 +162,7 @@ class SparseLowRankLinearOperator(LinearOperator):
                 )
             )
             rounding_bound = (
-                np.finfo(np.float64).eps
-                * max(baseline_total, 1.0)
-                * max(rows.size, 1)
+                np.finfo(np.float64).eps * max(baseline_total, 1.0) * max(rows.size, 1)
             )
             if column_squared < -rounding_bound:
                 raise ArithmeticError("stable squared-norm calculation became negative")
@@ -248,20 +243,6 @@ class SparseLowRankLinearOperator(LinearOperator):
             return self.mean.copy()
         return self._mean_float64.astype(self.dtype)
 
-    @property
-    def u(self) -> FloatArray:
-        """Return the left factor for rank-one compatibility."""
-        if self.left.shape[1] != 1:
-            raise AttributeError("u is only defined for rank-one representations")
-        return self.left[:, 0]
-
-    @property
-    def v(self) -> FloatArray:
-        """Return the right factor for rank-one compatibility."""
-        if self.right.shape[1] != 1:
-            raise AttributeError("v is only defined for rank-one representations")
-        return self.right[:, 0]
-
     def frobenius_squared_uncentered(self) -> float:
         """Return the squared Frobenius norm before column centering."""
         return self._frobenius_squared_uncentered_float64
@@ -277,20 +258,3 @@ class SparseLowRankLinearOperator(LinearOperator):
         eps = np.finfo(self.dtype).eps
         tolerance = eps * eps * np.prod(self.shape) * uncentered
         return centered <= tolerance
-
-
-class ResidualLinearOperator(SparseLowRankLinearOperator):
-    """Backward-compatible rank-one residual operator."""
-
-    def __init__(
-        self,
-        S: sparse.spmatrix | sparse.sparray,
-        u: ArrayLike,
-        v: ArrayLike,
-        *,
-        center: bool = True,
-        dtype: DTypeLike = "float64",
-    ) -> None:
-        super().__init__(
-            SparseLowRankMatrix(S, u, v), center=center, dtype=dtype
-        )

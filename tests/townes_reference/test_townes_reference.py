@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sparse_residual_pca import residual_pca_matrix
+from sparse_count_pca import residual_pca_matrix
 
 EXPECTED_SINGULAR_VALUES = {
     ("poisson", "pearson"): [

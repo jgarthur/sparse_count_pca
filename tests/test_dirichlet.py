@@ -2,17 +2,17 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_residual_pca import (
+from sparse_count_pca import (
     dirichlet_clr_pca,
     dirichlet_clr_pca_matrix,
     dirichlet_log_pca,
     dirichlet_log_pca_matrix,
 )
-from sparse_residual_pca._dirichlet import (
+from sparse_count_pca._log_transforms import (
     build_dirichlet_clr_representation,
     build_dirichlet_log_representation,
 )
-from sparse_residual_pca._operator import SparseLowRankLinearOperator
+from sparse_count_pca._operator import SparseLowRankLinearOperator
 
 
 def _dense_dirichlet(X, concentration, prior_proportions, *, clr):
@@ -91,6 +91,7 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
         np.abs(result.components), np.abs(Vt[:2]), rtol=1e-9, atol=1e-9
     )
     assert result.params["transform"] == transform
+    assert result.params["shift_domain"] == "dirichlet_prior_counts"
     assert result.params["concentration"] == concentration
     np.testing.assert_array_equal(result.params["prior_proportions"], prior)
 

@@ -3,7 +3,7 @@ from decimal import Decimal, localcontext
 import numpy as np
 import pytest
 
-from sparse_residual_pca._residuals import (
+from sparse_count_pca._residuals import (
     RELATIVE_DEVIANCE_SERIES_THRESHOLD,
     _binomial_deviance,
     _poisson_deviance,

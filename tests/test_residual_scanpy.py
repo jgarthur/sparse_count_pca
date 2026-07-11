@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from anndata import AnnData
 
-from sparse_residual_pca import residual_pca_matrix
+from sparse_count_pca import residual_pca_matrix
 from tests._oracles import _compare_subspaces, _materialize_dense_residual
 
 scanpy = pytest.importorskip("scanpy")

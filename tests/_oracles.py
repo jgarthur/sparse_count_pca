@@ -7,7 +7,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
 from scipy.special import xlogy
 
-from sparse_residual_pca._residuals import ALPHA_EPS
+from sparse_count_pca._residuals import ALPHA_EPS
 
 DenseOrSparse: TypeAlias = ArrayLike | sparse.spmatrix | sparse.sparray
 Float64Array: TypeAlias = NDArray[np.float64]
