@@ -24,7 +24,6 @@ only-include = [
     "/docs",
     "/pyproject.toml",
 ]
-exclude = ["/tests/townes_reference"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

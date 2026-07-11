@@ -180,10 +180,10 @@ package has been installed into the active environment.
 The wheel contains only `src/sparse_count_pca`.
 
 The source distribution contains package sources, ordinary tests, transform
-reference formulas, `README.md`, the `docs/` tree, and `pyproject.toml`. It
-excludes editor configuration, lock files, local development scripts, and
-`tests/townes_reference`. The Townes reference files are repository-only
-provenance and regression tooling.
+reference formulas and provenance, `README.md`, the `docs/` tree, and
+`pyproject.toml`. It excludes editor configuration, lock files, and local
+development scripts. The Townes reference test runs offline; its adjacent R
+script is only needed to regenerate the pinned reference values.
 
 ## Dependencies
 
@@ -797,6 +797,19 @@ adata.uns[uns_key] = {
 }
 ```
 
+Correspondence analysis uses its own default keys:
+
+```python
+obsm_key = "X_ca"
+varm_key = "CA"
+uns_key = "ca"
+```
+
+It writes row principal coordinates to `adata.obsm[obsm_key]`, column
+principal coordinates to `adata.varm[varm_key]`, and inertia, masses, singular
+values, and parameters to `adata.uns[uns_key]`. As with the PCA APIs, passing
+`key_added="foo"` uses `"foo"` for all three keys.
+
 `mask_var` and `use_highly_variable` match Scanpy's standard names and
 meaning. `mask_var_details` additionally stores a compact description of the
 resolved selection:
@@ -932,7 +945,6 @@ _matvec(z)
 _rmatvec(y)
 _matmat(Z)
 _rmatmat(Y)
-mean_axis0()
 frobenius_squared_uncentered()
 frobenius_squared_centered()
 ```

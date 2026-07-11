@@ -74,8 +74,3 @@ class SparseLowRankMatrix:
             self.left,
             self.right * weights_array[:, None],
         )
-
-    def scaled(self, value: float) -> SparseLowRankMatrix:
-        return SparseLowRankMatrix(
-            self.sparse * value, self.left * value, self.right
-        )

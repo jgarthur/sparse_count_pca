@@ -236,13 +236,6 @@ class SparseLowRankLinearOperator(LinearOperator):
             )
         return np.asarray(result, dtype=self.dtype)
 
-    def mean_axis0(self) -> FloatArray:
-        """Return uncentered residual column means in the operator dtype."""
-        if self.center:
-            assert self.mean is not None
-            return self.mean.copy()
-        return self._mean_float64.astype(self.dtype)
-
     def frobenius_squared_uncentered(self) -> float:
         """Return the squared Frobenius norm before column centering."""
         return self._frobenius_squared_uncentered_float64
@@ -256,5 +249,5 @@ class SparseLowRankLinearOperator(LinearOperator):
         centered = self.frobenius_squared_centered()
         uncentered = self.frobenius_squared_uncentered()
         eps = np.finfo(self.dtype).eps
-        tolerance = eps * eps * np.prod(self.shape) * uncentered
+        tolerance = eps * eps * math.prod(self.shape) * uncentered
         return centered <= tolerance

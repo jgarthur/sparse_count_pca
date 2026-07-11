@@ -223,6 +223,10 @@ result.inertia_ratio
 scp.correspondence_analysis(adata, n_comps=2, layer="counts")
 ```
 
+The AnnData API writes row principal coordinates to `adata.obsm["X_ca"]`,
+column principal coordinates to `adata.varm["CA"]`, and metadata to
+`adata.uns["ca"]`. Passing `key_added="foo"` uses `"foo"` for all three keys.
+
 The result stores principal coordinates, which are the coordinates used by the
 AnnData API. Standard coordinates are not stored; when needed, derive them as
 `principal_coordinates / singular_values`.
@@ -280,5 +284,6 @@ support. See the [clipping details](docs/specification.md#clipping).
 
 ```bash
 uv sync --extra test
-uv run pytest
+uv run python -m pytest
+uv run ruff check .
 ```
