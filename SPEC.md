@@ -1,8 +1,9 @@
-# Sparse Residual PCA package spec
+# Sparse-plus-low-rank spectral analysis package spec
 
 ## Scope
 
-The package computes PCA of residual-normalized single-cell count data without materializing the dense residual matrix.
+The package computes spectral analyses of implicitly transformed sparse count
+data without materializing dense transformed matrices.
 
 The package is AnnData-first. The primary public API operates on `AnnData` and writes Scanpy-compatible PCA outputs. A lower-level sparse matrix API is provided for testing and non-AnnData use.
 
@@ -14,6 +15,8 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
+* shifted CLR PCA
+* classical correspondence analysis with principal coordinates
 
 The package does **not** expose the usual standard negative-binomial residuals because their zero-count terms do not factorize into sparse-plus-rank-one form.
 
@@ -24,7 +27,12 @@ import sparse_residual_pca as srp
 
 srp.residual_pca(adata, ...)
 srp.residual_pca_matrix(X, ...)
+srp.shifted_clr_pca(adata, ...)
+srp.shifted_clr_pca_matrix(X, ...)
+srp.correspondence_analysis(adata, ...)
+srp.correspondence_analysis_matrix(X, ...)
 srp.ResidualPCAResult
+srp.CorrespondenceAnalysisResult
 ```
 
 No public `pp` namespace for v1. The package should feel like a small tool rather than a full Scanpy replacement.
@@ -38,7 +46,10 @@ src/
     _anndata.py
     _matrix.py
     _operator.py
+    _representation.py
     _residuals.py
+    _shifted_clr.py
+    _correspondence.py
     _clip.py
     _svd.py
     py.typed
@@ -50,6 +61,14 @@ tests/
     README.md
     generate_reference.R
     test_townes_reference.py
+  shifted_clr_reference/
+    README.md
+    oracle.py
+    LICENSE
+  corral_reference/
+    README.md
+    generate_reference.R
+    test_corral_reference.py
 ```
 
 All package modules other than `__init__.py` are private. `tests/_oracles.py`
@@ -58,7 +77,8 @@ holds dense oracle helpers used by the test suite (`_materialize_dense_residual`
 `_dense_scaled_nb_deviance`, `_compare_subspaces`) so test-only code is not
 installed in the runtime package.
 
-`__init__.py` exposes only:
+`__init__.py` exposes the residual PCA, shifted CLR PCA, and correspondence-analysis
+functions and their result types.
 
 ```python
 from ._anndata import residual_pca
@@ -74,10 +94,11 @@ package has been installed into the active environment.
 
 The wheel contains only `src/sparse_residual_pca`.
 
-The source distribution contains package sources, ordinary tests, `README.md`,
-`SPEC.md`, and `pyproject.toml`. It excludes editor configuration, lock files,
-local development scripts, and `tests/townes_reference`. The Townes reference
-files are repository-only provenance and regression tooling.
+The source distribution contains package sources, ordinary tests, the
+shifted CLR reference oracle and its license, `README.md`, `SPEC.md`, and
+`pyproject.toml`. It excludes editor configuration, lock files, local
+development scripts, and `tests/townes_reference`. The Townes reference files
+are repository-only provenance and regression tooling.
 
 ## Dependencies
 
@@ -733,19 +754,25 @@ def _serialize_alpha(alpha):
 
 If a variable mask is used, `loadings_full` has shape `(adata.n_vars, n_comps)`. Genes outside the mask receive `np.nan` to make non-used genes explicit (preferred over zeros, which can be mistaken for valid loadings).
 
-## Residual representation
+## Sparse-plus-low-rank representation
 
 The internal representation is:
 
 ```math
-R = S + uv^\top
+M = S + UV^\top
 ```
 
 where:
 
 * `S` is sparse
-* `u` has shape `(n_obs,)`
-* `v` has shape `(n_vars_used,)`
+* `U` has shape `(n_obs, rank)`
+* `V` has shape `(n_vars_used, rank)`
+* rank zero is permitted
+
+Residual transforms and shifted CLR currently produce rank-one representations.
+The generic form also supports future transforms with multiple implicit
+components. Row scaling, column scaling, and column selection preserve the
+sparse-plus-low-rank form.
 
 After clipping:
 
@@ -777,23 +804,19 @@ where
 Use one class, not separate sparse-plus-rank-one and centered wrappers.
 
 ```python
-class ResidualLinearOperator(scipy.sparse.linalg.LinearOperator):
+class SparseLowRankLinearOperator(scipy.sparse.linalg.LinearOperator):
     """
     Represents
 
-        A = S + u v^T - 1 mean^T
+        A = S + U V^T - 1 mean^T
 
     if center=True, and
 
-        A = S + u v^T
+        A = S + U V^T
 
     if center=False.
 
-    u is intentionally negative for all supported residuals. The low-rank
-    term u v^T equals the residual value at X_ij = 0:
-        Pearson:  -mu / sqrt(V)
-        Deviance: -sqrt(d(0, mu))
-    Future cleanup should not flip these signs.
+    ResidualLinearOperator remains a compatibility wrapper for rank one.
     """
 ```
 
@@ -801,8 +824,8 @@ Fields and shapes (with `N = n_obs`, `G = n_vars_used`):
 
 ```python
 S: scipy.sparse.csr_matrix     # shape (N, G)
-u: np.ndarray                  # shape (N,)
-v: np.ndarray                  # shape (G,)
+left: np.ndarray               # shape (N, rank)
+right: np.ndarray              # shape (G, rank)
 mean: np.ndarray | None        # shape (G,) when center=True; None when center=False
 center: bool
 dtype: np.dtype
@@ -810,10 +833,10 @@ dtype: np.dtype
 
 Dtype rules:
 
-- `S.data`, `u`, `v`, `mean` are all stored in the operator `dtype` (default
+- `S.data`, `left`, `right`, `mean` are stored in the operator `dtype` (default
   `float64`).
 - `_matvec(z)` and `_rmatvec(y)` return arrays of the operator `dtype`.
-- Computations that build `S`, `u`, `v`, `mean` and Frobenius norms are
+- Computations that build the representation, mean, and Frobenius norms are
   performed in `float64`; the cast to `dtype` happens at storage time.
 
 Methods:
@@ -835,7 +858,7 @@ Az
 =
 S z
 +
-u(v^\top z)
+U(V^\top z)
 -
 \mathbf 1(\bar r^\top z)
 ```
@@ -845,7 +868,7 @@ A^\top y
 =
 S^\top y
 +
-v(u^\top y)
+V(U^\top y)
 -
 \bar r(\mathbf 1^\top y)
 ```

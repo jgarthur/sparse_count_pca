@@ -1,12 +1,12 @@
 # sparse-residual-pca
 
-Efficient calculation of PCA on single-cell and spatial transcriptomics data under
-residual-based normalization.
+Implicit spectral analysis of sparse single-cell, spatial-transcriptomics, and
+contingency-table count data.
 
 Zero counts generally map to nonzero residuals, so an explicit residual matrix
-is dense. This package represents it exactly as a sparse matrix plus a rank-one term,
-centers that representation implicitly, and runs a truncated SVD against
-the resulting linear operator.
+is dense. This package represents transformed matrices exactly as a sparse
+matrix plus a low-rank term and runs truncated SVD without materializing the
+dense result.
 
 Supports both Pearson and deviance residuals for the following models:
 
@@ -15,6 +15,8 @@ Supports both Pearson and deviance residuals for the following models:
 - [Negative binomial with size-factor-scaled dispersion](SPEC.md#supported-residuals).
   This is similar but not identical to the residual transform used by
   SCTransform.
+
+It also supports shifted CLR PCA and classical correspondence analysis.
 
 Python 3.10 or newer is required because the package uses Python 3.10 type
 annotation syntax. The package depends on NumPy, SciPy, AnnData, and
@@ -102,6 +104,48 @@ result.explained_variance_ratio
 Pass `return_operator=True` to expose the centered `scipy.sparse.linalg.LinearOperator` used by ARPACK.
 The representation defaults to `float64`; pass `dtype="float32"` explicitly
 for a lower-memory approximate mode. Other representation dtypes are rejected.
+
+## Shifted CLR PCA
+
+The shifted CLR implementation follows the definition called PFlogPF by
+Booeshaghi et al. For cell depth `n_i`, feature proportion
+`u_ij = x_ij / n_i`, and positive pseudocount `c`, it analyzes
+
+```text
+log(u_ij + c) - mean_j(log(u_ij + c)).
+```
+
+The default is `c=1`. The equivalent sparse values are
+`log1p(x_ij / (c * n_i))`; within-cell centering is represented by a rank-one
+term.
+
+```python
+result = srp.shifted_clr_pca_matrix(X, n_comps=20, pseudocount=1.0)
+srp.shifted_clr_pca(adata, n_comps=20, layer="counts")
+```
+
+For AnnData, shifted CLR normalization uses all input genes and `mask_var` is
+applied afterward to choose genes entering PCA.
+
+## Correspondence analysis
+
+Classical correspondence analysis decomposes the standardized residual matrix
+without ordinary PCA column centering and reports canonical row and column
+coordinates:
+
+```python
+result = srp.correspondence_analysis_matrix(X, n_comps=2)
+result.row_principal_coordinates
+result.column_principal_coordinates
+result.principal_inertias
+result.inertia_ratio
+
+srp.correspondence_analysis(adata, n_comps=2, layer="counts")
+```
+
+When a variable mask is used, correspondence-analysis margins are recomputed
+from the selected contingency table. Total inertia equals Pearson
+`chi_squared / grand_total`.
 
 ## Clipping
 
