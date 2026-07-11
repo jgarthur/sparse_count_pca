@@ -16,7 +16,8 @@ Supports both Pearson and deviance residuals for the following models:
   This is similar but not identical to the residual transform used by
   SCTransform.
 
-It also supports shifted CLR PCA and classical correspondence analysis.
+It also supports shifted CLR PCA, Dirichlet-log and Dirichlet-CLR PCA, and
+classical correspondence analysis.
 
 Python 3.10 or newer is required because the package uses Python 3.10 type
 annotation syntax. The package depends on NumPy, SciPy, AnnData, and
@@ -127,6 +128,46 @@ srp.shifted_clr_pca(adata, n_comps=20, layer="counts")
 For AnnData, shifted CLR normalization uses all input genes and `mask_var` is
 applied afterward to choose genes entering PCA.
 
+## Dirichlet PCA transforms
+
+For total prior concentration `A` and strictly positive prior proportions
+`p_j`, the Dirichlet posterior-mean composition is
+
+```text
+q_ij = (x_ij + A p_j) / (n_i + A).
+```
+
+`dirichlet_log` analyzes `log(q_ij)`. `dirichlet_clr` additionally subtracts
+the within-cell mean of `log(q_ij)`. Both dense transforms have exact
+sparse-plus-rank-at-most-two representations. The default is `A=1` with a
+uniform prior, meaning one total pseudo-count distributed as `1 / n_vars` per
+gene.
+
+```python
+log_result = srp.dirichlet_log_pca_matrix(
+    X,
+    n_comps=20,
+    concentration=1.0,
+)
+clr_result = srp.dirichlet_clr_pca_matrix(
+    X,
+    n_comps=20,
+    concentration=2.0,
+    prior_proportions=prior,
+)
+
+srp.dirichlet_log_pca(adata, n_comps=20, layer="counts")
+srp.dirichlet_clr_pca(
+    adata,
+    n_comps=20,
+    prior_proportions="prior_proportion",  # column in adata.var
+)
+```
+
+The prior and posterior normalization use all input genes before `mask_var`
+selects genes for PCA. Unlike the residual and shifted-CLR transforms,
+Dirichlet transforms permit cells with zero observed counts.
+
 ## Correspondence analysis
 
 Classical correspondence analysis decomposes the standardized residual matrix
@@ -174,8 +215,8 @@ support. See the [clipping details](SPEC.md#clipping).
   tolerance and an absolute tolerance of `1e-8` by default.
 - Variable masks must have genuinely boolean dtype; numeric, string, and
   nullable masks are rejected rather than coerced.
-- Cells with zero total counts and selected genes with zero total counts are
-  rejected with `ValueError`.
+- Cells with zero total counts are supported by the Dirichlet transforms and
+  rejected by transforms whose normalization is undefined for empty cells.
 - A transformed matrix with numerically zero centered variance is rejected
   before ARPACK because its PCA directions are undefined.
 - Only `solver="arpack"` is supported.

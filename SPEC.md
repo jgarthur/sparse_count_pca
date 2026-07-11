@@ -16,6 +16,8 @@ This version supports:
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
 * shifted CLR PCA
+* Dirichlet-log PCA
+* Dirichlet-CLR PCA
 * classical correspondence analysis with principal coordinates
 
 The package does **not** expose the usual standard negative-binomial residuals because their zero-count terms do not factorize into sparse-plus-rank-one form.
@@ -29,6 +31,10 @@ srp.residual_pca(adata, ...)
 srp.residual_pca_matrix(X, ...)
 srp.shifted_clr_pca(adata, ...)
 srp.shifted_clr_pca_matrix(X, ...)
+srp.dirichlet_log_pca(adata, ...)
+srp.dirichlet_log_pca_matrix(X, ...)
+srp.dirichlet_clr_pca(adata, ...)
+srp.dirichlet_clr_pca_matrix(X, ...)
 srp.correspondence_analysis(adata, ...)
 srp.correspondence_analysis_matrix(X, ...)
 srp.ResidualPCAResult
@@ -49,6 +55,7 @@ src/
     _representation.py
     _residuals.py
     _shifted_clr.py
+    _dirichlet.py
     _correspondence.py
     _clip.py
     _svd.py
@@ -57,6 +64,7 @@ tests/
   __init__.py
   conftest.py
   _oracles.py
+  test_dirichlet.py
   townes_reference/
     README.md
     generate_reference.R
@@ -77,8 +85,8 @@ holds dense oracle helpers used by the test suite (`_materialize_dense_residual`
 `_dense_scaled_nb_deviance`, `_compare_subspaces`) so test-only code is not
 installed in the runtime package.
 
-`__init__.py` exposes the residual PCA, shifted CLR PCA, and correspondence-analysis
-functions and their result types.
+`__init__.py` exposes the residual PCA, shifted CLR PCA, Dirichlet PCA, and
+correspondence-analysis functions and their result types.
 
 ```python
 from ._anndata import residual_pca
@@ -769,10 +777,11 @@ where:
 * `V` has shape `(n_vars_used, rank)`
 * rank zero is permitted
 
-Residual transforms and shifted CLR currently produce rank-one representations.
-The generic form also supports future transforms with multiple implicit
-components. Row scaling, column scaling, and column selection preserve the
-sparse-plus-low-rank form.
+Residual transforms and shifted CLR produce rank-one representations.
+Dirichlet log and Dirichlet CLR produce representations of rank at most two.
+The generic form supports transforms with multiple implicit components. Row
+scaling, column scaling, and column selection preserve the sparse-plus-low-rank
+form.
 
 After clipping:
 
