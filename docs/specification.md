@@ -21,6 +21,7 @@ This version supports:
 * Dirichlet-log PCA
 * Dirichlet-CLR PCA
 * classical correspondence analysis with principal coordinates
+* experimental scaled-NB Pearson-residual correspondence-like ordination
 
 The package does **not** expose the usual standard negative-binomial residuals because their zero-count terms do not factorize into sparse-plus-rank-one form.
 
@@ -28,6 +29,40 @@ PCA is the primary analysis contract. Correspondence analysis remains as a
 closely related spectral decomposition with its own result type. That result
 stores principal coordinates only; standard coordinates are derived by
 dividing principal coordinates by singular values when needed.
+
+### Correspondence and experimental residual ordination
+
+For grand total `N`, row totals `n_i`, column proportions `p_j`, and expected
+counts `mu_ij = n_i p_j`, classical correspondence analysis decomposes the
+Poisson Pearson residual matrix with an additional total scaling:
+
+```math
+Z_{ij}^{CA}
+= \frac{1}{\sqrt N}\frac{X_{ij}-\mu_{ij}}{\sqrt{\mu_{ij}}}.
+```
+
+This identity is implemented through the shared stable Pearson-residual
+representation. The correspondence path uses `center=False`, recomputes
+margins after `mask_var`, and derives principal coordinates with the observed
+row and column masses.
+
+`model="scaled_nb"` is an explicitly experimental extension. It replaces the
+Poisson variance by the package's size-factor-scaled negative-binomial
+variance and decomposes
+
+```math
+Z_{ij}^{NB}
+= \frac{1}{\sqrt N}
+  \frac{X_{ij}-\mu_{ij}}
+       {\sqrt{\mu_{ij}(1 + \alpha_j \bar n p_j)}}.
+```
+
+Values of `alpha_j < 1e-8` use the Poisson limit, matching residual PCA. The
+mode requires `alpha`, emits a `UserWarning`, and records
+`experimental=True`. Its `total_inertia` is the squared Frobenius norm of
+`Z_NB`, not Pearson chi-square divided by `N`. Observed count masses still
+scale the reported coordinates, but the full chi-square and barycentric
+interpretations of classical CA are not claimed.
 
 ## Public API
 

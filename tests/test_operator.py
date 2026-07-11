@@ -56,3 +56,8 @@ def test_representation_selection_and_scaling():
     expected = dense[:, [0, 2]] * np.array([2.0, 3.0])[:, None]
     expected *= np.array([5.0, 7.0])[None, :]
     np.testing.assert_allclose(actual, expected)
+
+    scalar_scaled = scaled.scaled(0.25)
+    actual = scalar_scaled.sparse.toarray()
+    actual += scalar_scaled.left @ scalar_scaled.right.T
+    np.testing.assert_allclose(actual, 0.25 * expected)

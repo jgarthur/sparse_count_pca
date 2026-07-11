@@ -235,6 +235,37 @@ When a variable mask is used, correspondence-analysis margins are recomputed
 from the selected contingency table. Total inertia equals Pearson
 `chi_squared / grand_total`.
 
+### Experimental scaled-NB residual ordination
+
+Passing `model="scaled_nb"` replaces the Poisson variance with the package's
+size-factor-scaled negative-binomial variance and analyzes the resulting
+Pearson residual matrix divided by `sqrt(grand_total)`:
+
+```python
+experimental = scp.correspondence_analysis_matrix(
+    X,
+    n_comps=2,
+    model="scaled_nb",
+    alpha=overdispersion,
+)
+scp.correspondence_analysis(
+    adata,
+    n_comps=2,
+    model="scaled_nb",
+    alpha="overdispersion",
+    layer="counts",
+)
+```
+
+This mode is a correspondence-like residual ordination, not classical
+correspondence analysis. It emits a warning, records `experimental=True` in
+the result parameters, and requires `alpha` with the same meaning as
+scaled-NB residual PCA. Row and column coordinates continue to use the
+observed count masses. However, `total_inertia` is scaled-NB Pearson residual
+inertia rather than `chi_squared / grand_total`, and the full chi-square and
+barycentric interpretations of classical correspondence analysis do not
+apply.
+
 ## Clipping
 
 `clip=None` performs no clipping. A positive finite threshold enables one of

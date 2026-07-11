@@ -19,6 +19,19 @@ def _dense_ca_matrix(X):
     return standardized, row_masses, column_masses
 
 
+def _dense_scaled_nb_ca_matrix(X, alpha):
+    X = np.asarray(X, dtype=np.float64)
+    row_totals = X.sum(axis=1)
+    total = row_totals.sum()
+    column_masses = X.sum(axis=0) / total
+    expected = np.outer(row_totals, column_masses)
+    alpha = np.asarray(alpha, dtype=np.float64)
+    effective_alpha = np.where(alpha < 1e-8, 0.0, alpha)
+    variance_scale = 1.0 + effective_alpha * row_totals.mean() * column_masses
+    standardized = (X - expected) / np.sqrt(expected * variance_scale[None, :])
+    return standardized / np.sqrt(total)
+
+
 def test_correspondence_analysis_matches_dense_oracle(counts):
     X = counts.toarray()
     expected, row_masses, column_masses = _dense_ca_matrix(X)
@@ -60,6 +73,42 @@ def test_total_inertia_equals_pearson_chi_squared_over_total(counts):
         result.inertia_ratio,
         result.principal_inertias / result.total_inertia,
     )
+
+
+def test_experimental_scaled_nb_ca_matches_dense_residual_ordination(counts):
+    alpha = np.array([0.0, 0.05, 0.2, 1.0])
+    expected = _dense_scaled_nb_ca_matrix(counts.toarray(), alpha)
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        result = correspondence_analysis_matrix(
+            counts,
+            n_comps=2,
+            model="scaled_nb",
+            alpha=alpha,
+            return_operator=True,
+        )
+
+    np.testing.assert_allclose(
+        result.operator @ np.eye(counts.shape[1]),
+        expected,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    assert result.total_inertia == pytest.approx(np.sum(expected**2), rel=1e-12)
+    assert result.params["model"] == "scaled_nb"
+    assert result.params["experimental"] is True
+    assert (
+        result.params["inertia_interpretation"]
+        == "scaled_nb_pearson_residual_inertia"
+    )
+
+
+def test_correspondence_model_validates_alpha(counts):
+    with pytest.raises(ValueError, match="alpha is required"):
+        correspondence_analysis_matrix(counts, model="scaled_nb")
+    with pytest.raises(ValueError, match="alpha is only used"):
+        correspondence_analysis_matrix(counts, model="poisson", alpha=0.1)
+    with pytest.raises(ValueError, match="model must be"):
+        correspondence_analysis_matrix(counts, model="binomial")
 
 
 def test_ca_row_principal_coordinates_equal_unscaled_pearson_scores_over_sqrt_depth(
@@ -107,6 +156,35 @@ def test_ca_mask_recomputes_selected_table_margins(adata):
     np.testing.assert_allclose(
         result.uns["coords"]["column_masses"], expected.column_masses
     )
+
+
+def test_experimental_scaled_nb_ca_resolves_anndata_alpha_after_masking(adata):
+    mask = np.array([True, True, True, False])
+    alpha = np.array([0.0, 0.05, 0.2, 1.0])
+    adata.var["overdispersion"] = alpha
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        expected = correspondence_analysis_matrix(
+            adata.X[:, mask],
+            n_comps=2,
+            model="scaled_nb",
+            alpha=alpha[mask],
+        )
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        result = correspondence_analysis(
+            adata,
+            n_comps=2,
+            mask_var=mask,
+            model="scaled_nb",
+            alpha="overdispersion",
+            copy=True,
+            key_added="nb_coords",
+        )
+
+    np.testing.assert_allclose(
+        result.obsm["nb_coords"], expected.row_principal_coordinates
+    )
+    assert result.uns["nb_coords"]["params"]["alpha"] == "overdispersion"
+    assert result.uns["nb_coords"]["params"]["experimental"] is True
 
 
 def test_ca_rejects_zero_mass_rows_and_columns():

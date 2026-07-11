@@ -74,3 +74,11 @@ class SparseLowRankMatrix:
             self.left,
             self.right * weights_array[:, None],
         )
+
+    def scaled(self, value: float) -> SparseLowRankMatrix:
+        """Multiply the represented matrix by a scalar."""
+        return SparseLowRankMatrix(
+            self.sparse * value,
+            self.left * value,
+            self.right,
+        )

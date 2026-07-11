@@ -252,10 +252,16 @@ statistics and reproducibility metadata.
 
 [`_correspondence.py`](../src/sparse_count_pca/_correspondence.py) uses the same
 representation and operator machinery but is not ordinary column-centered
-PCA. It constructs standardized contingency-table residuals and reports row
-and column principal coordinates and inertia. Standard coordinates are not
-stored because they are derivable as principal coordinates divided by singular
-values.
+PCA. Classical CA reuses the stable Poisson Pearson representation with a
+`1 / sqrt(grand_total)` scale. The explicitly experimental `model="scaled_nb"`
+path substitutes scaled-NB Pearson residuals at the same total scaling. Both
+report row and column principal coordinates and inertia; standard coordinates
+are not stored because they are derivable as principal coordinates divided by
+singular values.
+
+Only the Poisson path has the classical chi-square and full barycentric
+interpretations. The scaled-NB path retains observed count masses for
+coordinate scaling and reports residual inertia.
 
 Keep it out of generic PCA helpers unless an abstraction preserves its
 different centering, scaling, result type, and coordinate semantics.

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
 from anndata import AnnData
@@ -23,15 +24,22 @@ from ._counts import (
 )
 from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
+from ._residual_pca import _resolve_alpha, _serialize_alpha
+from ._residuals import (
+    AlphaLike,
+    _validate_model,
+    build_pearson_residual_representation,
+)
 from ._svd import Solver, compute_truncated_svd
 from ._version import __version__
 
 Float64Array = NDArray[np.float64]
+CorrespondenceModel: TypeAlias = Literal["poisson", "scaled_nb"]
 
 
 @dataclass
 class CorrespondenceAnalysisResult:
-    """Principal-coordinate results from correspondence analysis.
+    """Principal-coordinate results from classical or experimental analysis.
 
     Standard coordinates are derivable by dividing principal coordinates by
     singular values and are intentionally not stored.
@@ -51,26 +59,24 @@ class CorrespondenceAnalysisResult:
 
 def build_correspondence_representation(
     X: sparse.csr_matrix,
+    *,
+    model: CorrespondenceModel = "poisson",
+    alpha: Float64Array | None = None,
 ) -> tuple[SparseLowRankMatrix, Float64Array, Float64Array]:
-    """Build the canonical CA standardized-residual matrix."""
+    """Build a total-scaled Pearson-residual representation."""
     row_totals = np.asarray(X.astype(np.float64).sum(axis=1)).ravel()
     column_totals = np.asarray(X.astype(np.float64).sum(axis=0)).ravel()
     total = float(np.sum(row_totals))
     row_masses = row_totals / total
     column_masses = column_totals / total
-    support_rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
-    denominator = np.sqrt(total * row_totals[support_rows] * column_masses[X.indices])
-    sparse_part = sparse.csr_matrix(
-        (
-            X.data.astype(np.float64, copy=False) / denominator,
-            X.indices.copy(),
-            X.indptr.copy(),
-        ),
-        shape=X.shape,
+    pearson = build_pearson_residual_representation(
+        X,
+        row_totals,
+        column_masses,
+        model=model,
+        alpha=alpha,
     )
-    left = -np.sqrt(row_masses)
-    right = np.sqrt(column_masses)
-    return SparseLowRankMatrix(sparse_part, left, right), row_masses, column_masses
+    return pearson.scaled(1.0 / np.sqrt(total)), row_masses, column_masses
 
 
 def _compute_correspondence_analysis(
@@ -78,6 +84,8 @@ def _compute_correspondence_analysis(
     n_comps: int,
     *,
     mask: BoolArray | None,
+    model: CorrespondenceModel,
+    alpha: AlphaLike,
     check_values: bool,
     dtype: DTypeLike,
     solver: Solver,
@@ -90,11 +98,16 @@ def _compute_correspondence_analysis(
     dtype = _normalize_operator_dtype(dtype)
     counts = _canonicalize_counts(X, check_values=check_values)
     n_vars = counts.shape[1]
+    if model not in {"poisson", "scaled_nb"}:
+        raise ValueError("model must be 'poisson' or 'scaled_nb'")
+    alpha_full = _validate_model(model, "pearson", alpha, n_vars)
     if mask is not None:
         mask = _validate_boolean_mask(mask, n_vars, name="mask")
         if not mask.any():
             raise ValueError("mask selected zero columns")
         counts = counts[:, mask].tocsr()
+        if alpha_full is not None:
+            alpha_full = alpha_full[mask]
     if not 1 <= n_comps < min(counts.shape):
         raise ValueError(
             "n_comps must satisfy 1 <= n_comps < min(n_rows, n_columns_used)"
@@ -105,9 +118,18 @@ def _compute_correspondence_analysis(
         raise ValueError("Rows with zero mass are not supported")
     if (column_totals == 0).any():
         raise ValueError("Columns with zero mass are not supported")
+    if model == "scaled_nb":
+        warnings.warn(
+            "model='scaled_nb' correspondence analysis is experimental; its "
+            "inertia has no classical Pearson chi-square interpretation",
+            UserWarning,
+            stacklevel=3,
+        )
 
     representation, row_masses, column_masses = build_correspondence_representation(
-        counts
+        counts,
+        model=model,
+        alpha=alpha_full,
     )
     operator = SparseLowRankLinearOperator(representation, center=False, dtype=dtype)
     total_inertia = operator.frobenius_squared_uncentered()
@@ -134,6 +156,14 @@ def _compute_correspondence_analysis(
     inertias = singular_values**2
     params = {
         "analysis": "correspondence_analysis",
+        "model": model,
+        "alpha": _serialize_alpha(alpha),
+        "experimental": model == "scaled_nb",
+        "inertia_interpretation": (
+            "pearson_chi_squared_over_grand_total"
+            if model == "poisson"
+            else "scaled_nb_pearson_residual_inertia"
+        ),
         "zero_center": False,
         "n_comps": n_comps,
         "solver": solver,
@@ -161,6 +191,8 @@ def correspondence_analysis_matrix(
     X: CountMatrix,
     n_comps: int = 2,
     *,
+    model: CorrespondenceModel = "poisson",
+    alpha: AlphaLike = None,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
     solver: Solver = "arpack",
@@ -168,11 +200,13 @@ def correspondence_analysis_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> CorrespondenceAnalysisResult:
-    """Compute correspondence analysis of a contingency table."""
+    """Compute classical or experimental scaled-NB correspondence analysis."""
     return _compute_correspondence_analysis(
         X,
         n_comps,
         mask=None,
+        model=model,
+        alpha=alpha,
         check_values=check_values,
         dtype=dtype,
         solver=solver,
@@ -191,6 +225,8 @@ def correspondence_analysis(
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
+    model: CorrespondenceModel = "poisson",
+    alpha: AlphaLike | str = None,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
     solver: Solver = "arpack",
@@ -198,15 +234,18 @@ def correspondence_analysis(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute correspondence analysis and store principal coordinates."""
+    """Compute classical or experimental scaled-NB correspondence analysis."""
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
     mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
+    alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_correspondence_analysis(
         X,
         n_comps,
         mask=mask,
+        model=model,
+        alpha=alpha_values,
         check_values=check_values,
         dtype=dtype,
         solver=solver,
@@ -214,6 +253,7 @@ def correspondence_analysis(
         tol=tol,
         return_operator=False,
     )
+    result.params["alpha"] = _serialize_alpha(alpha)
     if key_added is None:
         obsm_key, varm_key, uns_key = "X_ca", "CA", "ca"
     else:

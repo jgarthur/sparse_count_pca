@@ -29,6 +29,48 @@ SUPPORTED: set[tuple[Model, ResidualType]] = {
 }
 
 
+def build_pearson_residual_representation(
+    X: sparse.csr_matrix,
+    n: Float64Array,
+    p: Float64Array,
+    *,
+    model: Literal["poisson", "scaled_nb"],
+    alpha: Float64Array | None,
+) -> SparseLowRankMatrix:
+    """Build an unclipped Poisson or scaled-NB Pearson representation."""
+    rows = np.repeat(
+        np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr)
+    )
+    if model == "poisson":
+        if alpha is not None:
+            raise ValueError("alpha is only used for model='scaled_nb'")
+        variance_scale = np.ones_like(p)
+    elif model == "scaled_nb":
+        if alpha is None:
+            raise ValueError("alpha is required for model='scaled_nb'")
+        alpha_array = np.asarray(alpha, dtype=np.float64)
+        poisson = alpha_array < ALPHA_EPS
+        effective_alpha = np.where(poisson, 0.0, alpha_array)
+        variance_scale = 1.0 + effective_alpha * float(np.mean(n)) * p
+    else:
+        raise ValueError(f"Unsupported Pearson residual model: {model!r}")
+
+    denominator = np.sqrt(
+        n[rows] * p[X.indices] * variance_scale[X.indices]
+    )
+    sparse_part = sparse.csr_matrix(
+        (
+            X.data.astype(np.float64, copy=False) / denominator,
+            X.indices.copy(),
+            X.indptr.copy(),
+        ),
+        shape=X.shape,
+    )
+    left = -np.sqrt(n)
+    right = np.sqrt(p / variance_scale)
+    return SparseLowRankMatrix(sparse_part, left, right)
+
+
 def _validate_model(
     model: Model,
     residual: ResidualType,
@@ -255,6 +297,15 @@ def build_residual_representation(
         A rank-one sparse-plus-low-rank representation.
     """
     alpha_array = None if alpha is None else np.asarray(alpha, dtype=np.float64)
+    if residual == "pearson" and clip is None and model in {"poisson", "scaled_nb"}:
+        return build_pearson_residual_representation(
+            X,
+            n,
+            p,
+            model=model,
+            alpha=alpha_array,
+        )
+
     rows = np.repeat(
         np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr)
     )
