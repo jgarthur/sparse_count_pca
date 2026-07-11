@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sparse-residual-pca"
+version = "0.1.0"
+description = "PCA of implicitly represented residual-normalized transcript counts"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["anndata", "numpy", "scikit-learn", "scipy"]
+
+[project.optional-dependencies]
+test = ["pytest", "ruff", "scanpy>=1.10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sparse_residual_pca"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["/src", "/tests", "/README.md", "/SPEC.md", "/pyproject.toml"]
+exclude = ["/tests/townes_reference"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
