@@ -8,3 +8,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# files for agents
+AGENTS.md
+CLAUDE.md
