@@ -1,3 +1,5 @@
+"""Sparse-plus-low-rank builders for shifted logarithmic transforms."""
+
 from __future__ import annotations
 
 from typing import TypeAlias

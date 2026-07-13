@@ -1,3 +1,5 @@
+"""Exact clipping operations for sparse-plus-low-rank representations."""
+
 from __future__ import annotations
 
 from typing import Literal, TypeAlias

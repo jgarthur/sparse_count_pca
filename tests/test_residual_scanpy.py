@@ -1,14 +1,17 @@
+"""Compatibility tests against Scanpy's Pearson-residual PCA workflow."""
+
 import numpy as np
 import pytest
 from anndata import AnnData
 
 from sparse_count_pca import residual_pca_matrix
-from tests._oracles import _compare_subspaces, _materialize_dense_residual
+from tests._oracles import _materialize_dense_residual
 
 scanpy = pytest.importorskip("scanpy")
 
 
 def test_poisson_pearson_matches_scanpy_residuals_and_pca(counts):
+    """Poisson Pearson residuals and PCA agree with Scanpy's workflow."""
     explicit = AnnData(counts.copy())
     scanpy.experimental.pp.normalize_pearson_residuals(
         explicit,
@@ -42,7 +45,9 @@ def test_poisson_pearson_matches_scanpy_residuals_and_pca(counts):
         rtol=1e-10,
         atol=1e-10,
     )
-    assert _compare_subspaces(
+    # Singular values are distinct for this fixture, so the ordered, sign-flipped
+    # component vectors are uniquely comparable rather than only their subspace.
+    np.testing.assert_allclose(
         result.loadings,
         explicit.varm["PCs"],
         atol=1e-8,

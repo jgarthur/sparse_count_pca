@@ -1,9 +1,12 @@
+"""Tests for residual representations, operators, and PCA results."""
+
 import numpy as np
 import pytest
 import zarr
 from scipy import sparse
 
 from sparse_count_pca import residual_pca_matrix
+from sparse_count_pca._counts import _canonicalize_counts
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from sparse_count_pca._representation import SparseLowRankMatrix
 from sparse_count_pca._residuals import ALPHA_EPS
@@ -22,6 +25,7 @@ from tests._oracles import _compare_subspaces, _materialize_dense_residual
     ],
 )
 def test_operator_and_svd_match_dense(counts, model, residual, alpha):
+    """Implicit residual operators and SVDs match dense calculations."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -58,6 +62,7 @@ def test_operator_and_svd_match_dense(counts, model, residual, alpha):
 
 @pytest.mark.parametrize("residual", ["pearson", "deviance"])
 def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
+    """Scaled-NB probability-family selection is consistent within each gene."""
     counts = sparse.csr_matrix(
         [
             [999_990, 5, 5],
@@ -90,6 +95,7 @@ def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
 
 @pytest.mark.parametrize("residual", ["pearson", "deviance"])
 def test_scaled_nb_genes_below_alpha_threshold_equal_poisson(residual):
+    """Genes below the alpha threshold use the Poisson residual limit."""
     counts = sparse.csr_matrix(
         [
             [999_990, 5, 5],
@@ -125,6 +131,7 @@ def test_scaled_nb_genes_below_alpha_threshold_equal_poisson(residual):
 
 
 def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts):
+    """Scaled-NB PCA accepts a zero-dimensional NumPy alpha value."""
     scalar = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -143,6 +150,7 @@ def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts):
 
 
 def test_uncentered_operator_matches_dense(counts):
+    """The uncentered implicit operator matches its dense representation."""
     result = residual_pca_matrix(
         counts, n_comps=2, dtype="float64", return_operator=True
     )
@@ -161,6 +169,7 @@ def test_uncentered_operator_matches_dense(counts):
 
 @pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
+    """Stable variance matches the represented operator on sparse support."""
     n_obs, n_vars = 101, 4
     rows = np.array([0, 3, 10, 25, 50, 75, 90, 100])
     cols = np.array([0, 1, 2, 3, 0, 1, 2, 3])
@@ -179,6 +188,7 @@ def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_total_variance_high_count_near_constant_matches_stored_operator(dtype):
+    """Variance remains accurate for high-count, nearly constant matrices."""
     baseline = 10**6
     counts = np.tile([baseline, 2 * baseline, 3 * baseline, 4 * baseline], (1000, 1))
     counts[0, 0] += 1
@@ -206,6 +216,7 @@ def test_total_variance_high_count_near_constant_matches_stored_operator(dtype):
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_identical_rows_raise_zero_centered_variance_before_arpack(dtype, monkeypatch):
+    """Identical rows raise for zero variance before invoking ARPACK."""
     counts = np.tile([1, 2, 3, 4], (6, 1))
 
     def fail_if_called(*args, **kwargs):
@@ -220,6 +231,7 @@ def test_identical_rows_raise_zero_centered_variance_before_arpack(dtype, monkey
 
 
 def test_exact_symmetric_clipping_matches_dense(counts):
+    """Exact symmetric clipping matches a dense clipped residual matrix."""
     # For Poisson Pearson residuals, the five zero entries have magnitudes
     # [1.308, 1.308, 1.398, 1.398, 1.461]. Thus clip=1.35 clips exactly three.
     clip = 1.35
@@ -243,6 +255,7 @@ def test_exact_symmetric_clipping_matches_dense(counts):
 
 @pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
+    """Clipped total variance matches the stored implicit operator."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -269,6 +282,7 @@ def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     ],
 )
 def test_symmetric_clipping_is_exact_for_every_residual(counts, model, residual, alpha):
+    """Symmetric clipping is exact for every residual-model combination."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -295,6 +309,7 @@ def test_symmetric_clipping_is_exact_for_every_residual(counts, model, residual,
 
 
 def test_symmetric_clipping_support_growth_guard(counts):
+    """Symmetric clipping enforces its sparse-support growth limit."""
     clip = 1.35
     exact_growth_ratio = (counts.nnz + 3) / counts.nnz
 
@@ -340,6 +355,7 @@ def test_symmetric_clipping_support_growth_guard(counts):
 
 
 def test_symmetric_clipping_large_finite_growth_guard(counts):
+    """The growth guard handles large finite support-ratio limits."""
     clip = 1.35
     result = residual_pca_matrix(
         counts,
@@ -367,6 +383,7 @@ def test_symmetric_clipping_large_finite_growth_guard(counts):
     ],
 )
 def test_upper_clipping_is_exact_without_support_growth(counts, model, residual, alpha):
+    """Upper clipping is exact without adding structural-zero support."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -397,6 +414,7 @@ def test_upper_clipping_is_exact_without_support_growth(counts, model, residual,
 
 
 def test_upper_clipping_leaves_negative_tail_unchanged(counts):
+    """Upper clipping leaves the negative residual tail unchanged."""
     clip = 0.5
     unclipped = _materialize_dense_residual(counts)
     expected = _materialize_dense_residual(
@@ -413,6 +431,7 @@ def test_upper_clipping_leaves_negative_tail_unchanged(counts):
 
 
 def test_matrix_clipping_params_are_recorded(counts):
+    """Matrix PCA results record all clipping parameters."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -426,6 +445,7 @@ def test_matrix_clipping_params_are_recorded(counts):
 
 
 def test_dtype_contract(counts):
+    """Requested dtypes govern operator, score, and component storage."""
     result = residual_pca_matrix(
         counts, n_comps=2, dtype="float32", return_operator=True
     )
@@ -438,6 +458,7 @@ def test_dtype_contract(counts):
 
 
 def test_default_operator_dtype_is_float64(counts):
+    """Residual PCA defaults to a float64 representation and operator."""
     result = residual_pca_matrix(counts, n_comps=2, return_operator=True)
     assert result.scores.dtype == np.float64
     assert result.components.dtype == np.float64
@@ -464,6 +485,7 @@ def test_default_operator_dtype_is_float64(counts):
     ],
 )
 def test_operator_dtype_rejects_types_other_than_float32_and_float64(counts, dtype):
+    """Operator dtype validation rejects unsupported scalar types."""
     with pytest.raises(ValueError, match="dtype must be float32 or float64"):
         residual_pca_matrix(counts, n_comps=2, dtype=dtype)
     with pytest.raises(ValueError, match="dtype must be float32 or float64"):
@@ -495,6 +517,7 @@ def test_operator_dtype_rejects_types_other_than_float32_and_float64(counts, dty
     ],
 )
 def test_parameter_validation(counts, kwargs, message):
+    """Residual PCA rejects invalid model and solver parameters."""
     error = (
         NotImplementedError
         if "solver" in kwargs or isinstance(kwargs.get("clip"), str)
@@ -505,6 +528,7 @@ def test_parameter_validation(counts, kwargs, message):
 
 
 def test_count_validation(counts):
+    """Residual PCA validates count values and degenerate margins."""
     noninteger = counts.astype(float)
     noninteger.data[0] += 0.25
     with pytest.raises(ValueError, match="non-integer"):
@@ -523,6 +547,7 @@ def test_count_validation(counts):
 
 @pytest.mark.parametrize("sparse_input", [False, True])
 def test_complex_counts_are_rejected_before_cast(counts, sparse_input):
+    """Complex count inputs are rejected before any real-valued cast."""
     values = counts.astype(np.complex128)
     values.data[0] += 1j
     X = values if sparse_input else values.toarray()
@@ -531,6 +556,7 @@ def test_complex_counts_are_rejected_before_cast(counts, sparse_input):
 
 
 def test_large_fractional_counts_are_rejected(counts):
+    """Large non-integer floating counts fail count-likeness validation."""
     fractional = counts.astype(np.float64)
     fractional.data[0] = 100_000.4
     with pytest.raises(ValueError, match="non-integer"):
@@ -539,6 +565,7 @@ def test_large_fractional_counts_are_rejected(counts):
 
 @pytest.mark.parametrize("value", [np.nan, np.inf])
 def test_nonfinite_sparse_counts_are_rejected(counts, value):
+    """Sparse count inputs reject nonfinite stored values."""
     invalid = counts.astype(np.float64)
     invalid.data[0] = value
     with pytest.raises(ValueError, match="NaN or inf"):
@@ -546,12 +573,14 @@ def test_nonfinite_sparse_counts_are_rejected(counts, value):
 
 
 def test_nonnumeric_dense_counts_are_rejected():
+    """Dense nonnumeric inputs are rejected as count matrices."""
     invalid = np.full((4, 3), "1")
     with pytest.raises(ValueError, match="real numeric"):
         residual_pca_matrix(invalid, n_comps=2)
 
 
 def test_integer_counts_must_be_exactly_representable_as_float64(counts):
+    """Integer counts must round-trip exactly through float64."""
     unsafe = counts.astype(np.uint64)
     unsafe.data[0] = 2**53 + 1
     with pytest.raises(ValueError, match="represented exactly as float64"):
@@ -559,6 +588,7 @@ def test_integer_counts_must_be_exactly_representable_as_float64(counts):
 
 
 def test_explicit_sparse_zeros_are_removed_without_mutating_input(counts):
+    """Canonicalization removes explicit zeros without mutating its input."""
     with_zero = counts.copy()
     insertion = with_zero.indptr[1]
     with_zero.data = np.insert(with_zero.data, insertion, 0)
@@ -566,12 +596,44 @@ def test_explicit_sparse_zeros_are_removed_without_mutating_input(counts):
     with_zero.indptr[1:] += 1
     original_nnz = with_zero.nnz
     expected = residual_pca_matrix(counts, n_comps=2)
-    actual = residual_pca_matrix(with_zero, n_comps=2)
+    with pytest.warns(UserWarning, match="copied.*explicitly stored zeros"):
+        actual = residual_pca_matrix(with_zero, n_comps=2)
     assert with_zero.nnz == original_nnz
     np.testing.assert_allclose(actual.singular_values, expected.singular_values)
 
 
+def test_canonical_zero_free_csr_is_borrowed_without_copying(counts):
+    """Canonical zero-free CSR input is reused without defensive copying."""
+    assert counts.has_canonical_format
+    assert not (counts.data == 0).any()
+
+    canonical = _canonicalize_counts(counts, check_values=True)
+
+    assert canonical is counts
+
+
+def test_noncanonical_csr_copy_warns_and_preserves_input(counts):
+    """Noncanonical CSR is copied with a warning and the input stays unchanged."""
+    unsorted = counts.copy()
+    start, stop = unsorted.indptr[:2]
+    unsorted.indices[start:stop] = unsorted.indices[start:stop][::-1]
+    unsorted.data[start:stop] = unsorted.data[start:stop][::-1]
+    unsorted.has_sorted_indices = False
+    unsorted.has_canonical_format = False
+    original_indices = unsorted.indices.copy()
+    original_data = unsorted.data.copy()
+
+    with pytest.warns(UserWarning, match="duplicate or unsorted"):
+        canonical = _canonicalize_counts(unsorted, check_values=True)
+
+    assert canonical is not unsorted
+    np.testing.assert_array_equal(unsorted.indices, original_indices)
+    np.testing.assert_array_equal(unsorted.data, original_data)
+    assert canonical.has_canonical_format
+
+
 def test_dense_zarr_input_is_eagerly_converted(counts, tmp_path):
+    """Dense Zarr inputs are eagerly converted to an in-memory CSR matrix."""
     dense = counts.toarray()
     X = zarr.open_array(
         str(tmp_path / "counts.zarr"),
@@ -589,5 +651,6 @@ def test_dense_zarr_input_is_eagerly_converted(counts, tmp_path):
 
 
 def test_n_comps_is_not_clamped(counts):
+    """Invalid component counts raise instead of being silently clamped."""
     with pytest.raises(ValueError, match="n_comps must satisfy"):
         residual_pca_matrix(counts, n_comps=counts.shape[1])

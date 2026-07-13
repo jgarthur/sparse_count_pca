@@ -1,3 +1,5 @@
+"""Truncated singular-value decomposition for implicit matrix operators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

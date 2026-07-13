@@ -1,3 +1,5 @@
+"""Shared pytest fixtures for sparse-count PCA tests."""
+
 import pytest
 from anndata import AnnData
 from scipy import sparse

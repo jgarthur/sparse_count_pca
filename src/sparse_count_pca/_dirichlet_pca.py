@@ -1,3 +1,5 @@
+"""Dirichlet log and CLR PCA entry points."""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -15,17 +17,15 @@ from ._anndata import (
 from ._counts import (
     BoolArray,
     CountMatrix,
-    _canonicalize_counts,
-    _validate_boolean_mask,
 )
-from ._log_transforms import (
-    PriorProportions,
-    build_dirichlet_clr_representation,
-    build_dirichlet_log_representation,
-    validate_dirichlet_prior,
-)
-from ._pca import PCAResult, compute_pca_from_representation
+from ._log_transforms import PriorProportions
+from ._pca import PCAResult
 from ._svd import Solver
+from ._transform import (
+    DirichletCLR,
+    DirichletLog,
+)
+from ._transform import _transform as transform_counts
 
 DirichletTransform = Literal["dirichlet_log", "dirichlet_clr"]
 
@@ -45,43 +45,26 @@ def _compute_dirichlet_pca(
     tol: float,
     return_operator: bool,
 ) -> PCAResult:
-    counts = _canonicalize_counts(X, check_values=check_values)
-    n_vars = counts.shape[1]
-    concentration, proportions = validate_dirichlet_prior(
-        concentration, prior_proportions, n_vars
-    )
-    builder = (
-        build_dirichlet_log_representation
+    method = (
+        DirichletLog(
+            concentration=concentration,
+            prior_proportions=prior_proportions,
+        )
         if transform == "dirichlet_log"
-        else build_dirichlet_clr_representation
+        else DirichletCLR(
+            concentration=concentration,
+            prior_proportions=prior_proportions,
+        )
     )
-    representation = builder(
-        counts,
-        concentration=concentration,
-        prior_proportions=proportions,
-    )
-    if mask is not None:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-        if not mask.any():
-            raise ValueError("mask selected zero genes")
-        representation = representation.select_columns(mask)
-
-    label = "Dirichlet log" if transform == "dirichlet_log" else "Dirichlet CLR"
-    return compute_pca_from_representation(
-        representation,
-        n_comps,
-        transform_label=label,
-        params={
-            "transform": transform,
-            "shift_domain": "dirichlet_prior_counts",
-            "concentration": concentration,
-            "prior_proportions": (
-                "uniform" if prior_proportions is None else proportions.copy()
-            ),
-            "normalization_n_vars": n_vars,
-        },
+    transformed = transform_counts(
+        X,
+        method,
         check_values=check_values,
         dtype=dtype,
+        _columns=mask,
+    )
+    return transformed.pca(
+        n_comps,
         solver=solver,
         random_state=random_state,
         tol=tol,
@@ -199,13 +182,15 @@ def _dirichlet_pca_anndata(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
+    resolved_mask = _resolve_mask_var(
+        adata.var, mask_var, use_highly_variable
+    )
     resolved_prior = _resolve_prior_proportions(prior_proportions, adata)
     result = _compute_dirichlet_pca(
         X,
         n_comps,
         transform=transform,
-        mask=mask,
+        mask=resolved_mask.values,
         concentration=concentration,
         prior_proportions=resolved_prior,
         check_values=check_values,
@@ -219,9 +204,7 @@ def _dirichlet_pca_anndata(
     _write_pca_result(
         adata,
         result,
-        mask=mask,
-        mask_var=mask_var,
-        use_highly_variable=use_highly_variable,
+        mask=resolved_mask,
         key_added=key_added,
         layer=layer,
         use_raw=use_raw,

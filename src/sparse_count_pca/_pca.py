@@ -1,3 +1,5 @@
+"""Shared PCA execution for sparse-plus-low-rank representations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

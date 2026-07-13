@@ -1,3 +1,5 @@
+"""Residual PCA entry points for count matrices and AnnData objects."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -12,30 +14,13 @@ from ._anndata import (
     _resolve_mask_var,
     _write_pca_result,
 )
-from ._clip import ClipMode, validate_clip
-from ._counts import (
-    BoolArray,
-    CountMatrix,
-    _canonicalize_counts,
-    _validate_boolean_mask,
-)
-from ._pca import PCAResult, compute_pca_from_representation
-from ._residuals import (
-    AlphaLike,
-    Model,
-    ResidualType,
-    _validate_model,
-    build_residual_representation,
-)
+from ._clip import ClipMode
+from ._counts import BoolArray, CountMatrix
+from ._pca import PCAResult
+from ._residuals import AlphaLike, Model, ResidualType
 from ._svd import Solver
-
-
-def _serialize_matrix_alpha(alpha: AlphaLike) -> Any:
-    """Convert matrix overdispersion input to a stable result value."""
-    if alpha is None or np.isscalar(alpha):
-        return alpha
-    values = np.asarray(alpha)
-    return values.item() if values.ndim == 0 else values
+from ._transform import Residual
+from ._transform import _transform as transform_counts
 
 
 def _compute_residual_pca(
@@ -82,61 +67,22 @@ def _compute_residual_pca(
     Raises:
         ValueError: If counts, dimensions, or model parameters are invalid.
     """
-    validate_clip(clip, clip_mode, clip_max_nnz_ratio)
-    X = _canonicalize_counts(X, check_values=check_values)
-    n_vars = X.shape[1]
-    alpha_full = _validate_model(model, residual, alpha, n_vars)
-
-    n = np.asarray(X.astype(np.float64).sum(axis=1)).ravel()
-    if (n == 0).any():
-        raise ValueError("Cells with zero total counts are not supported")
-    total = float(np.sum(n))
-    p_full = np.asarray(X.astype(np.float64).sum(axis=0)).ravel() / total
-
-    if mask is None:
-        mask = np.ones(n_vars, dtype=bool)
-    else:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-    if not mask.any():
-        raise ValueError("mask selected zero genes")
-
-    p = p_full[mask]
-    if (p == 0).any():
-        raise ValueError("Selected genes with zero total counts are not supported")
-    if model == "binomial" and (p >= 1).any():
-        raise ValueError("Binomial residuals require 0 < p_j < 1")
-
-    alpha_used = alpha_full[mask] if alpha_full is not None else None
-
-    X_used = X[:, mask].tocsr()
-    representation = build_residual_representation(
-        X_used,
-        n,
-        p,
-        model=model,
-        residual=residual,
-        alpha=alpha_used,
-        clip=clip,
-        clip_mode=clip_mode,
-        clip_max_nnz_ratio=clip_max_nnz_ratio,
-    )
-    return compute_pca_from_representation(
-        representation,
-        n_comps,
-        transform_label="Residual",
-        params={
-            "model": model,
-            "residual": residual,
-            "alpha": _serialize_matrix_alpha(alpha),
-            "clip": clip,
-            "clip_mode": clip_mode,
-            "clip_max_nnz_ratio": clip_max_nnz_ratio,
-            "use_highly_variable": False,
-            "mask_var": None,
-            "layer": None,
-        },
+    transformed = transform_counts(
+        X,
+        Residual(
+            model=model,
+            residual=residual,
+            alpha=alpha,
+            clip=clip,
+            clip_mode=clip_mode,
+            clip_max_nnz_ratio=clip_max_nnz_ratio,
+        ),
         check_values=check_values,
         dtype=dtype,
+        _columns=mask,
+    )
+    return transformed.pca(
+        n_comps,
         solver=solver,
         random_state=random_state,
         tol=tol,
@@ -271,12 +217,14 @@ def residual_pca(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
+    resolved_mask = _resolve_mask_var(
+        adata.var, mask_var, use_highly_variable
+    )
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_residual_pca(
         X,
         n_comps,
-        mask=mask,
+        mask=resolved_mask.values,
         model=model,
         residual=residual,
         alpha=alpha_values,
@@ -294,9 +242,7 @@ def residual_pca(
     _write_pca_result(
         adata,
         result,
-        mask=mask,
-        mask_var=mask_var,
-        use_highly_variable=use_highly_variable,
+        mask=resolved_mask,
         key_added=key_added,
         layer=layer,
         use_raw=use_raw,

@@ -1,3 +1,5 @@
+"""Correspondence analysis for sparse count matrices and AnnData objects."""
+
 from __future__ import annotations
 
 import warnings
@@ -13,8 +15,6 @@ from ._anndata import (
     _empty,
     _get_count_matrix,
     _resolve_mask_var,
-    _scanpy_mask_params,
-    _serialize_mask_var,
 )
 from ._counts import (
     BoolArray,
@@ -238,12 +238,14 @@ def correspondence_analysis(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
+    resolved_mask = _resolve_mask_var(
+        adata.var, mask_var, use_highly_variable
+    )
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_correspondence_analysis(
         X,
         n_comps,
-        mask=mask,
+        mask=resolved_mask.values,
         model=model,
         alpha=alpha_values,
         check_values=check_values,
@@ -259,20 +261,17 @@ def correspondence_analysis(
     else:
         obsm_key = varm_key = uns_key = key_added
     columns = np.full((adata.n_vars, n_comps), np.nan, dtype=np.float64)
-    columns[mask] = result.column_principal_coordinates
+    columns[resolved_mask.values] = result.column_principal_coordinates
     adata.obsm[obsm_key] = result.row_principal_coordinates
     adata.varm[varm_key] = columns
-    standard_hv, standard_mask = _scanpy_mask_params(
-        mask_var, use_highly_variable, mask, adata.var
-    )
     params = dict(result.params)
     params.update(
         {
             "layer": layer,
             "use_raw": use_raw,
-            "mask_var": standard_mask,
-            "use_highly_variable": standard_hv,
-            "mask_var_details": _serialize_mask_var(mask_var, mask, adata.var),
+            "mask_var": resolved_mask.mask_var,
+            "use_highly_variable": resolved_mask.use_highly_variable,
+            "mask_var_details": resolved_mask.details,
         }
     )
     adata.uns[uns_key] = {

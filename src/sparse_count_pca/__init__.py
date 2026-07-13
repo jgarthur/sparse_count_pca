@@ -1,3 +1,5 @@
+"""Public API for sparse count-matrix PCA and correspondence analysis."""
+
 from ._correspondence import (
     CorrespondenceAnalysisResult,
     correspondence_analysis,
@@ -19,11 +21,30 @@ from ._log_pca import (
 )
 from ._pca import PCAResult
 from ._residual_pca import residual_pca, residual_pca_matrix
+from ._transform import (
+    DirichletCLR,
+    DirichletLog,
+    ProportionShiftedCLR,
+    Residual,
+    ShiftedCLR,
+    ShiftedLog,
+    Transform,
+    TransformedMatrix,
+    transform,
+)
 from ._version import __version__
 
 __all__ = [
     "CorrespondenceAnalysisResult",
+    "DirichletCLR",
+    "DirichletLog",
     "PCAResult",
+    "ProportionShiftedCLR",
+    "Residual",
+    "ShiftedCLR",
+    "ShiftedLog",
+    "Transform",
+    "TransformedMatrix",
     "__version__",
     "correspondence_analysis",
     "correspondence_analysis_matrix",
@@ -39,4 +60,5 @@ __all__ = [
     "shifted_clr_pca_matrix",
     "shifted_log_pca",
     "shifted_log_pca_matrix",
+    "transform",
 ]

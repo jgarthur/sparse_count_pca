@@ -1,3 +1,5 @@
+"""Shifted-log and shifted-CLR PCA entry points."""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -11,20 +13,15 @@ from ._anndata import (
     _resolve_mask_var,
     _write_pca_result,
 )
-from ._counts import (
-    BoolArray,
-    CountMatrix,
-    _canonicalize_counts,
-    _validate_boolean_mask,
-)
-from ._log_transforms import (
-    build_proportion_shifted_clr_representation,
-    build_shifted_clr_representation,
-    build_shifted_log_representation,
-    validate_positive_scalar,
-)
-from ._pca import PCAResult, compute_pca_from_representation
+from ._counts import BoolArray, CountMatrix
+from ._pca import PCAResult
 from ._svd import Solver
+from ._transform import (
+    ProportionShiftedCLR,
+    ShiftedCLR,
+    ShiftedLog,
+)
+from ._transform import _transform as transform_counts
 
 LogTransform = Literal[
     "shifted_log",
@@ -47,59 +44,21 @@ def _compute_log_pca(
     tol: float,
     return_operator: bool,
 ) -> PCAResult:
-    counts = _canonicalize_counts(X, check_values=check_values)
-    n_vars = counts.shape[1]
     if transform == "shifted_log":
-        count_shift = validate_positive_scalar(shift, name="count_shift")
-        representation = build_shifted_log_representation(
-            counts, count_shift=count_shift
-        )
-        params = {
-            "transform": transform,
-            "shift_domain": "count",
-            "count_shift": count_shift,
-            "normalization_n_vars": n_vars,
-        }
-        label = "Shifted log"
+        method = ShiftedLog(count_shift=shift)
     elif transform == "shifted_clr":
-        count_shift = validate_positive_scalar(shift, name="count_shift")
-        representation = build_shifted_clr_representation(
-            counts, count_shift=count_shift
-        )
-        params = {
-            "transform": transform,
-            "shift_domain": "count",
-            "count_shift": count_shift,
-            "normalization_n_vars": n_vars,
-        }
-        label = "Shifted CLR"
+        method = ShiftedCLR(count_shift=shift)
     else:
-        composition_shift = validate_positive_scalar(shift, name="composition_shift")
-        representation = build_proportion_shifted_clr_representation(
-            counts, composition_shift=composition_shift
-        )
-        params = {
-            "transform": transform,
-            "shift_domain": "composition",
-            "composition_shift": composition_shift,
-            "effective_count_shift": "cell_total * composition_shift",
-            "normalization_n_vars": n_vars,
-        }
-        label = "Proportion-shifted CLR"
-
-    if mask is not None:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-        if not mask.any():
-            raise ValueError("mask selected zero genes")
-        representation = representation.select_columns(mask)
-
-    return compute_pca_from_representation(
-        representation,
-        n_comps,
-        transform_label=label,
-        params=params,
+        method = ProportionShiftedCLR(composition_shift=shift)
+    transformed = transform_counts(
+        X,
+        method,
         check_values=check_values,
         dtype=dtype,
+        _columns=mask,
+    )
+    return transformed.pca(
+        n_comps,
         solver=solver,
         random_state=random_state,
         tol=tol,
@@ -212,12 +171,14 @@ def _log_pca_anndata(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
+    resolved_mask = _resolve_mask_var(
+        adata.var, mask_var, use_highly_variable
+    )
     result = _compute_log_pca(
         X,
         n_comps,
         transform=transform,
-        mask=mask,
+        mask=resolved_mask.values,
         shift=shift,
         check_values=check_values,
         dtype=dtype,
@@ -229,9 +190,7 @@ def _log_pca_anndata(
     _write_pca_result(
         adata,
         result,
-        mask=mask,
-        mask_var=mask_var,
-        use_highly_variable=use_highly_variable,
+        mask=resolved_mask,
         key_added=key_added,
         layer=layer,
         use_raw=use_raw,

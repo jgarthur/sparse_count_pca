@@ -1,3 +1,5 @@
+"""Tests for exact clipping and sparse-support growth limits."""
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -37,6 +39,7 @@ def small(counts):
 
 
 def test_matches_dense_oracle_mixed_signs(small):
+    """Clipped zero locations match a dense mixed-sign oracle."""
     # u with both signs exercises the prefix (u>0) and suffix (u<0) branches,
     # and a zero entry exercises the empty-range branch.
     u = np.array([-1.0, 0.8, -0.5, 0.0, 1.2, -0.9])
@@ -46,6 +49,7 @@ def test_matches_dense_oracle_mixed_signs(small):
 
 @pytest.mark.parametrize("seed", range(25))
 def test_matches_dense_oracle_random(seed):
+    """Clipped zero locations match a dense oracle on random inputs."""
     rng = np.random.default_rng(seed)
     m, n = rng.integers(1, 12, size=2)
     dense = rng.integers(0, 3, size=(m, n))
@@ -57,6 +61,7 @@ def test_matches_dense_oracle_random(seed):
 
 
 def test_no_locations_returns_empty(small):
+    """A threshold with no clipped zeros returns empty locations."""
     # A huge threshold means nothing crosses; returns empty arrays, not None.
     u = np.full(small.shape[0], -1.0)
     v = np.ones(small.shape[1])
@@ -65,6 +70,7 @@ def test_no_locations_returns_empty(small):
 
 
 def test_max_count_bail_returns_none(small):
+    """The location search stops when its maximum count is exceeded."""
     # Drive u, v so that essentially every structural zero crosses the
     # threshold, then ask for a count bound that is provably exceeded.
     u = np.full(small.shape[0], -5.0)
@@ -73,6 +79,7 @@ def test_max_count_bail_returns_none(small):
 
 
 def test_max_count_loose_bound_materializes(small):
+    """A loose maximum count permits location materialization."""
     # A bound at least as large as the true count must not trigger the bail.
     u = np.full(small.shape[0], -5.0)
     v = np.full(small.shape[1], 5.0)
@@ -83,6 +90,7 @@ def test_max_count_loose_bound_materializes(small):
 
 
 def test_bail_lower_bound_is_sound(small):
+    """The early-exit lower bound never misses an allowed result."""
     # The bail uses total - X.nnz as a lower bound on the true count. It must
     # never fire when the true count is within the bound, even though many
     # stored entries also fall inside the candidate set.
@@ -95,6 +103,7 @@ def test_bail_lower_bound_is_sound(small):
 
 
 def test_unsorted_indices_handled():
+    """Clipping handles CSR matrices with unsorted column indices."""
     # Construct a CSR matrix whose within-row column indices are not sorted;
     # the membership test must still exclude stored entries correctly.
     X = sparse.csr_matrix(
@@ -112,6 +121,7 @@ def test_unsorted_indices_handled():
 
 
 def test_empty_support_matrix():
+    """Clipping handles matrices with empty sparse support."""
     X = sparse.csr_matrix((3, 4), dtype=np.int64)
     u = np.array([-1.0, 0.0, 2.0])
     v = np.array([1.0, -1.0, 0.5, 2.0])
@@ -119,6 +129,7 @@ def test_empty_support_matrix():
 
 
 def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
+    """Values equal to the clip bound do not grow sparse support."""
     u = np.array([-19605.17544401196])
     equality_v = 2.1931007107567585e-07
     clip = 0.004299612420077357
@@ -140,6 +151,7 @@ def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
 
 
 def test_apply_clipping_reuses_precomputed_row_support(monkeypatch):
+    """Clipping reuses the caller's precomputed sparse row support."""
     X = sparse.csr_matrix([[1, 0], [0, 2]])
     rows = np.array([0, 1], dtype=np.intp)
 

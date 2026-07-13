@@ -1,3 +1,5 @@
+"""Numerical-accuracy tests for deviance calculations."""
+
 from decimal import Decimal, localcontext
 
 import numpy as np
@@ -66,6 +68,7 @@ def _scaled_nb_oracle(x, mu, alpha):
     ],
 )
 def test_poisson_deviance_matches_high_precision_near_mean(x, mu):
+    """Poisson deviance matches high precision near its mean."""
     actual = _poisson_deviance(
         np.array([x], dtype=np.float64), np.array([mu], dtype=np.float64)
     )[0]
@@ -76,6 +79,7 @@ def test_poisson_deviance_matches_high_precision_near_mean(x, mu):
     "x", [0, 10**15, 10**15 + 1, 10**15 + 10, 2 * 10**15]
 )
 def test_binomial_deviance_matches_high_precision_near_mean_and_boundaries(x):
+    """Binomial deviance matches high precision near means and boundaries."""
     n = 2 * 10**15
     mu = 10**15
     actual = _binomial_deviance(
@@ -91,6 +95,7 @@ def test_binomial_deviance_matches_high_precision_near_mean_and_boundaries(x):
 @pytest.mark.parametrize("difference", [1, 10])
 @pytest.mark.parametrize("alpha", [Decimal("1e-12"), Decimal("0.1")])
 def test_scaled_nb_deviance_matches_high_precision_near_mean(difference, alpha):
+    """Scaled-NB deviance matches high precision near its mean."""
     mu = 10**15
     x = mu + difference
     actual = _scaled_nb_deviance(
@@ -109,6 +114,7 @@ def test_scaled_nb_deviance_matches_high_precision_near_mean(difference, alpha):
     [(0, 3, Decimal("0.1")), (10**6, 10**6, Decimal("0.1"))],
 )
 def test_scaled_nb_deviance_matches_high_precision_at_boundaries(x, mu, alpha):
+    """Scaled-NB deviance matches high precision at count boundaries."""
     actual = _scaled_nb_deviance(
         np.array([x], dtype=np.float64),
         np.array([mu], dtype=np.float64),
@@ -128,6 +134,7 @@ def test_scaled_nb_deviance_matches_high_precision_at_boundaries(x, mu, alpha):
     ],
 )
 def test_deviance_is_accurate_on_both_sides_of_series_switch(side):
+    """Deviance stays accurate on both sides of the series threshold."""
     mu = 10**8
     x = mu + side * mu
     poisson = _poisson_deviance(np.array([x]), np.array([mu]))[0]
@@ -149,6 +156,7 @@ def test_deviance_is_accurate_on_both_sides_of_series_switch(side):
 
 
 def test_scaled_nb_small_positive_dispersion_approaches_poisson_without_switching():
+    """Small positive NB dispersion approaches Poisson without branch changes."""
     mu = 10**8
     x = mu + 10
     alpha = Decimal("1e-14")

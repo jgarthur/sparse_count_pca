@@ -1,3 +1,5 @@
+"""Pearson and deviance residual representation builders."""
+
 from __future__ import annotations
 
 from typing import Literal, TypeAlias

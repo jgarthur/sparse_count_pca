@@ -1,3 +1,5 @@
+"""Linear operator and stable statistics for implicit transformed matrices."""
+
 from __future__ import annotations
 
 import math

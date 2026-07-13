@@ -5,7 +5,10 @@
 The package computes spectral analyses of implicitly transformed sparse count
 data without materializing dense transformed matrices.
 
-The package is AnnData-first. The primary public API operates on `AnnData` and writes Scanpy-compatible PCA outputs. A lower-level sparse matrix API is provided for testing and non-AnnData use.
+The package is AnnData-first. The one-step public API operates on `AnnData` and
+writes Scanpy-compatible PCA outputs. A public two-step transform API supports
+inspection and repeated PCA, and a lower-level sparse matrix API supports
+non-AnnData use.
 
 This version supports:
 
@@ -83,11 +86,83 @@ scp.dirichlet_clr_pca(adata, ...)
 scp.dirichlet_clr_pca_matrix(X, ...)
 scp.correspondence_analysis(adata, ...)
 scp.correspondence_analysis_matrix(X, ...)
+scp.transform(adata_or_X, scp.Residual(...))
+scp.transform(adata_or_X, scp.ShiftedLog(...))
+scp.transform(adata_or_X, scp.ShiftedCLR(...))
+scp.transform(adata_or_X, scp.ProportionShiftedCLR(...))
+scp.transform(adata_or_X, scp.DirichletLog(...))
+scp.transform(adata_or_X, scp.DirichletCLR(...))
+scp.TransformedMatrix
 scp.PCAResult
 scp.CorrespondenceAnalysisResult
 ```
 
-No public `pp` namespace for v1. The package should feel like a small tool rather than a full Scanpy replacement.
+No public `pp` namespace for v1. Correspondence analysis is intentionally not
+a `Transform`: applying its mask before computing margins is part of defining
+the selected contingency table.
+
+## Two-step transform API
+
+```python
+transformed = scp.transform(
+    adata_or_X,
+    method,
+    layer=None,
+    use_raw=False,
+    check_values=True,
+    dtype="float64",
+)
+```
+
+`method` is one of the immutable `Transform` specifications listed above.
+String-valued per-variable parameters such as `alpha="dispersion"` require an
+AnnData input and are resolved when the transform is built. A fitted transform
+is tied to that input matrix; applying fitted state to another dataset is not a
+supported contract.
+
+`TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
+represents the full uncentered transformed matrix. It is an in-process object,
+is not serialized by `write_h5ad`, and must be rebuilt after restarting Python.
+Its public operations are matrix multiplication, `materialize`, and `pca`.
+
+```python
+transformed.materialize(
+    obs=None,
+    var=None,
+    out=None,
+    block_size=1024,
+)
+```
+
+`obs` and `var` accept positional integers, slices, one-dimensional boolean
+masks, ordered integer arrays, and names when the source is AnnData. Scalar
+selection retains two dimensions. `out` must have the exact selected shape, a
+writable floating dtype, and may be an ndarray or memory-mapped array.
+Materialization fills it in observation blocks.
+
+The current backend stores its sparse correction as CSR. Selecting variables
+across all observations emits `scipy.sparse.SparseEfficiencyWarning` because
+that access may require scanning rows. Observation blocks are the preferred
+access direction. Backed inputs are still materialized during canonicalization;
+future out-of-core support may replace the backend without changing the public
+operator and materialization contracts.
+
+```python
+transformed.pca(
+    n_comps=50,
+    mask_var=_empty,
+    use_highly_variable=None,
+    solver="arpack",
+    random_state=0,
+    tol=0.0,
+    return_operator=False,
+)
+```
+
+For AnnData-derived transforms, mask resolution matches the one-step AnnData
+API. Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
+selects columns only after the full transform has been defined. One transform
+may therefore be reused for several PCA masks or component counts.
 
 ## Log-transform semantics
 
@@ -154,6 +229,7 @@ src/
     __init__.py
     _anndata.py
     _counts.py
+    _transform.py
     _pca.py
     _residual_pca.py
     _operator.py
@@ -175,6 +251,7 @@ tests/
   test_residual_anndata.py
   test_residual_pca.py
   test_residual_scanpy.py
+  test_transform.py
   townes_reference/
     README.md
     generate_reference.R
@@ -481,7 +558,10 @@ count information from being silently discarded.
 ### `dtype`
 
 Representation and operator dtype, default `"float64"`. Only `float32` and
-`float64` are accepted. Explicit `float32` is a lower-memory approximate mode.
+`float64` are accepted. Float64 is recommended for numerical precision.
+Explicit `float32` is a lower-memory approximate mode: it changes the stored
+representation and the operator passed to ARPACK, so it lowers calculation
+precision rather than merely downcasting returned arrays.
 
 - Validation and computation of `n_i`, `p_j`, `mean`, total variance, and
   Frobenius norms are performed in `float64`.
@@ -493,6 +573,11 @@ Representation and operator dtype, default `"float64"`. Only `float32` and
   `total_variance` are returned as `float64`.
 
 `dtype` controls representation and operator output, not accumulation.
+
+Users who want float64 computation with more compact persisted scores or
+loadings may downcast those arrays after PCA. Such a post-computation cast does
+not change the completed decomposition or float64 variance statistics; it only
+reduces the precision of later operations on the cast arrays.
 
 ### `solver`
 
@@ -610,14 +695,18 @@ scp.residual_pca(adata, layer="counts", ...)
 The selected count matrix is canonicalized and validated before any residual
 math runs.
 
-Canonicalization:
+Canonicalization uses copy-on-write behavior:
 
 ```python
 if isinstance(X, (anndata.abc.CSRDataset, anndata.abc.CSCDataset)):
     X = X.to_memory()
-
-if scipy.sparse.issparse(X):
-    X = X.tocsr()
+    X = X if X.format == "csr" else X.tocsr()
+elif scipy.sparse.issparse(X):
+    if X.format != "csr":
+        X = X.tocsr()
+    elif not X.has_canonical_format or (X.data == 0).any():
+        warnings.warn("CSR input was copied for canonicalization: ...")
+        X = X.copy()
 else:
     warnings.warn(
         "Dense input was converted to CSR. This may require substantial memory.",
@@ -626,8 +715,11 @@ else:
     X = scipy.sparse.csr_matrix(X)
 ```
 
-CSR, CSC, COO, and other sparse formats are all accepted; internally they
-are converted to CSR. AnnData-backed sparse datasets are loaded into memory
+Canonical zero-free CSR input is borrowed and never mutated. Caller-owned CSR
+is copied, with a `UserWarning`, only when duplicate summing, index sorting, or
+explicit-zero elimination is required. CSC, COO, and other sparse formats are
+accepted and necessarily allocate during CSR conversion. AnnData-backed sparse
+datasets are loaded into memory
 through their `to_memory()` method. Dense array-like inputs, including Zarr
 arrays, are eagerly converted to CSR. Integer or float dtype is accepted, but
 the data must represent counts. Dask arrays are not supported as lazy inputs.
@@ -769,8 +861,21 @@ def _resolve_mask_var(var, mask_var=_empty, use_highly_variable=None):
     if mask.sum() == 0:
         raise ValueError("mask_var selected zero genes")
 
-    return mask
+    return _ResolvedMask(
+        values=mask,
+        mask_var=resolved_scanpy_mask_selector,
+        use_highly_variable=resolved_scanpy_hvg_flag,
+        details={
+            "kind": resolved_kind,
+            "key": resolved_key,
+            "n_vars_used": int(mask.sum()),
+        },
+    )
 ```
+
+Mask resolution, Scanpy-compatible parameter values, and compact metadata are
+computed together and carried as one `_ResolvedMask`. Result writers therefore
+cannot serialize a different interpretation from the mask used for PCA.
 
 Important behavior:
 
@@ -818,9 +923,9 @@ adata.uns[uns_key] = {
         "zero_center": True,
         "layer": layer,
         "use_raw": use_raw,
-        "mask_var": resolved_scanpy_mask_selector,
-        "use_highly_variable": resolved_scanpy_hvg_flag,
-        "mask_var_details": _serialize_mask_var(mask_var, mask),
+        "mask_var": resolved_mask.mask_var,
+        "use_highly_variable": resolved_mask.use_highly_variable,
+        "mask_var_details": resolved_mask.details,
         "solver": solver,
         "n_comps": n_comps,
         "random_state": random_state,

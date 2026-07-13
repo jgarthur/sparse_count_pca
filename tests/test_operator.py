@@ -1,3 +1,5 @@
+"""Tests for sparse-plus-low-rank matrix and operator behavior."""
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -10,6 +12,7 @@ from sparse_count_pca._representation import SparseLowRankMatrix
 @pytest.mark.parametrize("center", [False, True])
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_rank_k_operator_matches_dense(rank, center, dtype):
+    """Rank-k operator products and statistics match dense calculations."""
     rng = np.random.default_rng(104 + rank)
     n_obs, n_vars = 9, 7
     dense_sparse = rng.normal(size=(n_obs, n_vars))
@@ -43,6 +46,7 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
 
 
 def test_representation_selection_and_scaling():
+    """Column selection and scalar multiplication preserve represented values."""
     S = sparse.csr_matrix([[1.0, 0.0, 2.0], [0.0, 3.0, 0.0]])
     left = np.array([[1.0, 2.0], [3.0, 4.0]])
     right = np.array([[0.5, 1.0], [1.5, 2.0], [2.5, 3.0]])

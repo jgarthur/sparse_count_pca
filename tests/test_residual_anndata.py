@@ -1,3 +1,5 @@
+"""Tests for residual PCA at the AnnData boundary."""
+
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -9,6 +11,7 @@ from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
 
 
 def test_default_outputs_and_copy(adata):
+    """AnnData residual PCA honors default output keys and copy semantics."""
     copied = residual_pca(adata, n_comps=2, copy=True, dtype="float64")
     assert copied is not adata
     assert "X_pca" in copied.obsm
@@ -23,6 +26,7 @@ def test_default_outputs_and_copy(adata):
 
 
 def test_default_anndata_dtype_is_float64(adata):
+    """AnnData residual PCA stores float64 outputs by default."""
     result = residual_pca(adata, n_comps=2, copy=True)
     assert result.obsm["X_pca"].dtype == np.float64
     assert result.varm["PCs"].dtype == np.float64
@@ -30,6 +34,7 @@ def test_default_anndata_dtype_is_float64(adata):
 
 
 def test_key_added_and_layer(adata):
+    """Custom output keys and count layers are respected."""
     expected = residual_pca_matrix(adata.layers["counts"], 2, dtype="float64")
     residual_pca(
         adata,
@@ -45,6 +50,7 @@ def test_key_added_and_layer(adata):
 
 
 def test_clipping_params_are_recorded(adata):
+    """AnnData PCA metadata records clipping parameters."""
     result = residual_pca(
         adata,
         2,
@@ -61,6 +67,7 @@ def test_clipping_params_are_recorded(adata):
 
 
 def test_default_and_explicit_masks(adata):
+    """Default and explicit variable masks select the intended PCA genes."""
     adata.var["highly_variable"] = [True, False, True, True]
     residual_pca(adata, 2, dtype="float64")
     assert np.isnan(adata.varm["PCs"][1]).all()
@@ -93,6 +100,7 @@ def test_default_and_explicit_masks(adata):
 
 
 def test_reproducibility_metadata_matches_matrix_result(adata):
+    """AnnData and matrix APIs record matching reproducibility metadata."""
     matrix = residual_pca_matrix(
         adata.X,
         2,
@@ -129,6 +137,7 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
     ],
 )
 def test_mask_var_requires_genuinely_boolean_array(adata, mask):
+    """Direct variable masks must have a genuinely boolean dtype."""
     with pytest.raises(ValueError, match="genuinely boolean"):
         residual_pca(adata, 2, mask_var=mask)
 
@@ -143,12 +152,14 @@ def test_mask_var_requires_genuinely_boolean_array(adata, mask):
     ],
 )
 def test_var_mask_columns_require_genuinely_boolean_dtype(adata, values):
+    """Variable-metadata mask columns must be genuinely boolean."""
     adata.var["selected"] = values
     with pytest.raises(ValueError, match="genuinely boolean"):
         residual_pca(adata, 2, mask_var="selected")
 
 
 def test_deprecated_highly_variable_alias(adata):
+    """The deprecated highly-variable alias warns and preserves behavior."""
     adata.var["highly_variable"] = [True, True, True, False]
     with pytest.warns(FutureWarning):
         result = residual_pca(
@@ -173,6 +184,9 @@ def test_deprecated_highly_variable_alias(adata):
 
 
 def test_use_raw_aligns_current_var_names(adata):
+    """Raw count selection is reordered and subset to current variables."""
+    # Raw contains an extra leading gene; selection must discard it and align the
+    # remaining columns to the current adata.var_names before PCA.
     raw = AnnData(
         sparse.csr_matrix(
             [
@@ -196,6 +210,7 @@ def test_use_raw_aligns_current_var_names(adata):
 
 
 def test_use_raw_validation(adata):
+    """Raw count selection rejects conflicts and missing variable names."""
     with pytest.raises(ValueError, match="adata.raw is None"):
         residual_pca(adata, 2, use_raw=True)
     with pytest.raises(ValueError, match="Specify only one"):
@@ -209,6 +224,7 @@ def test_use_raw_validation(adata):
 
 
 def test_backed_sparse_x(adata, tmp_path):
+    """Backed sparse counts produce the same result as in-memory counts."""
     path = tmp_path / "counts.h5ad"
     adata.write_h5ad(path)
     expected = residual_pca_matrix(adata.X, 2, dtype="float64")
@@ -216,12 +232,17 @@ def test_backed_sparse_x(adata, tmp_path):
     backed = ad.read_h5ad(path, backed="r")
     try:
         matrix_result = residual_pca_matrix(backed.X, 2, dtype="float64")
+        returned = residual_pca(backed, 2, copy=False, dtype="float64")
+        inplace_singular_values = backed.uns["pca"]["singular_values"].copy()
+        assert returned is None
+        assert backed.isbacked
         result = residual_pca(backed, 2, copy=True, dtype="float64")
     finally:
         backed.file.close()
 
     assert not result.isbacked
     np.testing.assert_allclose(matrix_result.singular_values, expected.singular_values)
+    np.testing.assert_allclose(inplace_singular_values, expected.singular_values)
     np.testing.assert_allclose(
         result.uns["pca"]["singular_values"],
         expected.singular_values,
@@ -229,6 +250,7 @@ def test_backed_sparse_x(adata, tmp_path):
 
 
 def test_scaled_nb_alpha_from_var_and_array_shape(adata):
+    """AnnData scaled-NB alpha resolves from metadata and validates shape."""
     adata.var["dispersion"] = [0.0, 0.1, 0.2, 0.3]
     result = residual_pca(
         adata,
@@ -251,6 +273,7 @@ def test_scaled_nb_alpha_from_var_and_array_shape(adata):
 
 
 def test_scaled_nb_accepts_zero_dimensional_numpy_alpha_in_anndata(adata):
+    """AnnData scaled-NB PCA accepts zero-dimensional NumPy alpha values."""
     result = residual_pca(
         adata,
         2,

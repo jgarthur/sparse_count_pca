@@ -1,3 +1,5 @@
+"""Sparse-plus-low-rank matrix representation primitives."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

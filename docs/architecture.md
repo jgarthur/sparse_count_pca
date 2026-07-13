@@ -53,7 +53,7 @@ center, measure, and decompose `S + U @ V.T`.
 ## 1. Public surface
 
 Start with [`src/sparse_count_pca/__init__.py`](../src/sparse_count_pca/__init__.py).
-It deliberately exports complete analyses rather than a normalization DSL:
+It exports complete one-step analyses plus an explicit two-step transform API:
 
 - residual PCA: `residual_pca`, `residual_pca_matrix`;
 - fixed-count logs: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
@@ -61,7 +61,14 @@ It deliberately exports complete analyses rather than a normalization DSL:
 - prior-count transforms: `dirichlet_log_pca`, `dirichlet_clr_pca` and matrix
   variants;
 - correspondence analysis;
-- `PCAResult` and `CorrespondenceAnalysisResult`.
+- transform specifications and `transform`;
+- `TransformedMatrix`, `PCAResult`, and `CorrespondenceAnalysisResult`.
+
+`TransformedMatrix` is an uncentered SciPy `LinearOperator` backed by an exact
+sparse-plus-low-rank representation. It supports block materialization and PCA.
+The named one-step PCA functions build the same transform and immediately run
+PCA. Correspondence analysis stays separate because masking changes its table
+margins and its coordinate semantics differ from PCA.
 
 Questions to ask during review:
 
@@ -78,6 +85,8 @@ Read these files together:
   boolean-mask validation shared by every analysis;
 - [`_anndata.py`](../src/sparse_count_pca/_anndata.py): count-source selection,
   mask resolution, and generic PCA result writing;
+- [`_transform.py`](../src/sparse_count_pca/_transform.py): public transform
+  specifications, implicit matrix products, materialization, and two-step PCA;
 - [`_residual_pca.py`](../src/sparse_count_pca/_residual_pca.py): residual-specific
   parameter alignment and both residual PCA entry points.
 
@@ -87,15 +96,23 @@ The important ordering is:
 flowchart LR
     A[Choose X, layer, or raw] --> B[Canonical CSR counts]
     B --> C[Compute full-universe normalization state]
-    C --> D[Build full transformed representation]
-    D --> E[Apply mask_var to PCA columns]
-    E --> F[Write scores, loadings, and metadata]
+    C --> D[Build TransformedMatrix]
+    D --> E{User action}
+    E -->|Inspect| F[Materialize selected cells and genes]
+    E -->|PCA| G[Apply mask_var to PCA columns]
+    G --> H[Center, decompose, and write results]
 ```
 
 `mask_var` is a PCA feature selector, not a normalization-universe selector.
 For example, CLR row means, Dirichlet prior normalization, cell totals, and
 residual gene proportions are computed before the mask is applied. Excluded
 genes receive `NaN` loadings when results are written back to AnnData.
+
+The current transform backend owns an in-memory CSR sparse correction. Its
+public contract is instead `LinearOperator` multiplication and block
+materialization so a later backed implementation can stream observation blocks.
+Variable-wide access warns because CSR must scan rows; `out=` avoids requiring a
+second full dense allocation when users explicitly materialize the matrix.
 
 Useful tests:
 

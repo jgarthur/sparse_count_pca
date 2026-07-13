@@ -1,3 +1,5 @@
+"""Independent dense residual formulas used as test oracles."""
+
 from __future__ import annotations
 
 from typing import TypeAlias

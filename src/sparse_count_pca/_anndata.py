@@ -1,6 +1,9 @@
+"""AnnData input selection, variable masking, and result-writing helpers."""
+
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -11,6 +14,16 @@ from ._counts import _validate_boolean_mask
 from ._pca import PCAResult
 
 _empty = object()
+
+
+@dataclass(frozen=True)
+class _ResolvedMask:
+    """Resolved variable selection and its AnnData-safe metadata."""
+
+    values: NDArray[np.bool_]
+    mask_var: str | NDArray[np.bool_] | None
+    use_highly_variable: bool
+    details: dict[str, str | int | None]
 
 
 def _get_count_matrix(
@@ -39,9 +52,7 @@ def _write_pca_result(
     adata: AnnData,
     result: PCAResult,
     *,
-    mask: NDArray[np.bool_],
-    mask_var: Any,
-    use_highly_variable: bool | None,
+    mask: _ResolvedMask,
     key_added: str | None,
     layer: str | None,
     use_raw: bool,
@@ -56,20 +67,17 @@ def _write_pca_result(
         np.nan,
         dtype=result.loadings.dtype,
     )
-    loadings[mask] = result.loadings
+    loadings[mask.values] = result.loadings
     adata.obsm[obsm_key] = result.scores
     adata.varm[varm_key] = loadings
-    standard_hv, standard_mask = _scanpy_mask_params(
-        mask_var, use_highly_variable, mask, adata.var
-    )
     params = dict(result.params)
     params.update(
         {
             "layer": layer,
             "use_raw": use_raw,
-            "mask_var": standard_mask,
-            "use_highly_variable": standard_hv,
-            "mask_var_details": _serialize_mask_var(mask_var, mask, adata.var),
+            "mask_var": mask.mask_var,
+            "use_highly_variable": mask.use_highly_variable,
+            "mask_var_details": mask.details,
         }
     )
     adata.uns[uns_key] = {
@@ -84,7 +92,7 @@ def _resolve_mask_var(
     var: Any,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
-) -> NDArray[np.bool_]:
+) -> _ResolvedMask:
     """Resolve Scanpy-compatible variable-selection arguments.
 
     Args:
@@ -95,7 +103,7 @@ def _resolve_mask_var(
             ``var["highly_variable"]``.
 
     Returns:
-        A one-dimensional boolean array aligned with ``var``.
+        Boolean values together with their standard and detailed metadata.
 
     Raises:
         ValueError: If arguments conflict or the resolved mask is invalid.
@@ -132,15 +140,7 @@ def _resolve_mask_var(
 
     if mask.sum() == 0:
         raise ValueError("mask_var selected zero genes")
-    return mask
 
-
-def _serialize_mask_var(
-    mask_var: Any,
-    mask: NDArray[np.bool_],
-    var: Any,
-) -> dict[str, str | int | None]:
-    """Describe a resolved variable mask using AnnData-safe values."""
     if mask_var is _empty:
         key = "highly_variable" if "highly_variable" in var else None
         kind = "default"
@@ -153,19 +153,7 @@ def _serialize_mask_var(
     else:
         key = None
         kind = "array"
-    return {"kind": kind, "key": key, "n_vars_used": int(mask.sum())}
-
-
-def _scanpy_mask_params(
-    mask_var: Any,
-    use_highly_variable: bool | None,
-    mask: NDArray[np.bool_],
-    var: Any,
-) -> tuple[bool, str | NDArray[np.bool_] | None]:
-    """Return Scanpy-compatible mask parameter values."""
-    if use_highly_variable is not None:
-        selector: Any = "highly_variable" if use_highly_variable else None
-    elif mask_var is _empty:
+    if mask_var is _empty:
         selector = "highly_variable" if "highly_variable" in var else None
     else:
         selector = mask_var
@@ -174,4 +162,9 @@ def _scanpy_mask_params(
     else:
         standard_mask = mask.copy()
     uses_highly_variable = isinstance(selector, str) and selector == "highly_variable"
-    return uses_highly_variable, standard_mask
+    return _ResolvedMask(
+        values=mask,
+        mask_var=standard_mask,
+        use_highly_variable=uses_highly_variable,
+        details={"kind": kind, "key": key, "n_vars_used": int(mask.sum())},
+    )

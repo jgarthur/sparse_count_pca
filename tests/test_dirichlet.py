@@ -1,3 +1,5 @@
+"""Tests for Dirichlet log and CLR representations and PCA."""
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -42,6 +44,7 @@ def _dense_dirichlet(X, concentration, prior_proportions, *, clr):
 def test_dirichlet_representations_match_dense_oracle(
     counts, prior_proportions, builder, clr
 ):
+    """Dirichlet representations match independent dense formulas."""
     concentration = 2.5
     representation = builder(
         counts,
@@ -70,6 +73,7 @@ def test_dirichlet_representations_match_dense_oracle(
     ],
 )
 def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
+    """Dirichlet PCA matches a dense singular-value decomposition."""
     concentration = 3.0
     prior = np.array([0.1, 0.2, 0.3, 0.4])
     result = pca(
@@ -104,6 +108,7 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
     ],
 )
 def test_dirichlet_mask_is_applied_after_full_normalization(adata, pca, clr):
+    """Dirichlet normalization uses all genes before PCA masking."""
     mask = np.array([True, True, True, False])
     prior = np.array([0.1, 0.2, 0.3, 0.4])
     dense = _dense_dirichlet(adata.X.toarray(), 2.0, prior, clr=clr)[:, mask]
@@ -128,6 +133,7 @@ def test_dirichlet_mask_is_applied_after_full_normalization(adata, pca, clr):
 
 
 def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
+    """AnnData APIs resolve prior proportions from variable metadata."""
     prior = np.array([0.1, 0.2, 0.3, 0.4])
     adata.var["prior"] = prior
     result = dirichlet_clr_pca(
@@ -149,6 +155,7 @@ def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
     [dirichlet_log_pca_matrix, dirichlet_clr_pca_matrix],
 )
 def test_dirichlet_allows_zero_count_rows(pca, counts):
+    """Dirichlet transforms support rows with zero total counts."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
@@ -159,6 +166,7 @@ def test_dirichlet_allows_zero_count_rows(pca, counts):
 
 @pytest.mark.parametrize("concentration", [0.0, -1.0, np.inf, np.nan])
 def test_dirichlet_rejects_invalid_concentration(counts, concentration):
+    """Dirichlet transforms reject nonpositive or nonfinite concentration."""
     with pytest.raises(ValueError, match="finite and positive"):
         dirichlet_log_pca_matrix(counts, n_comps=2, concentration=concentration)
 
@@ -173,5 +181,6 @@ def test_dirichlet_rejects_invalid_concentration(counts, concentration):
     ],
 )
 def test_dirichlet_rejects_invalid_prior(counts, prior, message):
+    """Dirichlet transforms validate prior shape, values, and normalization."""
     with pytest.raises(ValueError, match=message):
         dirichlet_clr_pca_matrix(counts, n_comps=2, prior_proportions=prior)

@@ -1,3 +1,5 @@
+"""Count-matrix canonicalization and variable-mask validation."""
+
 from __future__ import annotations
 
 import warnings
@@ -21,17 +23,37 @@ def _validate_boolean_mask(mask: ArrayLike, n_vars: int, *, name: str) -> BoolAr
     if values.dtype != np.dtype(bool):
         raise ValueError(f"{name} must be genuinely boolean")
     if values.ndim != 1 or values.shape[0] != n_vars:
-        raise ValueError(f"{name} must be a boolean vector with length n_vars")
+        raise ValueError(
+            f"{name} must be a boolean vector with length {n_vars}; "
+            f"got shape {values.shape}"
+        )
     return values
 
 
 def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> sparse.csr_matrix:
     """Convert a count matrix to canonical CSR form and validate its data."""
     if isinstance(X, (CSRDataset, CSCDataset)):
+        # Downstream transforms currently require an in-memory SciPy CSR matrix.
         X = X.to_memory()
-
-    if sparse.issparse(X):
-        X = X.tocsr(copy=True)
+        # The materialized matrix is private to this call.
+        X = X if X.format == "csr" else X.tocsr()
+    elif sparse.issparse(X):
+        if X.format != "csr":
+            # Converting another sparse format necessarily creates a private CSR.
+            X = X.tocsr()
+        elif not X.has_canonical_format or (X.data == 0).any():
+            reasons = []
+            if not X.has_canonical_format:
+                reasons.append("duplicate or unsorted column indices")
+            if (X.data == 0).any():
+                reasons.append("explicitly stored zeros")
+            warnings.warn(
+                "CSR input was copied for canonicalization: " + " and ".join(reasons),
+                UserWarning,
+                stacklevel=3,
+            )
+            # Canonicalization mutates CSR, so copy only inputs that need it.
+            X = X.copy()
     else:
         X = np.asarray(X)
         if not (
@@ -47,8 +69,10 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> sparse.csr_ma
 
     if not (np.issubdtype(X.dtype, np.integer) or np.issubdtype(X.dtype, np.floating)):
         raise ValueError("Input counts must have a real numeric dtype")
-    X.sum_duplicates()
-    X.sort_indices()
+    if not X.has_canonical_format:
+        X.sum_duplicates()
+        # Canonical CSR keeps each row's column indices in ascending order.
+        X.sort_indices()
     if not np.isfinite(X.data).all():
         raise ValueError("Input contains NaN or inf")
     if (X.data < 0).any():
@@ -67,5 +91,6 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> sparse.csr_ma
         raise ValueError(
             "Input contains non-integer values; pass check_values=False to skip"
         )
-    X.eliminate_zeros()
+    if (X.data == 0).any():
+        X.eliminate_zeros()
     return X

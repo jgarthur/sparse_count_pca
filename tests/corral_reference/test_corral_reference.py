@@ -1,3 +1,5 @@
+"""Regression test against the pinned corral correspondence-analysis output."""
+
 import numpy as np
 
 from sparse_count_pca import correspondence_analysis_matrix
@@ -48,6 +50,7 @@ def _assert_axes_equal_up_to_sign(actual, expected):
 
 
 def test_correspondence_analysis_matches_corral(counts):
+    """Correspondence coordinates and inertias match the corral reference."""
     result = correspondence_analysis_matrix(counts, n_comps=2)
 
     np.testing.assert_allclose(

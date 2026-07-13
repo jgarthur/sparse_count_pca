@@ -43,10 +43,13 @@ scp.residual_pca(
 
 Counts can come from `adata.X` (default), or users can specify `layer=...`, or `use_raw=True`.
 
-The AnnData selection, masking, copy, and default output conventions follow
-`scanpy.pp.pca` as of Scanpy 1.12.1 where applicable. Residual-model and
-clipping arguments are specific to this package. For backed inputs, `copy=True`
-loads the AnnData object into memory before computation.
+Count selection, mask defaults, copy semantics, and output keys follow
+`scanpy.pp.pca` as of Scanpy 1.12.1. Residual-model and clipping arguments are
+specific to this package, and masked loading values intentionally differ as
+described below. For backed inputs, `copy=True` loads the full AnnData object
+into memory before computation. With `copy=False`, the AnnData object remains
+backed, but a backed sparse count matrix is currently loaded into memory for
+canonicalization.
 
 ### Variable selection
 
@@ -62,8 +65,8 @@ scp.residual_pca(adata, mask_var=my_boolean_array)
 
 Masked-out genes receive `NaN` loadings. This is an intentional difference
 from Scanpy, making excluded genes distinguishable from valid zero loadings.
-Cell totals and gene proportions are always estimated from the full selected
-count matrix before the gene mask is applied.
+For residual PCA, cell totals and gene proportions are always estimated from
+the full selected count matrix before the gene mask is applied.
 
 When `key_added="foo"`, scores, loadings, and metadata are all written under
 the exact key `"foo"`, matching Scanpy.
@@ -83,6 +86,52 @@ scp.residual_pca(
 
 `alpha` may also be a scalar or an array of length `adata.n_vars`. Values below
 `1e-8` fall back to the Poisson model.
+
+## Two-step transform API
+
+Normalization and PCA can be separated when transformed values need to be
+inspected or several PCA selections will reuse one normalization:
+
+```python
+transformed = scp.transform(
+    adata,
+    scp.Residual(model="poisson", residual="pearson"),
+    layer="counts",
+)
+
+cell = transformed.materialize(obs=10)
+gene = transformed.materialize(var=25)
+subset = transformed.materialize(obs=[10, 3], var=[25, 2, 8])
+result = transformed.pca(n_comps=50, mask_var="highly_variable")
+```
+
+`TransformedMatrix` is an uncentered `scipy.sparse.linalg.LinearOperator`.
+It remains implicit until `materialize` is called, and PCA applies column
+centering only after `mask_var` selects variables. Transform specifications are
+`Residual`, `ShiftedLog`, `ShiftedCLR`, `ProportionShiftedCLR`, `DirichletLog`,
+and `DirichletCLR`. Correspondence analysis remains a separate one-step API
+because its variable mask changes the contingency-table margins.
+
+`obs` and `var` accept integers, slices, boolean masks, ordered index arrays,
+and, for AnnData input, observation or variable names. Integer selections keep
+a two-dimensional result. Observation blocks are efficient with the current
+CSR backend. Selecting variables across all observations emits a
+`SparseEfficiencyWarning`; this access direction can require scanning CSR rows
+whether the source was originally backed or in memory.
+
+Use `out=` and `block_size=` to bound temporary memory while materializing:
+
+```python
+import numpy as np
+
+out = np.memmap(path, mode="w+", shape=transformed.shape, dtype="float32")
+transformed.materialize(out=out, block_size=2048)
+```
+
+The transformed object exists only in the current Python process and is not
+stored by `write_h5ad`. Backed sparse inputs are currently materialized during
+count canonicalization; the operator and block-materialization interface is
+intended to admit a future out-of-core backend without changing this public API.
 
 ## Sparse matrix API
 
@@ -105,8 +154,32 @@ result.explained_variance_ratio
 ```
 
 Pass `return_operator=True` to expose the centered `scipy.sparse.linalg.LinearOperator` used by ARPACK.
-The representation defaults to `float64`; pass `dtype="float32"` explicitly
-for a lower-memory approximate mode. Other representation dtypes are rejected.
+The representation defaults to `float64`, which is recommended for numerical
+precision. Passing `dtype="float32"` is a lower-memory approximate mode: it
+casts the representation and the operator passed to ARPACK, so it lowers the
+precision of the PCA calculation rather than only the precision of returned
+arrays. Other representation dtypes are rejected.
+
+To calculate in `float64` but store selected outputs more compactly, downcast
+them only after PCA. For example:
+
+```python
+scores32 = result.scores.astype("float32")
+loadings32 = result.loadings.astype("float32")
+
+# Or, after an AnnData call:
+adata.obsm["X_pca"] = adata.obsm["X_pca"].astype("float32")
+adata.varm["PCs"] = adata.varm["PCs"].astype("float32")
+```
+
+Post-computation downcasting leaves the completed decomposition and its
+float64 variance statistics unchanged, but downstream calculations using the
+downcast arrays have float32 precision.
+
+Canonical zero-free CSR inputs are borrowed without copying. If a caller-owned
+CSR contains duplicate or unsorted indices or explicitly stored zeros, it is
+copied before canonicalization and a `UserWarning` explains why. Other sparse
+formats necessarily allocate a CSR during conversion.
 
 ## Shifted-log and shifted-CLR PCA
 

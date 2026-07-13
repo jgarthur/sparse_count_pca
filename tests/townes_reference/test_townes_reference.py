@@ -1,3 +1,5 @@
+"""Regression test against pinned Townes residual-PCA singular values."""
+
 import numpy as np
 import pytest
 
@@ -40,6 +42,7 @@ def test_singular_values_match_townes_reference(
     residual,
     expected,
 ):
+    """Residual PCA singular values match the pinned Townes reference."""
     result = residual_pca_matrix(
         counts,
         n_comps=3,
