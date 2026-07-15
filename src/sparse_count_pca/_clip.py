@@ -11,6 +11,7 @@ from scipy import sparse
 ClipMode: TypeAlias = Literal["symmetric", "upper"]
 Float64Array: TypeAlias = NDArray[np.float64]
 IndexArray: TypeAlias = NDArray[np.intp]
+CSRMatrix: TypeAlias = sparse.csr_matrix | sparse.csr_array
 
 CLIP_MODES: set[ClipMode] = {"symmetric", "upper"}
 
@@ -48,7 +49,7 @@ def validate_clip(
 
 
 def _clipped_zero_locations(
-    X: sparse.csr_matrix,
+    X: CSRMatrix,
     u: Float64Array,
     v: Float64Array,
     threshold: float,
@@ -59,18 +60,22 @@ def _clipped_zero_locations(
     """Find structural zeros (i, j) of X where ``u[i] * v[j] < -threshold``.
 
     Args:
-        X: CSR count matrix defining the nonzero support.
+        X: Canonical CSR count matrix defining the nonzero support.
         u: Rank-one row factor.
         v: Rank-one column factor.
         threshold: Positive clipping threshold.
-        max_count: If given and the number of locations provably exceeds it,
-            return ``None`` without materializing the index arrays.
+        max_count: If given and the number of locations exceeds it, return
+            ``None``. A provable lower bound may return before sparse-support
+            membership arrays are constructed.
         support_rows: Precomputed row index aligned with ``X.data``.
 
     Returns:
-        Flat row and column index arrays in row-major order, or ``None`` if
-        the ``max_count`` bound was exceeded.
+        Flat row and column index arrays grouped by row, or ``None`` if the
+        ``max_count`` bound was exceeded. Column order within rows is
+        unspecified.
     """
+    assert sparse.issparse(X) and X.format == "csr", "X must use CSR format"
+    assert X.has_canonical_format, "X must be in canonical CSR format"
     m, n = X.shape
     u64 = np.asarray(u, dtype=np.float64)
     v64 = np.asarray(v, dtype=np.float64)
@@ -84,10 +89,15 @@ def _clipped_zero_locations(
     stop = np.zeros(m, dtype=np.intp)
     pos = u64 > 0
     neg = u64 < 0
+    # Widen each rounded quotient by one representable value. The direct
+    # product filter below removes the harmless extras; without widening, a
+    # product that rounds below the strict threshold can be missed entirely.
     # u_i > 0:  v_j < -threshold / u_i  (prefix of vs)
-    stop[pos] = np.searchsorted(vs, -threshold / u64[pos], side="left")
+    cut_pos = np.nextafter(-threshold / u64[pos], np.inf)
+    stop[pos] = np.searchsorted(vs, cut_pos, side="right")
     # u_i < 0:  v_j > -threshold / u_i  (suffix of vs)
-    start[neg] = np.searchsorted(vs, -threshold / u64[neg], side="right")
+    cut_neg = np.nextafter(-threshold / u64[neg], -np.inf)
+    start[neg] = np.searchsorted(vs, cut_neg, side="left")
     stop[neg] = n
     # u_i == 0: empty range (threshold > 0)
 
@@ -107,16 +117,17 @@ def _clipped_zero_locations(
     keep = u64[rows] * v64[cols] < -threshold
     rows, cols = rows[keep], cols[keep]
 
+    # At most X.nnz candidates can be removed by sparse-support membership,
+    # so this lower bound can sometimes abort before allocating those arrays.
+    if max_count is not None and rows.size - X.nnz > max_count:
+        return None
+
     # Drop candidates that lie on the sparse support, via one global sorted
     # membership test on linear indices.
     if X.nnz:
-        if not X.has_sorted_indices:
-            X.sort_indices()
         lin = rows * n + cols
         if support_rows is None:
-            support_rows = np.repeat(
-                np.arange(m, dtype=np.intp), np.diff(X.indptr)
-            )
+            support_rows = np.repeat(np.arange(m, dtype=np.intp), np.diff(X.indptr))
         x_lin = support_rows * n + X.indices
         p = np.searchsorted(x_lin, lin).clip(max=x_lin.size - 1)
         keep = x_lin[p] != lin
@@ -127,7 +138,7 @@ def _clipped_zero_locations(
 
 
 def apply_clipping(
-    X: sparse.csr_matrix,
+    X: CSRMatrix,
     residual_nonzero: Float64Array,
     u: Float64Array,
     v: Float64Array,
@@ -140,7 +151,8 @@ def apply_clipping(
     """Construct the sparse residual correction after clipping.
 
     Args:
-        X: CSR count matrix defining the original sparse support.
+        X: Canonical CSR count matrix defining the original nonempty sparse
+            support. Explicitly stored zeros must already have been removed.
         residual_nonzero: Residual values aligned with ``X.data``.
         u: Rank-one row factor.
         v: Rank-one column factor.
@@ -158,12 +170,18 @@ def apply_clipping(
         RuntimeError: If exact symmetric clipping would meet or exceed the
             configured sparse support-growth limit.
     """
+    assert sparse.issparse(X) and X.format == "csr", "X must use CSR format"
+    assert X.has_canonical_format, "X must be in canonical CSR format"
+    assert X.nnz > 0, "X must have nonempty sparse support"
     uv_nonzero = u[rows] * v[X.indices]
     if clip is None:
         data = residual_nonzero - uv_nonzero
         return sparse.csr_matrix(
             (data, X.indices.copy(), X.indptr.copy()), shape=X.shape
         )
+    # Residual construction guarantees u < 0 and v > 0, so every structural-
+    # zero residual u_i v_j is negative. Upper clipping therefore cannot alter
+    # structural zeros; symmetric clipping only needs lower-tail corrections.
     if clip_mode == "upper":
         data = np.minimum(residual_nonzero, clip) - uv_nonzero
         S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
@@ -171,7 +189,7 @@ def apply_clipping(
         return S
 
     data = np.clip(residual_nonzero, -clip, clip) - uv_nonzero
-    # Bound clipped-zero growth before materializing a potentially huge set.
+    # Bound clipped-zero growth before constructing the expanded sparse result.
     max_count = None
     if clip_max_nnz_ratio is not None:
         max_possible_ratio = (X.shape[0] * X.shape[1]) / X.nnz

@@ -25,7 +25,7 @@ def _assert_matches_oracle(X, u, v, threshold):
     assert result is not None
     rows, cols = result
     exp_rows, exp_cols = _brute_force_locations(X, u, v, threshold)
-    # Row-major order is part of the contract.
+    # Column order within each row is unspecified, so compare row-major views.
     order = np.lexsort((cols, rows))
     np.testing.assert_array_equal(rows[order], exp_rows)
     np.testing.assert_array_equal(cols[order], exp_cols)
@@ -58,6 +58,69 @@ def test_matches_dense_oracle_random(seed):
     v = rng.normal(size=n)
     threshold = float(rng.uniform(0.05, 1.5))
     _assert_matches_oracle(X, u, v, threshold)
+
+
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize(
+    ("clip", "clip_mode"),
+    [(None, "symmetric"), (0.5, "symmetric"), (0.5, "upper")],
+)
+def test_apply_clipping_matches_dense_oracle(seed, clip, clip_mode):
+    """Sparse corrections reconstruct the requested clipped residual matrix."""
+    rng = np.random.default_rng(seed)
+    m, n = rng.integers(1, 10, size=2)
+    dense = rng.integers(0, 3, size=(m, n))
+    if not dense.any():
+        dense[0, 0] = 1
+    X = sparse.csr_matrix(dense)
+    rows = np.repeat(np.arange(m, dtype=np.intp), np.diff(X.indptr))
+    residual_nonzero = rng.normal(size=X.nnz)
+    # These signs are the residual-builder domain invariant: every structural-
+    # zero residual supplied by u v.T is negative.
+    u = -rng.uniform(0.1, 3.0, size=m)
+    v = rng.uniform(0.1, 3.0, size=n)
+
+    full = np.outer(u, v)
+    full[rows, X.indices] = residual_nonzero
+    if clip is None:
+        expected = full
+    elif clip_mode == "upper":
+        expected = np.minimum(full, clip)
+    else:
+        expected = np.clip(full, -clip, clip)
+
+    S = apply_clipping(
+        X,
+        residual_nonzero,
+        u,
+        v,
+        rows,
+        clip=clip,
+        clip_mode=clip_mode,
+        clip_max_nnz_ratio=None,
+    )
+    np.testing.assert_allclose(
+        S.toarray() + np.outer(u, v), expected, rtol=0.0, atol=1e-14
+    )
+
+
+def test_rounded_division_does_not_miss_crossing_structural_zero():
+    """A quotient-rounding boundary still includes a truly clipped zero."""
+    # This is a valid Poisson-Pearson factorization for the count matrix below:
+    # u = -sqrt(row totals), v = sqrt(column proportions). The clip is one ULP
+    # below the represented zero residual at (0, 0).
+    X = sparse.csr_matrix([[0, 2], [5, 4]])
+    totals = np.asarray(X.sum(axis=1)).ravel().astype(np.float64)
+    proportions = np.asarray(X.sum(axis=0)).ravel() / X.sum()
+    u = -np.sqrt(totals)
+    v = np.sqrt(proportions)
+    threshold = np.nextafter(-(u[0] * v[0]), -np.inf)
+    assert u[0] * v[0] < -threshold
+
+    result = _clipped_zero_locations(X, u, v, threshold)
+    assert result is not None
+    np.testing.assert_array_equal(result[0], np.array([0], dtype=np.intp))
+    np.testing.assert_array_equal(result[1], np.array([0], dtype=np.intp))
 
 
 def test_no_locations_returns_empty(small):
@@ -102,10 +165,8 @@ def test_bail_lower_bound_is_sound(small):
     assert result[0].size == true_count
 
 
-def test_unsorted_indices_handled():
-    """Clipping handles CSR matrices with unsorted column indices."""
-    # Construct a CSR matrix whose within-row column indices are not sorted;
-    # the membership test must still exclude stored entries correctly.
+def test_noncanonical_csr_is_rejected():
+    """Clipping rejects CSR input that bypassed count canonicalization."""
     X = sparse.csr_matrix(
         (
             np.array([1, 1, 1], dtype=np.int64),
@@ -114,10 +175,33 @@ def test_unsorted_indices_handled():
         ),
         shape=(1, 4),
     )
-    assert not X.has_sorted_indices
+    assert not X.has_canonical_format
     u = np.array([-1.0])
     v = np.array([2.0, 2.0, 2.0, 2.0])
-    _assert_matches_oracle(X, u, v, threshold=0.5)
+    with pytest.raises(AssertionError, match="canonical CSR"):
+        _clipped_zero_locations(X, u, v, threshold=0.5)
+    with pytest.raises(AssertionError, match="canonical CSR"):
+        apply_clipping(
+            X,
+            residual_nonzero=np.ones(X.nnz),
+            u=u,
+            v=v,
+            rows=np.zeros(X.nnz, dtype=np.intp),
+            clip=None,
+            clip_mode="symmetric",
+            clip_max_nnz_ratio=None,
+        )
+
+
+def test_canonical_csr_array_is_accepted():
+    """Canonical SciPy CSR arrays pass the internal format precondition."""
+    X = sparse.csr_array([[1, 0]])
+    result = _clipped_zero_locations(
+        X, np.array([-1.0]), np.array([1.0, 2.0]), threshold=0.5
+    )
+    assert result is not None
+    np.testing.assert_array_equal(result[0], np.array([0], dtype=np.intp))
+    np.testing.assert_array_equal(result[1], np.array([1], dtype=np.intp))
 
 
 def test_empty_support_matrix():
@@ -152,21 +236,26 @@ def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
 
 def test_apply_clipping_reuses_precomputed_row_support(monkeypatch):
     """Clipping reuses the caller's precomputed sparse row support."""
+    import sparse_count_pca._clip as clip_module
+
     X = sparse.csr_matrix([[1, 0], [0, 2]])
     rows = np.array([0, 1], dtype=np.intp)
+    seen = {}
+    original = clip_module._clipped_zero_locations
 
-    def unexpected_repeat(*args, **kwargs):
-        pytest.fail("apply_clipping rebuilt the CSR row-support vector")
+    def spy(*args, **kwargs):
+        seen["support_rows"] = kwargs.get("support_rows")
+        return original(*args, **kwargs)
 
-    monkeypatch.setattr("sparse_count_pca._clip.np.repeat", unexpected_repeat)
-    S = apply_clipping(
+    monkeypatch.setattr(clip_module, "_clipped_zero_locations", spy)
+    apply_clipping(
         X,
         residual_nonzero=np.array([0.2, 0.3]),
         u=np.array([-1.0, -1.0]),
         v=np.array([0.5, 0.5]),
         rows=rows,
-        clip=None,
+        clip=10.0,
         clip_mode="symmetric",
-        clip_max_nnz_ratio=2.0,
+        clip_max_nnz_ratio=None,
     )
-    assert S.shape == X.shape
+    assert seen["support_rows"] is rows
