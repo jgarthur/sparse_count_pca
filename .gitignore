@@ -1,0 +1,14 @@
+.vscode/
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+
+# files for agents
+AGENTS.md
+CLAUDE.md
