@@ -26,6 +26,19 @@ def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
     return result
 
 
+def _squared_norm_is_numerically_zero(
+    value: float,
+    *,
+    scale: float,
+    shape: tuple[int, int],
+    dtype: DTypeLike,
+) -> bool:
+    """Compare a squared norm with the package's roundoff-scale boundary."""
+    eps = np.finfo(_normalize_operator_dtype(dtype)).eps
+    tolerance = eps * eps * math.prod(shape) * scale
+    return value <= tolerance
+
+
 class SparseLowRankLinearOperator(LinearOperator):
     """Represent a sparse-plus-low-rank matrix with optional column centering.
 
@@ -36,6 +49,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         representation: Sparse-plus-low-rank representation.
         center: Whether to subtract column means in matrix products.
         dtype: Storage and output floating-point dtype.
+        copy: Whether to isolate stored arrays from the representation.
 
     Attributes:
         S: CSR sparse part stored in the operator dtype.
@@ -57,6 +71,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         *,
         center: bool = True,
         dtype: DTypeLike = "float64",
+        copy: bool = True,
     ) -> None:
         """Initialize the operator and precompute float64 summary statistics.
 
@@ -65,26 +80,28 @@ class SparseLowRankLinearOperator(LinearOperator):
         """
         operator_dtype = _normalize_operator_dtype(dtype)
 
-        self.S = representation.sparse.astype(operator_dtype, copy=True).tocsr()
-        self.left = np.asarray(representation.left, dtype=operator_dtype)
-        self.right = np.asarray(representation.right, dtype=operator_dtype)
+        self.S = representation.sparse.astype(operator_dtype, copy=copy).tocsr(
+            copy=False
+        )
+        self.left = representation.left.astype(operator_dtype, copy=copy)
+        self.right = representation.right.astype(operator_dtype, copy=copy)
         self.center = bool(center)
         super().__init__(dtype=operator_dtype, shape=self.S.shape)
 
         self._S_csc = self.S.tocsc()
-        self._left_float64 = self.left.astype(np.float64)
-        self._right_float64 = self.right.astype(np.float64)
-        self._left_mean_float64 = np.array(
-            [math.fsum(column) / self.shape[0] for column in self._left_float64.T]
-        )
-        left_deviations = self._left_float64 - self._left_mean_float64
-        self._left_centered_gram_float64 = left_deviations.T @ left_deviations
+        self._left_float64 = self.left.astype(np.float64, copy=False)
+        self._right_float64 = self.right.astype(np.float64, copy=False)
+        # The representation rank is tiny. Accurate scalar sums are preferable
+        # to a faster reduction whose cancellation depends on array order.
         self._left_sum_float64 = np.array(
             [math.fsum(column) for column in self._left_float64.T]
         )
-        self._mean_float64 = self._stable_column_means()
+        self._left_mean_float64 = self._left_sum_float64 / self.shape[0]
+        left_deviations = self._left_float64 - self._left_mean_float64
+        self._left_centered_gram_float64 = left_deviations.T @ left_deviations
 
         if self.center:
+            self._mean_float64 = self._stable_column_means()
             self.mean = self._mean_float64.astype(operator_dtype)
         else:
             self.mean = None
@@ -120,11 +137,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             rows = self._S_csc.indices[start:stop]
             if rows.size > n_obs // 2:
                 values = self.left @ self.right[column]
-                values = values.copy()
                 values[rows] += self._S_csc.data[start:stop]
-                means[column] = math.fsum(values.astype(np.float64)) / n_obs
+                means[column] = math.fsum(values.astype(np.float64, copy=False)) / n_obs
             else:
-                sparse_sum = math.fsum(self._S_csc.data[start:stop].astype(np.float64))
+                sparse_sum = math.fsum(
+                    self._S_csc.data[start:stop].astype(np.float64, copy=False)
+                )
                 baseline_sum = float(
                     self._left_sum_float64 @ self._right_float64[column]
                 )
@@ -141,9 +159,8 @@ class SparseLowRankLinearOperator(LinearOperator):
             rows = self._S_csc.indices[start:stop]
             if rows.size > n_obs // 2:
                 values = self.left @ self.right[column]
-                values = values.copy()
                 values[rows] += self._S_csc.data[start:stop]
-                deviations = (values - center[column]).astype(np.float64)
+                deviations = (values - center[column]).astype(np.float64, copy=False)
                 column_norms.append(math.fsum(deviations * deviations))
                 continue
 
@@ -155,7 +172,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             baseline_support = self._left_float64[rows] @ v - float(center[column])
             actual_support = (
                 self._stored_column_values(column, rows) - center[column]
-            ).astype(np.float64)
+            ).astype(np.float64, copy=False)
             column_squared = math.fsum(
                 (
                     baseline_total,
@@ -181,10 +198,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             A vector with length ``n_obs`` in the operator dtype.
         """
         z = np.asarray(z, dtype=self.dtype)
-        result = self.S @ z + self.left @ (self.right.T @ z)
+        result = self.S @ z
+        if self.right.shape[1]:
+            result += self.left @ (self.right.T @ z)
         if self.center:
             assert self.mean is not None
-            result = result - np.dot(self.mean, z)
+            result -= np.dot(self.mean, z)
         return np.asarray(result, dtype=self.dtype)
 
     def _rmatvec(self, y: ArrayLike) -> FloatArray:
@@ -197,10 +216,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             A vector with length ``n_vars`` in the operator dtype.
         """
         y = np.asarray(y, dtype=self.dtype)
-        result = self.S.T @ y + self.right @ (self.left.T @ y)
+        result = self.S.T @ y
+        if self.right.shape[1]:
+            result += self.right @ (self.left.T @ y)
         if self.center:
             assert self.mean is not None
-            result = result - self.mean * np.sum(y, dtype=self.dtype)
+            result -= self.mean * np.sum(y, dtype=self.dtype)
         return np.asarray(result, dtype=self.dtype)
 
     def _matmat(self, Z: ArrayLike) -> FloatArray:
@@ -213,10 +234,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             A matrix with ``n_obs`` rows in the operator dtype.
         """
         Z = np.asarray(Z, dtype=self.dtype)
-        result = self.S @ Z + self.left @ (self.right.T @ Z)
+        result = self.S @ Z
+        if self.right.shape[1]:
+            result += self.left @ (self.right.T @ Z)
         if self.center:
             assert self.mean is not None
-            result = result - (self.mean @ Z)[None, :]
+            result -= (self.mean @ Z)[None, :]
         return np.asarray(result, dtype=self.dtype)
 
     def _rmatmat(self, Y: ArrayLike) -> FloatArray:
@@ -229,13 +252,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             A matrix with ``n_vars`` rows in the operator dtype.
         """
         Y = np.asarray(Y, dtype=self.dtype)
-        result = self.S.T @ Y + self.right @ (self.left.T @ Y)
+        result = self.S.T @ Y
+        if self.right.shape[1]:
+            result += self.right @ (self.left.T @ Y)
         if self.center:
             assert self.mean is not None
-            result = (
-                result
-                - self.mean[:, None] * np.sum(Y, axis=0, dtype=self.dtype)[None, :]
-            )
+            result -= self.mean[:, None] * np.sum(Y, axis=0, dtype=self.dtype)[None, :]
         return np.asarray(result, dtype=self.dtype)
 
     def frobenius_squared_uncentered(self) -> float:
@@ -248,8 +270,9 @@ class SparseLowRankLinearOperator(LinearOperator):
 
     def centered_variance_is_numerically_zero(self) -> bool:
         """Return whether centered variation is indistinguishable from rounding."""
-        centered = self.frobenius_squared_centered()
-        uncentered = self.frobenius_squared_uncentered()
-        eps = np.finfo(self.dtype).eps
-        tolerance = eps * eps * math.prod(self.shape) * uncentered
-        return centered <= tolerance
+        return _squared_norm_is_numerically_zero(
+            self.frobenius_squared_centered(),
+            scale=self.frobenius_squared_uncentered(),
+            shape=self.shape,
+            dtype=self.dtype,
+        )

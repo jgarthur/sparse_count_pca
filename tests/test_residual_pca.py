@@ -6,7 +6,7 @@ import zarr
 from scipy import sparse
 
 from sparse_count_pca import residual_pca_matrix
-from sparse_count_pca._counts import _canonicalize_counts
+from sparse_count_pca._counts import COUNT_INTEGER_ATOL, _canonicalize_counts
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from sparse_count_pca._representation import SparseLowRankMatrix
 from sparse_count_pca._residuals import ALPHA_EPS
@@ -44,19 +44,25 @@ def test_operator_and_svd_match_dense(counts, model, residual, alpha):
     Z = rng.normal(size=(counts.shape[1], 3))
     Y = rng.normal(size=(counts.shape[0], 3))
 
-    np.testing.assert_allclose(result.operator @ z, dense @ z, atol=1e-10)
-    np.testing.assert_allclose(result.operator.T @ y, dense.T @ y, atol=1e-10)
-    np.testing.assert_allclose(result.operator @ Z, dense @ Z, atol=1e-10)
-    np.testing.assert_allclose(result.operator.T @ Y, dense.T @ Y, atol=1e-10)
+    np.testing.assert_allclose(result.operator @ z, dense @ z, rtol=0.0, atol=1e-10)
+    np.testing.assert_allclose(result.operator.T @ y, dense.T @ y, rtol=0.0, atol=1e-10)
+    np.testing.assert_allclose(result.operator @ Z, dense @ Z, rtol=0.0, atol=1e-10)
+    np.testing.assert_allclose(result.operator.T @ Y, dense.T @ Y, rtol=0.0, atol=1e-10)
 
     _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
-    np.testing.assert_allclose(result.singular_values, singular_values[:2], rtol=1e-8)
-    assert _compare_subspaces(result.components.T, Vt[:2].T, atol=1e-7)
+    np.testing.assert_allclose(
+        result.singular_values, singular_values[:2], rtol=1e-8, atol=0.0
+    )
+    assert _compare_subspaces(result.components.T, Vt[:2].T, rtol=0.0, atol=1e-7)
     expected_total_variance = np.sum(dense**2) / (counts.shape[0] - 1)
-    assert result.total_variance == pytest.approx(expected_total_variance, rel=1e-10)
+    assert result.total_variance == pytest.approx(
+        expected_total_variance, rel=1e-10, abs=0.0
+    )
     np.testing.assert_allclose(
         result.explained_variance_ratio,
         result.explained_variance / expected_total_variance,
+        rtol=1e-10,
+        atol=0.0,
     )
 
 
@@ -71,7 +77,7 @@ def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
             [3, 2, 5],
         ]
     )
-    alpha = np.array([0.9 * ALPHA_EPS, 1.1 * ALPHA_EPS, 0.1])
+    alpha = np.array([0.9 * ALPHA_EPS, ALPHA_EPS, 1.1 * ALPHA_EPS])
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -146,7 +152,12 @@ def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts):
         alpha=np.array(0.1),
         dtype="float64",
     )
-    np.testing.assert_allclose(zero_dimensional.singular_values, scalar.singular_values)
+    np.testing.assert_allclose(
+        zero_dimensional.singular_values,
+        scalar.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
 
 
 def test_uncentered_operator_matches_dense(counts):
@@ -161,9 +172,11 @@ def test_uncentered_operator_matches_dense(counts):
         dtype="float64",
     )
     dense = _materialize_dense_residual(counts)
-    np.testing.assert_allclose(uncentered @ np.eye(counts.shape[1]), dense, atol=1e-10)
+    np.testing.assert_allclose(
+        uncentered @ np.eye(counts.shape[1]), dense, rtol=0.0, atol=1e-10
+    )
     assert uncentered.frobenius_squared_uncentered() == pytest.approx(
-        np.sum(dense**2), rel=1e-10
+        np.sum(dense**2), rel=1e-10, abs=0.0
     )
 
 
@@ -183,7 +196,9 @@ def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
 
     stored_centered = (operator @ np.eye(n_vars, dtype=dtype)).astype(np.float64)
     expected = np.sum(stored_centered**2)
-    assert operator.frobenius_squared_centered() == pytest.approx(expected, rel=rtol)
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        expected, rel=rtol, abs=0.0
+    )
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -206,11 +221,12 @@ def test_total_variance_high_count_near_constant_matches_stored_operator(dtype):
     stored_centered = (result.operator @ identity).astype(np.float64)
     expected = np.sum(stored_centered**2) / (counts.shape[0] - 1)
     assert expected > 0
-    assert result.total_variance == pytest.approx(expected, rel=1e-10)
+    assert result.total_variance == pytest.approx(expected, rel=1e-10, abs=0.0)
     np.testing.assert_allclose(
         result.explained_variance_ratio,
         result.explained_variance / expected,
         rtol=1e-10,
+        atol=0.0,
     )
 
 
@@ -222,9 +238,7 @@ def test_identical_rows_raise_zero_centered_variance_before_arpack(dtype, monkey
     def fail_if_called(*args, **kwargs):
         pytest.fail("ARPACK was called for a zero-variance matrix")
 
-    monkeypatch.setattr(
-        "sparse_count_pca._pca.compute_truncated_svd", fail_if_called
-    )
+    monkeypatch.setattr("sparse_count_pca._pca.compute_truncated_svd", fail_if_called)
     with pytest.warns(UserWarning, match="Dense input was converted to CSR"):
         with pytest.raises(ValueError, match="zero centered variance"):
             residual_pca_matrix(counts, n_comps=2, dtype=dtype)
@@ -246,10 +260,13 @@ def test_exact_symmetric_clipping_matches_dense(counts):
     dense = _materialize_dense_residual(counts, clip=clip, center=True)
     assert result.operator.S.nnz == counts.nnz + n_clipped_zeros
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-10
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-10,
     )
     assert result.total_variance == pytest.approx(
-        np.sum(dense**2) / (counts.shape[0] - 1), rel=1e-10
+        np.sum(dense**2) / (counts.shape[0] - 1), rel=1e-10, abs=0.0
     )
 
 
@@ -267,7 +284,7 @@ def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
         np.float64
     )
     expected = np.sum(stored_centered**2) / (counts.shape[0] - 1)
-    assert result.total_variance == pytest.approx(expected, rel=rtol)
+    assert result.total_variance == pytest.approx(expected, rel=rtol, abs=0.0)
 
 
 @pytest.mark.parametrize(
@@ -304,7 +321,10 @@ def test_symmetric_clipping_is_exact_for_every_residual(counts, model, residual,
     # This fixture has five structural zeros, all of which cross the threshold.
     assert result.operator.S.nnz == counts.nnz + 5
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-10
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-10,
     )
 
 
@@ -342,7 +362,10 @@ def test_symmetric_clipping_support_growth_guard(counts):
     exact = _materialize_dense_residual(counts, clip=clip, center=True)
     assert unlimited.operator.S.nnz == counts.nnz + 3
     np.testing.assert_allclose(
-        unlimited.operator @ np.eye(counts.shape[1]), exact, atol=1e-10
+        unlimited.operator @ np.eye(counts.shape[1]),
+        exact,
+        rtol=0.0,
+        atol=1e-10,
     )
 
     with pytest.raises(RuntimeError, match="increase sparse support"):
@@ -367,7 +390,10 @@ def test_symmetric_clipping_large_finite_growth_guard(counts):
     )
     dense = _materialize_dense_residual(counts, clip=clip, center=True)
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-10
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-10,
     )
 
 
@@ -409,7 +435,10 @@ def test_upper_clipping_is_exact_without_support_growth(counts, model, residual,
     count_support = set(zip(*counts.nonzero()))
     assert sparse_support <= count_support
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-10
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-10,
     )
 
 
@@ -563,6 +592,18 @@ def test_large_fractional_counts_are_rejected(counts):
         residual_pca_matrix(fractional, n_comps=2)
 
 
+def test_count_integer_tolerance_has_an_explicit_boundary(counts):
+    """Float counts pass inside and fail outside the integer tolerance."""
+    inside = counts.astype(np.float64)
+    inside.data[0] += 0.5 * COUNT_INTEGER_ATOL
+    _canonicalize_counts(inside, check_values=True)
+
+    outside = counts.astype(np.float64)
+    outside.data[0] += 2.0 * COUNT_INTEGER_ATOL
+    with pytest.raises(ValueError, match="non-integer"):
+        _canonicalize_counts(outside, check_values=True)
+
+
 @pytest.mark.parametrize("value", [np.nan, np.inf])
 def test_nonfinite_sparse_counts_are_rejected(counts, value):
     """Sparse count inputs reject nonfinite stored values."""
@@ -570,6 +611,14 @@ def test_nonfinite_sparse_counts_are_rejected(counts, value):
     invalid.data[0] = value
     with pytest.raises(ValueError, match="NaN or inf"):
         residual_pca_matrix(invalid, n_comps=2)
+
+
+def test_finite_counts_with_overflowing_margins_are_rejected():
+    """Finite values fail clearly when their float64 margins overflow."""
+    counts = sparse.csr_matrix(np.full((3, 3), 1e308))
+
+    with pytest.raises(ValueError, match="Count margins overflow"):
+        residual_pca_matrix(counts, n_comps=2, check_values=False)
 
 
 def test_nonnumeric_dense_counts_are_rejected():
@@ -587,6 +636,15 @@ def test_integer_counts_must_be_exactly_representable_as_float64(counts):
         residual_pca_matrix(unsafe, n_comps=2)
 
 
+def test_large_exactly_representable_integer_counts_remain_supported():
+    """The bounded validation preserves exact integers above two to the 53."""
+    exact = sparse.csr_matrix(np.array([[2**54]], dtype=np.uint64))
+
+    canonical = _canonicalize_counts(exact, check_values=True)
+
+    assert canonical is exact
+
+
 def test_explicit_sparse_zeros_are_removed_without_mutating_input(counts):
     """Canonicalization removes explicit zeros without mutating its input."""
     with_zero = counts.copy()
@@ -599,7 +657,12 @@ def test_explicit_sparse_zeros_are_removed_without_mutating_input(counts):
     with pytest.warns(UserWarning, match="copied.*explicitly stored zeros"):
         actual = residual_pca_matrix(with_zero, n_comps=2)
     assert with_zero.nnz == original_nnz
-    np.testing.assert_allclose(actual.singular_values, expected.singular_values)
+    np.testing.assert_allclose(
+        actual.singular_values,
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
 
 
 def test_canonical_zero_free_csr_is_borrowed_without_copying(counts):
@@ -647,7 +710,12 @@ def test_dense_zarr_input_is_eagerly_converted(counts, tmp_path):
     with pytest.warns(UserWarning, match="Dense input was converted to CSR"):
         result = residual_pca_matrix(X, n_comps=2, dtype="float64")
 
-    np.testing.assert_allclose(result.singular_values, expected.singular_values)
+    np.testing.assert_allclose(
+        result.singular_values,
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
 
 
 def test_n_comps_is_not_clamped(counts):

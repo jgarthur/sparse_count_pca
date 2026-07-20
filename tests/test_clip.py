@@ -152,11 +152,8 @@ def test_max_count_loose_bound_materializes(small):
     assert result[0].size == exp_rows.size
 
 
-def test_bail_lower_bound_is_sound(small):
-    """The early-exit lower bound never misses an allowed result."""
-    # The bail uses total - X.nnz as a lower bound on the true count. It must
-    # never fire when the true count is within the bound, even though many
-    # stored entries also fall inside the candidate set.
+def test_exact_count_at_guard_bound_is_allowed(small):
+    """The location helper allows output exactly at its private count bound."""
     u = np.full(small.shape[0], -5.0)
     v = np.full(small.shape[1], 5.0)
     true_count = _brute_force_locations(small, u, v, 0.1)[0].size
@@ -234,28 +231,15 @@ def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
     assert S.nnz == 0
 
 
-def test_apply_clipping_reuses_precomputed_row_support(monkeypatch):
-    """Clipping reuses the caller's precomputed sparse row support."""
-    import sparse_count_pca._clip as clip_module
-
-    X = sparse.csr_matrix([[1, 0], [0, 2]])
-    rows = np.array([0, 1], dtype=np.intp)
-    seen = {}
-    original = clip_module._clipped_zero_locations
-
-    def spy(*args, **kwargs):
-        seen["support_rows"] = kwargs.get("support_rows")
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(clip_module, "_clipped_zero_locations", spy)
-    apply_clipping(
+def test_growth_guard_stops_nearly_dense_search_before_output_allocation():
+    """A finite guard rejects near-dense candidates without dense-size output."""
+    size = 2_500
+    X = sparse.csr_matrix(([1], ([0], [0])), shape=(size, size))
+    result = _clipped_zero_locations(
         X,
-        residual_nonzero=np.array([0.2, 0.3]),
-        u=np.array([-1.0, -1.0]),
-        v=np.array([0.5, 0.5]),
-        rows=rows,
-        clip=10.0,
-        clip_mode="symmetric",
-        clip_max_nnz_ratio=None,
+        u=np.full(size, -1.0),
+        v=np.ones(size),
+        threshold=0.5,
+        max_count=0,
     )
-    assert seen["support_rows"] is rows
+    assert result is None

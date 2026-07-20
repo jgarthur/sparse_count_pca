@@ -49,6 +49,9 @@ representation. The correspondence path uses `center=False`, recomputes
 margins after `mask_var`, and derives principal coordinates with the observed
 row and column masses.
 
+The size-factor-scaled negative-binomial model listed above uses per-gene
+overdispersion with cell-depth scaling; its full residual definition appears
+under [Supported residuals](#supported-residuals). In correspondence analysis,
 `model="scaled_nb"` is an explicitly experimental extension. It replaces the
 Poisson variance by the package's size-factor-scaled negative-binomial
 variance and decomposes
@@ -120,6 +123,10 @@ AnnData input and are resolved when the transform is built. A fitted transform
 is tied to that input matrix; applying fitted state to another dataset is not a
 supported contract.
 
+Fitting allocates transformed sparse values and takes one owned snapshot of CSR
+support even when canonical input validation can borrow the original count
+matrix. This prevents later input mutation from changing the fitted transform.
+
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
 represents the full uncentered transformed matrix. It is an in-process object,
 is not serialized by `write_h5ad`, and must be rebuilt after restarting Python.
@@ -163,6 +170,10 @@ For AnnData-derived transforms, mask resolution matches the one-step AnnData
 API. Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
 selects columns only after the full transform has been defined. One transform
 may therefore be reused for several PCA masks or component counts.
+If `TransformedMatrix.pca(return_operator=True)` retains the mutable centered
+operator, its arrays are copied to isolate them from the still-live transform.
+The named one-step APIs instead transfer their private representation to a
+returned operator without that additional copy.
 
 ## Log-transform semantics
 
@@ -192,7 +203,9 @@ Z_{ij}
 ```
 
 Current PFlog is this transform with `a = 1 / (4 * alpha)`, evaluated sparsely
-as row-centered `log1p(4 * alpha * X)`. It supports zero-total rows.
+as row-centered `log1p(4 * alpha * X)`. Although that formula is finite on a
+zero-total row, the package-wide input policy rejects empty cells before any
+transform is fitted.
 
 ### Fixed-composition shifted CLR
 
@@ -274,15 +287,10 @@ holds dense oracle helpers used by the test suite (`_materialize_dense_residual`
 `_dense_scaled_nb_deviance`, `_compare_subspaces`) so test-only code is not
 installed in the runtime package.
 
-`__init__.py` exposes the residual, log, CLR, Dirichlet, and correspondence
-analysis functions and their result types.
-
-```python
-from ._pca import PCAResult
-from ._residual_pca import residual_pca, residual_pca_matrix
-
-__all__ = ["PCAResult", "residual_pca", "residual_pca_matrix"]
-```
+`__init__.py` is the authoritative list of public transforms, analysis
+functions, and result types. The package-layout overview belongs to the
+[architecture guide](architecture.md); it is summarized here only to define
+the public/private module boundary.
 
 The `src/` layout prevents repository-root imports from succeeding unless the
 package has been installed into the active environment.
@@ -612,8 +620,8 @@ if not 1 <= n_comps < min(n_obs, n_vars_used):
     )
 ```
 
-`n_vars_used` is `int(mask.sum())` after `mask_var` resolution. Do not
-silently clamp.
+`n_vars_used` is `int(mask.sum())` after `mask_var` resolution. It is recorded
+as `pca_n_vars` in PCA parameters. Do not silently clamp.
 
 ### `copy`
 
@@ -792,6 +800,14 @@ for those genes, but `n_i` and `M` are based on the full chosen count
 matrix. Thus selected-gene `p_j` values do not need to sum to one: the null
 model is based on total RNA per cell, not on RNA among selected genes.
 
+Use the following terms consistently in documentation and metadata:
+
+- `normalization_n_vars`: the number of columns in the selected count source
+  before `mask_var`;
+- `pca_n_vars`: the number of columns decomposed after `mask_var`.
+
+The two are equal only when PCA uses every normalization gene.
+
 For binomial residuals, `n_i` is also the binomial trial count for cell `i`:
 
 ```math
@@ -928,6 +944,7 @@ adata.uns[uns_key] = {
         "mask_var_details": resolved_mask.details,
         "solver": solver,
         "n_comps": n_comps,
+        "pca_n_vars": n_vars_used,
         "random_state": random_state,
         "tol": tol,
         "check_values": check_values,
@@ -1158,6 +1175,9 @@ L_{ij}=u_i v_j.
 ```
 
 Implementation table:
+
+At a structural zero, `X_ij = 0`, so `R_ij = -mu_ij / sqrt(V_ij)`.
+Substituting each variance below separates this value into `u_i v_j`.
 
 ```text
 model: poisson

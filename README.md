@@ -14,7 +14,10 @@ Supports both Pearson and deviance residuals for the following models:
 - Binomial
 - [Negative binomial with size-factor-scaled dispersion](docs/specification.md#supported-residuals).
   This is similar but not identical to the residual transform used by
-  SCTransform.
+  SCTransform. When all cells have the same total and the fitted means agree,
+  its Pearson residuals reduce to the usual SCTransform negative-binomial form
+  with `alpha = 1 / theta`. Clipping is applied to residuals before PCA column
+  centering.
 
 It also supports fixed-count shifted-log and shifted-CLR PCA,
 fixed-composition shifted-CLR PCA, Dirichlet-log and Dirichlet-CLR PCA, and
@@ -67,6 +70,23 @@ Masked-out genes receive `NaN` loadings. This is an intentional difference
 from Scanpy, making excluded genes distinguishable from valid zero loadings.
 For residual PCA, cell totals and gene proportions are always estimated from
 the full selected count matrix before the gene mask is applied.
+
+Two metadata fields make those distinct gene counts explicit:
+
+- `normalization_n_vars` is the number of genes in the chosen `X`, layer, or
+  raw matrix before `mask_var` is applied.
+- `pca_n_vars` is the number of genes actually passed to PCA after masking.
+
+For AnnData results, `pca_n_vars` is also available under
+`params["mask_var_details"]["n_vars_used"]` for compatibility. These counts can
+differ intentionally: normalization is fitted on `normalization_n_vars`, then
+PCA decomposes only `pca_n_vars`. In CLR transforms, even an all-zero gene in
+the normalization universe changes the row-centering denominator, so removing
+a gene before the call is not equivalent to masking it out of PCA.
+
+The arrays stored in `.varm` are `components.T`, following Scanpy's convention.
+They are sometimes called loadings, but they are not variance-weighted
+statistical loadings.
 
 When `key_added="foo"`, scores, loadings, and metadata are all written under
 the exact key `"foo"`, matching Scanpy.
@@ -153,7 +173,11 @@ result.explained_variance
 result.explained_variance_ratio
 ```
 
-Pass `return_operator=True` to expose the centered `scipy.sparse.linalg.LinearOperator` used by ARPACK.
+Pass `return_operator=True` to expose the centered
+`scipy.sparse.linalg.LinearOperator` used by ARPACK. One-step APIs transfer
+their private representation to that operator without another CSR copy. An
+operator returned by `TransformedMatrix.pca` is instead isolated from the
+still-live fitted transform and therefore requires a support-sized copy.
 The representation defaults to `float64`, which is recommended for numerical
 precision. Passing `dtype="float32"` is a lower-memory approximate mode: it
 casts the representation and the operator passed to ARPACK, so it lowers the
@@ -179,7 +203,9 @@ downcast arrays have float32 precision.
 Canonical zero-free CSR inputs are borrowed without copying. If a caller-owned
 CSR contains duplicate or unsorted indices or explicitly stored zeros, it is
 copied before canonicalization and a `UserWarning` explains why. Other sparse
-formats necessarily allocate a CSR during conversion.
+formats necessarily allocate a CSR during conversion. Fitting a transform
+still allocates transformed sparse values and takes one owned snapshot of CSR
+support, so later mutation of the input cannot alter the fitted matrix.
 
 ## Shifted-log and shifted-CLR PCA
 
@@ -236,9 +262,9 @@ historical = scp.proportion_shifted_clr_pca_matrix(
 )
 ```
 
-Its effective count shift is `cell_total_i * composition_shift`; unlike the
-fixed-count method, it rejects empty cells. All CLR row means are computed over
-the full input gene universe before `mask_var` selects genes for PCA.
+Its effective count shift is `cell_total_i * composition_shift`. All CLR row
+means are computed over the full input gene universe before `mask_var` selects
+genes for PCA.
 
 ## Dirichlet PCA transforms
 
@@ -366,9 +392,9 @@ support. See the [clipping details](docs/specification.md#clipping).
   tolerance and an absolute tolerance of `1e-8` by default.
 - Variable masks must have genuinely boolean dtype; numeric, string, and
   nullable masks are rejected rather than coerced.
-- Cells with zero total counts are supported by Dirichlet and fixed-count log
-  transforms. Residual, correspondence, and proportion-shifted transforms
-  reject them where their normalization is undefined.
+- Cells with zero total counts are rejected consistently before transform
+  fitting. Empty observations would otherwise participate in PCA centering and
+  covariance even for transforms that can assign them finite values.
 - A transformed matrix with numerically zero centered variance is rejected
   before ARPACK because its PCA directions are undefined.
 - Only `solver="arpack"` is supported.

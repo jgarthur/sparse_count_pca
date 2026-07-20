@@ -80,6 +80,7 @@ def _compute_residual_pca(
         check_values=check_values,
         dtype=dtype,
         _columns=mask,
+        _isolate_returned_operator=False,
     )
     return transformed.pca(
         n_comps,
@@ -162,7 +163,7 @@ def _serialize_alpha(alpha: AlphaLike | str) -> Any:
     if alpha is None or isinstance(alpha, (int, float, str)):
         return alpha
     values = np.asarray(alpha)
-    return values.item() if values.ndim == 0 else values
+    return values.item() if values.ndim == 0 else values.copy()
 
 
 def _resolve_alpha(
@@ -217,9 +218,7 @@ def residual_pca(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    resolved_mask = _resolve_mask_var(
-        adata.var, mask_var, use_highly_variable
-    )
+    resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_residual_pca(
         X,

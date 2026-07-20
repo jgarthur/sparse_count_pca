@@ -45,23 +45,25 @@ def _compute_dirichlet_pca(
     tol: float,
     return_operator: bool,
 ) -> PCAResult:
-    method = (
-        DirichletLog(
+    if transform == "dirichlet_log":
+        method = DirichletLog(
             concentration=concentration,
             prior_proportions=prior_proportions,
         )
-        if transform == "dirichlet_log"
-        else DirichletCLR(
+    elif transform == "dirichlet_clr":
+        method = DirichletCLR(
             concentration=concentration,
             prior_proportions=prior_proportions,
         )
-    )
+    else:
+        raise ValueError(f"Unsupported Dirichlet transform: {transform!r}")
     transformed = transform_counts(
         X,
         method,
         check_values=check_values,
         dtype=dtype,
         _columns=mask,
+        _isolate_returned_operator=False,
     )
     return transformed.pca(
         n_comps,
@@ -157,7 +159,7 @@ def _serialize_prior_proportions(
         return "uniform"
     if isinstance(prior_proportions, str):
         return prior_proportions
-    return np.asarray(prior_proportions)
+    return np.asarray(prior_proportions).copy()
 
 
 def _dirichlet_pca_anndata(
@@ -182,9 +184,7 @@ def _dirichlet_pca_anndata(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    resolved_mask = _resolve_mask_var(
-        adata.var, mask_var, use_highly_variable
-    )
+    resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     resolved_prior = _resolve_prior_proportions(prior_proportions, adata)
     result = _compute_dirichlet_pca(
         X,

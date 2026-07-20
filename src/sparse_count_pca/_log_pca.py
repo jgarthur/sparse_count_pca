@@ -48,14 +48,17 @@ def _compute_log_pca(
         method = ShiftedLog(count_shift=shift)
     elif transform == "shifted_clr":
         method = ShiftedCLR(count_shift=shift)
-    else:
+    elif transform == "proportion_shifted_clr":
         method = ProportionShiftedCLR(composition_shift=shift)
+    else:
+        raise ValueError(f"Unsupported log transform: {transform!r}")
     transformed = transform_counts(
         X,
         method,
         check_values=check_values,
         dtype=dtype,
         _columns=mask,
+        _isolate_returned_operator=False,
     )
     return transformed.pca(
         n_comps,
@@ -171,9 +174,7 @@ def _log_pca_anndata(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    resolved_mask = _resolve_mask_var(
-        adata.var, mask_var, use_highly_variable
-    )
+    resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     result = _compute_log_pca(
         X,
         n_comps,

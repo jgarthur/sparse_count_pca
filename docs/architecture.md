@@ -154,11 +154,11 @@ prior-count parameterization and AnnData prior alignment.
 
 | Transform | Shift domain | Representation rank | Empty cells |
 | --- | --- | ---: | --- |
-| shifted log | fixed raw count | 0 | supported |
-| shifted CLR | fixed raw count | 1 | supported |
+| shifted log | fixed raw count | 0 | rejected by input policy |
+| shifted CLR | fixed raw count | 1 | rejected by input policy |
 | proportion-shifted CLR | fixed composition | 1 | rejected |
-| Dirichlet log closure | prior counts | at most 2 | supported |
-| Dirichlet CLR | prior counts | at most 2 | supported |
+| Dirichlet log closure | prior counts | at most 2 | rejected by input policy |
+| Dirichlet CLR | prior counts | at most 2 | rejected by input policy |
 
 The defining cross-check is:
 

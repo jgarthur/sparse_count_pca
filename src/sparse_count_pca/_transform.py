@@ -15,7 +15,7 @@ from scipy.sparse.linalg import LinearOperator
 
 from ._anndata import _empty, _get_count_matrix, _resolve_mask_var
 from ._clip import ClipMode, validate_clip
-from ._counts import BoolArray, CountMatrix, _canonicalize_counts
+from ._counts import BoolArray, CountMatrix, _canonicalize_counts, _sum_counts
 from ._log_transforms import (
     PriorProportions,
     build_dirichlet_clr_representation,
@@ -50,7 +50,12 @@ class Transform(ABC):
         var: Any | None,
         columns: BoolArray | None,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
-        """Build a representation and its reproducibility metadata."""
+        """Build a representation and its reproducibility metadata.
+
+        ``var`` is available only for AnnData-derived transforms. ``columns``
+        is either ``None`` for all variables or the PCA-only variable mask;
+        builders must fit normalization state before applying that mask.
+        """
 
 
 def _resolve_vector_parameter(
@@ -99,30 +104,30 @@ class Residual(Transform):
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
         n_vars = counts.shape[1]
-        alpha_input = _resolve_vector_parameter(
-            self.alpha, var=var, name="alpha"
-        )
-        alpha_full = _validate_model(
-            self.model, self.residual, alpha_input, n_vars
-        )
-        n = np.asarray(counts.astype(np.float64).sum(axis=1)).ravel()
+        alpha_input = _resolve_vector_parameter(self.alpha, var=var, name="alpha")
+        alpha_full = _validate_model(self.model, self.residual, alpha_input, n_vars)
+        n = _sum_counts(counts, axis=1)
+        column_totals = _sum_counts(counts, axis=0)
+        if not (np.isfinite(n).all() and np.isfinite(column_totals).all()):
+            raise ValueError("Count margins overflow float64")
         if (n == 0).any():
             raise ValueError("Cells with zero total counts are not supported")
-        total = float(np.sum(n))
-        p_full = np.asarray(counts.astype(np.float64).sum(axis=0)).ravel() / total
+        with np.errstate(over="ignore"):
+            total = float(np.sum(n, dtype=np.float64))
+        if not np.isfinite(total):
+            raise ValueError("Grand total overflows float64")
+        p_full = column_totals / total
 
-        used = np.ones(n_vars, dtype=bool) if columns is None else columns
-        p = p_full[used]
+        all_columns = columns is None or columns.all()
+        p = p_full if all_columns else p_full[columns]
         if (p == 0).any():
             raise ValueError("Selected genes with zero total counts are not supported")
         if self.model == "binomial" and (p >= 1).any():
             raise ValueError("Binomial residuals require 0 < p_j < 1")
-        alpha_used = alpha_full[used] if alpha_full is not None else None
-        counts_used = (
-            counts
-            if columns is None or used.all()
-            else counts[:, used].tocsr()
+        alpha_used = (
+            alpha_full if alpha_full is None or all_columns else alpha_full[columns]
         )
+        counts_used = counts if all_columns else counts[:, columns].tocsr()
         representation = build_residual_representation(
             counts_used,
             n,
@@ -165,12 +170,16 @@ class ShiftedLog(Transform):
         )
         if columns is not None:
             representation = representation.select_columns(columns)
-        return representation, "Shifted log", {
-            "transform": "shifted_log",
-            "shift_domain": "count",
-            "count_shift": count_shift,
-            "normalization_n_vars": counts.shape[1],
-        }
+        return (
+            representation,
+            "Shifted log",
+            {
+                "transform": "shifted_log",
+                "shift_domain": "count",
+                "count_shift": count_shift,
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -186,12 +195,16 @@ class ShiftedCLR(Transform):
         )
         if columns is not None:
             representation = representation.select_columns(columns)
-        return representation, "Shifted CLR", {
-            "transform": "shifted_clr",
-            "shift_domain": "count",
-            "count_shift": count_shift,
-            "normalization_n_vars": counts.shape[1],
-        }
+        return (
+            representation,
+            "Shifted CLR",
+            {
+                "transform": "shifted_clr",
+                "shift_domain": "count",
+                "count_shift": count_shift,
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -209,13 +222,17 @@ class ProportionShiftedCLR(Transform):
         )
         if columns is not None:
             representation = representation.select_columns(columns)
-        return representation, "Proportion-shifted CLR", {
-            "transform": "proportion_shifted_clr",
-            "shift_domain": "composition",
-            "composition_shift": composition_shift,
-            "effective_count_shift": "cell_total * composition_shift",
-            "normalization_n_vars": counts.shape[1],
-        }
+        return (
+            representation,
+            "Proportion-shifted CLR",
+            {
+                "transform": "proportion_shifted_clr",
+                "shift_domain": "composition",
+                "composition_shift": composition_shift,
+                "effective_count_shift": "cell_total * composition_shift",
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -239,15 +256,19 @@ class DirichletLog(Transform):
         )
         if columns is not None:
             representation = representation.select_columns(columns)
-        return representation, "Dirichlet log", {
-            "transform": "dirichlet_log",
-            "shift_domain": "dirichlet_prior_counts",
-            "concentration": concentration,
-            "prior_proportions": _serialize_parameter(
-                self.prior_proportions, none="uniform"
-            ),
-            "normalization_n_vars": counts.shape[1],
-        }
+        return (
+            representation,
+            "Dirichlet log",
+            {
+                "transform": "dirichlet_log",
+                "shift_domain": "dirichlet_prior_counts",
+                "concentration": concentration,
+                "prior_proportions": _serialize_parameter(
+                    self.prior_proportions, none="uniform"
+                ),
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -271,15 +292,19 @@ class DirichletCLR(Transform):
         )
         if columns is not None:
             representation = representation.select_columns(columns)
-        return representation, "Dirichlet CLR", {
-            "transform": "dirichlet_clr",
-            "shift_domain": "dirichlet_prior_counts",
-            "concentration": concentration,
-            "prior_proportions": _serialize_parameter(
-                self.prior_proportions, none="uniform"
-            ),
-            "normalization_n_vars": counts.shape[1],
-        }
+        return (
+            representation,
+            "Dirichlet CLR",
+            {
+                "transform": "dirichlet_clr",
+                "shift_domain": "dirichlet_prior_counts",
+                "concentration": concentration,
+                "prior_proportions": _serialize_parameter(
+                    self.prior_proportions, none="uniform"
+                ),
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
 
 
 def _normalize_selector(
@@ -330,6 +355,7 @@ class TransformedMatrix(LinearOperator):
         obs_names: Any | None = None,
         var_names: Any | None = None,
         var: Any | None = None,
+        isolate_returned_operator: bool = True,
     ) -> None:
         operator_dtype = _normalize_operator_dtype(dtype)
         if (
@@ -352,26 +378,38 @@ class TransformedMatrix(LinearOperator):
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
         self._var = var.copy() if var is not None else None
+        # Public two-step transforms remain live after ``pca`` and therefore
+        # isolate a mutable returned operator. One-step wrappers mark their
+        # temporary transform transferable so the operator can take ownership.
+        self._isolate_returned_operator = isolate_returned_operator
         super().__init__(dtype=operator_dtype, shape=representation.shape)
 
     def _matvec(self, vector: NDArray[Any]) -> NDArray[Any]:
         vector = np.asarray(vector, dtype=self.dtype)
-        values = self._sparse @ vector + self._left @ (self._right.T @ vector)
+        values = self._sparse @ vector
+        if self._right.shape[1]:
+            values += self._left @ (self._right.T @ vector)
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatvec(self, vector: NDArray[Any]) -> NDArray[Any]:
         vector = np.asarray(vector, dtype=self.dtype)
-        values = self._sparse.T @ vector + self._right @ (self._left.T @ vector)
+        values = self._sparse.T @ vector
+        if self._right.shape[1]:
+            values += self._right @ (self._left.T @ vector)
         return np.asarray(values, dtype=self.dtype)
 
     def _matmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
         matrix = np.asarray(matrix, dtype=self.dtype)
-        values = self._sparse @ matrix + self._left @ (self._right.T @ matrix)
+        values = self._sparse @ matrix
+        if self._right.shape[1]:
+            values += self._left @ (self._right.T @ matrix)
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
         matrix = np.asarray(matrix, dtype=self.dtype)
-        values = self._sparse.T @ matrix + self._right @ (self._left.T @ matrix)
+        values = self._sparse.T @ matrix
+        if self._right.shape[1]:
+            values += self._right @ (self._left.T @ matrix)
         return np.asarray(values, dtype=self.dtype)
 
     def materialize(
@@ -421,10 +459,15 @@ class TransformedMatrix(LinearOperator):
 
         for start in range(0, rows.size, block_size):
             stop = min(start + block_size, rows.size)
-            block_rows = rows[start:stop]
-            sparse_values = self._sparse[block_rows][:, columns].toarray()
-            values = sparse_values + self._left[block_rows] @ self._right[columns].T
-            np.copyto(destination[start:stop], values, casting="same_kind")
+            block_rows = slice(start, stop) if obs is None else rows[start:stop]
+            sparse_block = self._sparse[block_rows]
+            if var is not None:
+                sparse_block = sparse_block[:, columns]
+            sparse_values = sparse_block.toarray()
+            if self._right.shape[1]:
+                right = self._right if var is None else self._right[columns]
+                sparse_values += self._left[block_rows] @ right.T
+            np.copyto(destination[start:stop], sparse_values, casting="same_kind")
         return destination
 
     def pca(
@@ -454,15 +497,11 @@ class TransformedMatrix(LinearOperator):
             else:
                 from ._counts import _validate_boolean_mask
 
-                mask = _validate_boolean_mask(
-                    mask_var, self.shape[1], name="mask_var"
-                )
+                mask = _validate_boolean_mask(mask_var, self.shape[1], name="mask_var")
                 if not mask.any():
                     raise ValueError("mask_var selected zero genes")
         else:
-            resolved_mask = _resolve_mask_var(
-                self._var, mask_var, use_highly_variable
-            )
+            resolved_mask = _resolve_mask_var(self._var, mask_var, use_highly_variable)
             mask = resolved_mask.values
             params.update(
                 {
@@ -487,6 +526,7 @@ class TransformedMatrix(LinearOperator):
             random_state=random_state,
             tol=tol,
             return_operator=return_operator,
+            copy_operator=return_operator and self._isolate_returned_operator,
         )
 
 
@@ -499,6 +539,7 @@ def _transform(
     check_values: bool = True,
     dtype: DTypeLike = "float64",
     _columns: BoolArray | None = None,
+    _isolate_returned_operator: bool = True,
 ) -> TransformedMatrix:
     """Build a public transform, optionally restricted for a PCA wrapper."""
     if not isinstance(method, Transform):
@@ -519,14 +560,12 @@ def _transform(
     if _columns is not None:
         from ._counts import _validate_boolean_mask
 
-        _columns = _validate_boolean_mask(
-            _columns, counts.shape[1], name="columns"
-        )
+        _columns = _validate_boolean_mask(_columns, counts.shape[1], name="columns")
         if not _columns.any():
             raise ValueError("columns selected zero genes")
-    representation, label, params = method._build(
-        counts, var=var, columns=_columns
-    )
+        if _columns.all():
+            _columns = None
+    representation, label, params = method._build(counts, var=var, columns=_columns)
     if _columns is not None and var_names is not None:
         var_names = var_names[_columns]
         var = var.iloc[np.flatnonzero(_columns)]
@@ -539,6 +578,7 @@ def _transform(
         obs_names=obs_names,
         var_names=var_names,
         var=var,
+        isolate_returned_operator=_isolate_returned_operator,
     )
 
 

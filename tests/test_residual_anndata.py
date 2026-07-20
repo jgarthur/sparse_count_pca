@@ -8,6 +8,7 @@ from anndata import AnnData
 from scipy import sparse
 
 from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
+from sparse_count_pca._anndata import _get_count_matrix
 
 
 def test_default_outputs_and_copy(adata):
@@ -18,6 +19,14 @@ def test_default_outputs_and_copy(adata):
     assert "PCs" in copied.varm
     assert "pca" in copied.uns
     assert "X_pca" not in adata.obsm
+    params = copied.uns["pca"]["params"]
+    assert params["normalization_n_vars"] == adata.n_vars
+    assert params["pca_n_vars"] == adata.n_vars
+    assert params["mask_var_details"] == {
+        "kind": "default",
+        "key": None,
+        "n_vars_used": adata.n_vars,
+    }
 
     returned = residual_pca(adata, n_comps=2, dtype="float64")
     assert returned is None
@@ -43,7 +52,9 @@ def test_key_added_and_layer(adata):
         key_added="resid_pca",
         dtype="float64",
     )
-    np.testing.assert_allclose(adata.obsm["resid_pca"], expected.scores)
+    np.testing.assert_allclose(
+        adata.obsm["resid_pca"], expected.scores, rtol=0.0, atol=1e-12
+    )
     assert "X_resid_pca" not in adata.obsm
     assert "resid_pca" in adata.varm
     assert adata.uns["resid_pca"]["params"]["layer"] == "counts"
@@ -78,6 +89,8 @@ def test_default_and_explicit_masks(adata):
         "key": "highly_variable",
         "n_vars_used": 3,
     }
+    assert adata.uns["pca"]["params"]["normalization_n_vars"] == adata.n_vars
+    assert adata.uns["pca"]["params"]["pca_n_vars"] == 3
 
     all_genes = residual_pca(adata, 2, mask_var=None, copy=True, dtype="float64")
     assert np.isfinite(all_genes.varm["PCs"]).all()
@@ -143,6 +156,20 @@ def test_mask_var_requires_genuinely_boolean_array(adata, mask):
 
 
 @pytest.mark.parametrize(
+    ("mask", "error", "message"),
+    [
+        ("missing", KeyError, "not found"),
+        (np.zeros(4, dtype=bool), ValueError, "selected zero genes"),
+        (np.ones(3, dtype=bool), ValueError, "length 4"),
+    ],
+)
+def test_mask_var_reports_selector_errors(adata, mask, error, message):
+    """Missing, empty, and wrong-length masks produce specific errors."""
+    with pytest.raises(error, match=message):
+        residual_pca(adata, 2, mask_var=mask)
+
+
+@pytest.mark.parametrize(
     "values",
     [
         [1, 1, 1, 0],
@@ -204,9 +231,21 @@ def test_use_raw_aligns_current_var_names(adata):
     expected = residual_pca_matrix(raw[:, adata.var_names].X, 2, dtype="float64")
     result = residual_pca(adata, 2, use_raw=True, copy=True, dtype="float64")
     np.testing.assert_allclose(
-        result.uns["pca"]["singular_values"], expected.singular_values
+        result.uns["pca"]["singular_values"],
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
     )
     assert result.varm["PCs"].shape == (adata.n_vars, 2)
+
+
+def test_use_raw_with_exact_variable_alignment_borrows_raw_matrix(adata):
+    """An exactly aligned raw matrix is returned without a column slice."""
+    adata.raw = adata.copy()
+
+    selected = _get_count_matrix(adata, layer=None, use_raw=True)
+
+    assert selected is adata.raw.X
 
 
 def test_use_raw_validation(adata):
@@ -241,11 +280,23 @@ def test_backed_sparse_x(adata, tmp_path):
         backed.file.close()
 
     assert not result.isbacked
-    np.testing.assert_allclose(matrix_result.singular_values, expected.singular_values)
-    np.testing.assert_allclose(inplace_singular_values, expected.singular_values)
+    np.testing.assert_allclose(
+        matrix_result.singular_values,
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        inplace_singular_values,
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
     np.testing.assert_allclose(
         result.uns["pca"]["singular_values"],
         expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
     )
 
 

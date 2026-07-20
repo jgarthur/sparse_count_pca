@@ -20,9 +20,14 @@ from ._counts import (
     BoolArray,
     CountMatrix,
     _canonicalize_counts,
+    _sum_counts,
     _validate_boolean_mask,
 )
-from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
+from ._operator import (
+    SparseLowRankLinearOperator,
+    _normalize_operator_dtype,
+    _squared_norm_is_numerically_zero,
+)
 from ._representation import SparseLowRankMatrix
 from ._residual_pca import _resolve_alpha, _serialize_alpha
 from ._residuals import (
@@ -62,11 +67,22 @@ def build_correspondence_representation(
     *,
     model: CorrespondenceModel = "poisson",
     alpha: Float64Array | None = None,
+    row_totals: Float64Array | None = None,
+    column_totals: Float64Array | None = None,
 ) -> tuple[SparseLowRankMatrix, Float64Array, Float64Array]:
     """Build a total-scaled Pearson-residual representation."""
-    row_totals = np.asarray(X.astype(np.float64).sum(axis=1)).ravel()
-    column_totals = np.asarray(X.astype(np.float64).sum(axis=0)).ravel()
-    total = float(np.sum(row_totals))
+    if row_totals is None:
+        row_totals = _sum_counts(X, axis=1)
+    if column_totals is None:
+        column_totals = _sum_counts(X, axis=0)
+    with np.errstate(over="ignore"):
+        total = float(np.sum(row_totals, dtype=np.float64))
+    if not (
+        np.isfinite(row_totals).all()
+        and np.isfinite(column_totals).all()
+        and np.isfinite(total)
+    ):
+        raise ValueError("Count margins overflow float64")
     row_masses = row_totals / total
     column_masses = column_totals / total
     pearson = build_pearson_residual_representation(
@@ -105,15 +121,18 @@ def _compute_correspondence_analysis(
         mask = _validate_boolean_mask(mask, n_vars, name="mask")
         if not mask.any():
             raise ValueError("mask selected zero columns")
-        counts = counts[:, mask].tocsr()
-        if alpha_full is not None:
-            alpha_full = alpha_full[mask]
+        if not mask.all():
+            counts = counts[:, mask].tocsr(copy=False)
+            if alpha_full is not None:
+                alpha_full = alpha_full[mask]
     if not 1 <= n_comps < min(counts.shape):
         raise ValueError(
             "n_comps must satisfy 1 <= n_comps < min(n_rows, n_columns_used)"
         )
-    row_totals = np.asarray(counts.astype(np.float64).sum(axis=1)).ravel()
-    column_totals = np.asarray(counts.astype(np.float64).sum(axis=0)).ravel()
+    row_totals = _sum_counts(counts, axis=1)
+    column_totals = _sum_counts(counts, axis=0)
+    if not (np.isfinite(row_totals).all() and np.isfinite(column_totals).all()):
+        raise ValueError("Count margins overflow float64")
     if (row_totals == 0).any():
         raise ValueError("Rows with zero mass are not supported")
     if (column_totals == 0).any():
@@ -130,11 +149,24 @@ def _compute_correspondence_analysis(
         counts,
         model=model,
         alpha=alpha_full,
+        row_totals=row_totals,
+        column_totals=column_totals,
     )
-    operator = SparseLowRankLinearOperator(representation, center=False, dtype=dtype)
+    operator = SparseLowRankLinearOperator(
+        representation,
+        center=False,
+        dtype=dtype,
+        # This one-step path owns the representation. If retained, the operator
+        # takes over those arrays rather than copying them for isolation.
+        copy=False,
+    )
     total_inertia = operator.frobenius_squared_uncentered()
-    eps = np.finfo(dtype).eps
-    if total_inertia <= eps * eps * counts.shape[0] * counts.shape[1]:
+    if _squared_norm_is_numerically_zero(
+        total_inertia,
+        scale=1.0,
+        shape=counts.shape,
+        dtype=dtype,
+    ):
         raise ValueError(
             "Contingency table has numerically zero inertia; "
             "correspondence axes are undefined"
@@ -238,9 +270,7 @@ def correspondence_analysis(
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
-    resolved_mask = _resolve_mask_var(
-        adata.var, mask_var, use_highly_variable
-    )
+    resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_correspondence_analysis(
         X,

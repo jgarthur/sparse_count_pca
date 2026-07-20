@@ -181,8 +181,10 @@ z_{cg}
 \frac{1}{G}\sum_h\log\left(1+\frac{x_{ch}}{a}\right).
 $$
 
-This is the canonical scalar count-shift CLR. It supports zero-total cells,
-because no division by observed cell depth occurs.
+This formula is mathematically defined for zero-total cells because no division
+by observed cell depth occurs. The package nevertheless rejects empty cells
+consistently before fitting any transform so they cannot silently affect PCA
+centering and covariance.
 
 The current PFlog formula is obtained with
 
@@ -514,6 +516,9 @@ same decomposition and variance contract.
 
 For AnnData calls, the input matrix after `layer`/`raw` selection and any
 upstream permanent gene filtering defines the normalization universe.
+Write its width as `G_norm` and record it as `normalization_n_vars`. Write the
+post-mask PCA width as `G_pca` and record it as `pca_n_vars`; in general these
+need not be equal.
 `mask_var` selects columns for PCA only after:
 
 - CLR row means are computed over all normalization genes;
@@ -542,8 +547,9 @@ The defining tests verify all of the following:
 
 1. Count-shifted CLR equals a dense direct implementation.
 2. Every count-shifted CLR row sums to zero within floating-point tolerance.
-3. Count-shifted CLR permits a zero-total row.
-4. Proportion-shifted CLR rejects a zero-total row.
+3. Count-shifted CLR is mathematically finite on a zero-total row, but the
+   package-wide input policy rejects that row before transform construction.
+4. Proportion-shifted CLR is also mathematically undefined on a zero-total row.
 5. Proportion-shifted CLR is invariant to multiplying each row by a positive
    scalar; count-shifted CLR is not claimed to be.
 6. With $G$ genes, `shifted_clr(count_shift=a)` equals

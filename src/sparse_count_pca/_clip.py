@@ -14,6 +14,7 @@ IndexArray: TypeAlias = NDArray[np.intp]
 CSRMatrix: TypeAlias = sparse.csr_matrix | sparse.csr_array
 
 CLIP_MODES: set[ClipMode] = {"symmetric", "upper"}
+_CANDIDATE_CHUNK_SIZE = 65_536
 
 
 def validate_clip(
@@ -55,7 +56,6 @@ def _clipped_zero_locations(
     threshold: float,
     *,
     max_count: int | None = None,
-    support_rows: IndexArray | None = None,
 ) -> tuple[IndexArray, IndexArray] | None:
     """Find structural zeros (i, j) of X where ``u[i] * v[j] < -threshold``.
 
@@ -65,9 +65,7 @@ def _clipped_zero_locations(
         v: Rank-one column factor.
         threshold: Positive clipping threshold.
         max_count: If given and the number of locations exceeds it, return
-            ``None``. A provable lower bound may return before sparse-support
-            membership arrays are constructed.
-        support_rows: Precomputed row index aligned with ``X.data``.
+            ``None`` before allocating the output arrays.
 
     Returns:
         Flat row and column index arrays grouped by row, or ``None`` if the
@@ -101,39 +99,51 @@ def _clipped_zero_locations(
     stop[neg] = n
     # u_i == 0: empty range (threshold > 0)
 
-    counts = stop - start
-    total = int(counts.sum())
     empty = np.empty(0, dtype=np.intp)
-    if total == 0:
+    if not (stop > start).any():
         return empty, empty
-    # Materialize all candidate (row, col) pairs in one shot.
-    rows = np.repeat(np.arange(m, dtype=np.intp), counts)
-    offsets = np.repeat(np.cumsum(counts) - counts, counts)
-    flat = np.arange(total, dtype=np.intp) - offsets + np.repeat(start, counts)
-    cols = order[flat]
 
-    # Binary search only generates candidates: division can round across the
-    # strict boundary, so enforce the requested product predicate directly.
-    keep = u64[rows] * v64[cols] < -threshold
-    rows, cols = rows[keep], cols[keep]
+    def surviving_column_chunks():
+        for row in range(m):
+            support = X.indices[X.indptr[row] : X.indptr[row + 1]]
+            for chunk_start in range(start[row], stop[row], _CANDIDATE_CHUNK_SIZE):
+                chunk_stop = min(
+                    chunk_start + _CANDIDATE_CHUNK_SIZE,
+                    stop[row],
+                )
+                columns = order[chunk_start:chunk_stop]
+                # Division only identifies a widened candidate interval. Apply
+                # the exact floating-point product predicate at the boundary.
+                columns = columns[u64[row] * v64[columns] < -threshold]
+                if support.size and columns.size:
+                    positions = np.searchsorted(support, columns)
+                    on_support = positions < support.size
+                    on_support[on_support] = (
+                        support[positions[on_support]] == columns[on_support]
+                    )
+                    columns = columns[~on_support]
+                if columns.size:
+                    yield row, columns
 
-    # At most X.nnz candidates can be removed by sparse-support membership,
-    # so this lower bound can sometimes abort before allocating those arrays.
-    if max_count is not None and rows.size - X.nnz > max_count:
-        return None
+    # Count first so a finite support-growth guard is enforced before output
+    # allocation. The second pass exchanges a little computation for bounded
+    # temporary memory even when candidate support is nearly dense.
+    count = 0
+    for _, columns in surviving_column_chunks():
+        count += columns.size
+        if max_count is not None and count > max_count:
+            return None
+    if count == 0:
+        return empty, empty
 
-    # Drop candidates that lie on the sparse support, via one global sorted
-    # membership test on linear indices.
-    if X.nnz:
-        lin = rows * n + cols
-        if support_rows is None:
-            support_rows = np.repeat(np.arange(m, dtype=np.intp), np.diff(X.indptr))
-        x_lin = support_rows * n + X.indices
-        p = np.searchsorted(x_lin, lin).clip(max=x_lin.size - 1)
-        keep = x_lin[p] != lin
-        rows, cols = rows[keep], cols[keep]
-    if max_count is not None and rows.size > max_count:
-        return None
+    rows = np.empty(count, dtype=np.intp)
+    cols = np.empty(count, dtype=np.intp)
+    offset = 0
+    for row, columns in surviving_column_chunks():
+        next_offset = offset + columns.size
+        rows[offset:next_offset] = row
+        cols[offset:next_offset] = columns
+        offset = next_offset
     return rows, cols
 
 
@@ -194,7 +204,10 @@ def apply_clipping(
     if clip_max_nnz_ratio is not None:
         max_possible_ratio = (X.shape[0] * X.shape[1]) / X.nnz
         if clip_max_nnz_ratio <= max_possible_ratio:
-            max_count = int(np.ceil(clip_max_nnz_ratio * X.nnz)) - X.nnz
+            max_count = max(
+                0,
+                int(np.ceil(clip_max_nnz_ratio * X.nnz)) - X.nnz - 1,
+            )
 
     locations = _clipped_zero_locations(
         X,
@@ -202,7 +215,6 @@ def apply_clipping(
         v,
         clip,
         max_count=max_count,
-        support_rows=rows,
     )
     if locations is None:
         raise RuntimeError(
@@ -234,7 +246,7 @@ def apply_clipping(
             np.concatenate([data, correction_data]),
             (
                 np.concatenate([rows, correction_rows]),
-                np.concatenate([X.indices.astype(np.intp), correction_cols]),
+                np.concatenate([X.indices, correction_cols]),
             ),
         ),
         shape=X.shape,

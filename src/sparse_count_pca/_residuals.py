@@ -14,6 +14,7 @@ from ._representation import SparseLowRankMatrix
 
 ALPHA_EPS = 1e-8
 RELATIVE_DEVIANCE_SERIES_THRESHOLD = 0.125
+DEVIANCE_ROUNDING_TOLERANCE = 64.0 * np.finfo(np.float64).eps
 _SERIES_TERMS = 24
 
 Model: TypeAlias = Literal["poisson", "binomial", "scaled_nb"]
@@ -40,9 +41,7 @@ def build_pearson_residual_representation(
     alpha: Float64Array | None,
 ) -> SparseLowRankMatrix:
     """Build an unclipped Poisson or scaled-NB Pearson representation."""
-    rows = np.repeat(
-        np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr)
-    )
+    rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
     if model == "poisson":
         if alpha is not None:
             raise ValueError("alpha is only used for model='scaled_nb'")
@@ -57,12 +56,12 @@ def build_pearson_residual_representation(
     else:
         raise ValueError(f"Unsupported Pearson residual model: {model!r}")
 
-    denominator = np.sqrt(
-        n[rows] * p[X.indices] * variance_scale[X.indices]
-    )
+    denominator = np.sqrt(n[rows] * p[X.indices] * variance_scale[X.indices])
     sparse_part = sparse.csr_matrix(
         (
             X.data.astype(np.float64, copy=False) / denominator,
+            # The persistent representation owns its support so later caller
+            # mutation of X cannot change the fitted transform.
             X.indices.copy(),
             X.indptr.copy(),
         ),
@@ -126,29 +125,26 @@ def _relative_entropy_increment(
     boundary = delta == -base
     result[boundary] = base[boundary]
 
-    series = (~boundary) & (
-        np.abs(relative) <= RELATIVE_DEVIANCE_SERIES_THRESHOLD
-    )
+    series = (~boundary) & (np.abs(relative) <= RELATIVE_DEVIANCE_SERIES_THRESHOLD)
     r = relative[series]
     power = r * r
     series_sum = power / 2.0
+    # Iterating over the small fixed order avoids a terms-by-values temporary.
     for order in range(3, _SERIES_TERMS + 1):
         power *= -r
         series_sum += power / (order * (order - 1))
     result[series] = base[series] * series_sum
 
     direct = ~(boundary | series)
-    result[direct] = (
-        (base[direct] + delta[direct]) * np.log1p(relative[direct])
-        - delta[direct]
-    )
+    result[direct] = (base[direct] + delta[direct]) * np.log1p(
+        relative[direct]
+    ) - delta[direct]
     return result
 
 
 def _check_deviance_rounding(deviance: Float64Array) -> Float64Array:
     """Clamp final-rounding negatives and reject materially negative values."""
-    tolerance = 64.0 * np.finfo(np.float64).eps
-    if (deviance < -tolerance).any():
+    if (deviance < -DEVIANCE_ROUNDING_TOLERANCE).any():
         minimum = float(np.min(deviance))
         raise FloatingPointError(
             f"Stable deviance calculation produced a negative value ({minimum})"
@@ -157,7 +153,7 @@ def _check_deviance_rounding(deviance: Float64Array) -> Float64Array:
 
 
 def _poisson_deviance(x: Float64Array, mu: Float64Array) -> Float64Array:
-    """Compute elementwise Poisson deviance contributions stably."""
+    """Compute ``2 * (x log(x / mu) - (x - mu))`` stably."""
     result = 2.0 * _relative_entropy_increment(mu, x - mu)
     return _check_deviance_rounding(result)
 
@@ -167,7 +163,7 @@ def _binomial_deviance(
     n: Float64Array,
     mu: Float64Array,
 ) -> Float64Array:
-    """Compute elementwise binomial deviance contributions stably."""
+    """Compute success-plus-failure binomial deviance stably."""
     delta = x - mu
     result = 2.0 * (
         _relative_entropy_increment(mu, delta)
@@ -188,23 +184,20 @@ def _scaled_nb_deviance_series(
     series_sum = np.zeros_like(relative)
     small_alpha_mu = alpha_mu <= 1.0
     rho = np.empty_like(alpha_mu)
-    rho[small_alpha_mu] = alpha_mu[small_alpha_mu] / (
-        1.0 + alpha_mu[small_alpha_mu]
-    )
+    rho[small_alpha_mu] = alpha_mu[small_alpha_mu] / (1.0 + alpha_mu[small_alpha_mu])
     one_minus_rho = np.empty_like(alpha_mu)
-    one_minus_rho[~small_alpha_mu] = 1.0 / (
-        1.0 + alpha_mu[~small_alpha_mu]
-    )
+    one_minus_rho[~small_alpha_mu] = 1.0 / (1.0 + alpha_mu[~small_alpha_mu])
+    factor = np.empty_like(relative)
+    rho_power = rho[small_alpha_mu].copy()
+    log_rho = np.log1p(-one_minus_rho[~small_alpha_mu])
 
     for order in range(2, _SERIES_TERMS + 1):
         exponent = order - 1
-        factor = np.empty_like(relative)
-        factor[small_alpha_mu] = 1.0 - rho[small_alpha_mu] ** exponent
-        factor[~small_alpha_mu] = -np.expm1(
-            exponent * np.log1p(-one_minus_rho[~small_alpha_mu])
-        )
+        factor[small_alpha_mu] = 1.0 - rho_power
+        factor[~small_alpha_mu] = -np.expm1(exponent * log_rho)
         series_sum += power * factor / (order * exponent)
         power *= -relative
+        rho_power *= rho[small_alpha_mu]
     return 2.0 * mu * series_sum
 
 
@@ -308,9 +301,7 @@ def build_residual_representation(
             alpha=alpha_array,
         )
 
-    rows = np.repeat(
-        np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr)
-    )
+    rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
     cols = X.indices
     x = X.data.astype(np.float64, copy=False)
     n_support = n[rows]

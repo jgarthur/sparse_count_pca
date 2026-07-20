@@ -11,8 +11,11 @@ from sparse_count_pca import (
     dirichlet_log_pca_matrix,
 )
 from sparse_count_pca._log_transforms import (
+    PRIOR_SUM_ATOL,
+    PRIOR_SUM_RTOL,
     build_dirichlet_clr_representation,
     build_dirichlet_log_representation,
+    validate_dirichlet_prior,
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 
@@ -62,7 +65,7 @@ def test_dirichlet_representations_match_dense_oracle(
     assert representation.sparse.nnz == counts.nnz
     assert representation.rank == 2
     if clr:
-        np.testing.assert_allclose(actual.mean(axis=1), 0.0, atol=1e-15)
+        np.testing.assert_allclose(actual.mean(axis=1), 0.0, rtol=0.0, atol=1e-15)
 
 
 @pytest.mark.parametrize(
@@ -88,9 +91,14 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
     _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
 
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-12
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-12,
     )
-    np.testing.assert_allclose(result.singular_values, singular_values[:2], rtol=1e-10)
+    np.testing.assert_allclose(
+        result.singular_values, singular_values[:2], rtol=1e-10, atol=0.0
+    )
     np.testing.assert_allclose(
         np.abs(result.components), np.abs(Vt[:2]), rtol=1e-9, atol=1e-9
     )
@@ -127,8 +135,11 @@ def test_dirichlet_mask_is_applied_after_full_normalization(adata, pca, clr):
         result.uns["dirichlet"]["singular_values"],
         singular_values[:2],
         rtol=1e-10,
+        atol=0.0,
     )
-    assert result.uns["dirichlet"]["params"]["normalization_n_vars"] == adata.n_vars
+    params = result.uns["dirichlet"]["params"]
+    assert params["normalization_n_vars"] == adata.n_vars
+    assert params["pca_n_vars"] == int(mask.sum())
     assert np.isnan(result.varm["dirichlet"][~mask]).all()
 
 
@@ -145,7 +156,10 @@ def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
     )
     expected = dirichlet_clr_pca_matrix(adata.X, n_comps=2, prior_proportions=prior)
     np.testing.assert_allclose(
-        result.uns["dirichlet"]["singular_values"], expected.singular_values
+        result.uns["dirichlet"]["singular_values"],
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
     )
     assert result.uns["dirichlet"]["params"]["prior_proportions"] == "prior"
 
@@ -154,14 +168,37 @@ def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
     "pca",
     [dirichlet_log_pca_matrix, dirichlet_clr_pca_matrix],
 )
-def test_dirichlet_allows_zero_count_rows(pca, counts):
-    """Dirichlet transforms support rows with zero total counts."""
+def test_dirichlet_rejects_zero_count_rows(pca, counts):
+    """Dirichlet transforms reject rows with zero total counts."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
-    result = pca(with_empty, n_comps=2, return_operator=True)
-    assert np.isfinite(result.singular_values).all()
-    assert result.operator.shape == with_empty.shape
+    with pytest.raises(ValueError, match="zero total counts"):
+        pca(with_empty, n_comps=2, return_operator=True)
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [build_dirichlet_log_representation, build_dirichlet_clr_representation],
+)
+def test_dirichlet_transforms_are_invariant_to_joint_global_scaling(counts, builder):
+    """Scaling counts and total prior concentration preserves values."""
+    prior = np.array([0.1, 0.2, 0.3, 0.4])
+    original = builder(counts, concentration=2.0, prior_proportions=prior)
+    rescaled = builder(counts * 3, concentration=6.0, prior_proportions=prior)
+    original_values = SparseLowRankLinearOperator(
+        original, center=False, dtype="float64"
+    ) @ np.eye(counts.shape[1])
+    rescaled_values = SparseLowRankLinearOperator(
+        rescaled, center=False, dtype="float64"
+    ) @ np.eye(counts.shape[1])
+
+    np.testing.assert_allclose(
+        original_values,
+        rescaled_values,
+        rtol=0.0,
+        atol=1e-14,
+    )
 
 
 @pytest.mark.parametrize("concentration", [0.0, -1.0, np.inf, np.nan])
@@ -184,3 +221,24 @@ def test_dirichlet_rejects_invalid_prior(counts, prior, message):
     """Dirichlet transforms validate prior shape, values, and normalization."""
     with pytest.raises(ValueError, match=message):
         dirichlet_clr_pca_matrix(counts, n_comps=2, prior_proportions=prior)
+
+
+@pytest.mark.parametrize("direction", [-1.0, 1.0])
+def test_dirichlet_prior_sum_tolerance_has_explicit_boundary(direction):
+    """Prior sums pass within and fail outside the documented tolerance."""
+    tolerance = PRIOR_SUM_ATOL + PRIOR_SUM_RTOL
+    inside = np.array([1.0 + direction * 0.5 * tolerance])
+    outside = np.array([1.0 + direction * 2.0 * tolerance])
+
+    _, normalized = validate_dirichlet_prior(1.0, inside, n_vars=1)
+    np.testing.assert_array_equal(normalized, np.array([1.0]))
+    with pytest.raises(ValueError, match="sum to one"):
+        validate_dirichlet_prior(1.0, outside, n_vars=1)
+
+
+def test_dirichlet_rejects_unrepresentable_prior_counts(counts):
+    """A positive concentration that underflows per-gene priors fails clearly."""
+    tiny = np.nextafter(0.0, 1.0)
+
+    with pytest.raises(ValueError, match="prior counts must be representable"):
+        dirichlet_clr_pca_matrix(counts, n_comps=2, concentration=tiny)

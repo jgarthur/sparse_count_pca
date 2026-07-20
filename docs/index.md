@@ -5,8 +5,8 @@ matrix representations, and PCA. Start with the path that matches your goal.
 
 ## Review the project
 
-1. [Architecture](architecture.md) — guided source tour, diagrams, invariants,
-   and test strategy.
+1. [Architecture review guide](architecture.md) — guided source tour, diagrams,
+   invariants, and test strategy.
 2. [Package specification](specification.md) — normative API, mathematical,
    validation, numerical, and AnnData contracts.
 3. [Log-transform design](design/log-transforms.md) — why fixed-count,

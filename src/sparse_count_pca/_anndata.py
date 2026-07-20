@@ -44,6 +44,8 @@ def _get_count_matrix(
                 "use_raw=True requires all current adata.var_names to be present "
                 "in adata.raw.var_names"
             )
+        if adata.raw.var_names.equals(adata.var_names):
+            return adata.raw.X
         return adata.raw[:, adata.var_names].X
     return adata.layers[layer] if layer is not None else adata.X
 
@@ -67,6 +69,8 @@ def _write_pca_result(
         np.nan,
         dtype=result.loadings.dtype,
     )
+    # Scanpy calls these loadings, but they are component coefficients
+    # (components.T), not variance-weighted statistical loadings.
     loadings[mask.values] = result.loadings
     adata.obsm[obsm_key] = result.scores
     adata.varm[varm_key] = loadings
@@ -109,6 +113,7 @@ def _resolve_mask_var(
         ValueError: If arguments conflict or the resolved mask is invalid.
         KeyError: If a requested variable metadata key is absent.
     """
+    was_default = mask_var is _empty
     if use_highly_variable is not None:
         warnings.warn(
             "use_highly_variable is deprecated; use mask_var instead. "
@@ -123,40 +128,31 @@ def _resolve_mask_var(
         mask_var = "highly_variable" if use_highly_variable else None
 
     if mask_var is _empty:
-        if "highly_variable" in var:
-            mask = _validate_boolean_mask(
-                var["highly_variable"], var.shape[0], name="mask_var"
-            )
-        else:
-            mask = np.ones(var.shape[0], dtype=bool)
-    elif mask_var is None:
-        mask = np.ones(var.shape[0], dtype=bool)
-    elif isinstance(mask_var, str):
-        if mask_var not in var:
-            raise KeyError(f"{mask_var!r} not found in adata.var")
-        mask = _validate_boolean_mask(var[mask_var], var.shape[0], name="mask_var")
-    else:
-        mask = _validate_boolean_mask(mask_var, var.shape[0], name="mask_var")
-
-    if mask.sum() == 0:
-        raise ValueError("mask_var selected zero genes")
-
-    if mask_var is _empty:
-        key = "highly_variable" if "highly_variable" in var else None
-        kind = "default"
-    elif mask_var is None:
-        key = None
-        kind = "none"
-    elif isinstance(mask_var, str):
-        key = mask_var
-        kind = "var_key"
-    else:
-        key = None
-        kind = "array"
-    if mask_var is _empty:
         selector = "highly_variable" if "highly_variable" in var else None
     else:
         selector = mask_var
+    if selector is None:
+        mask = np.ones(var.shape[0], dtype=bool)
+    elif isinstance(selector, str):
+        if selector not in var:
+            raise KeyError(f"{selector!r} not found in adata.var")
+        mask = _validate_boolean_mask(var[selector], var.shape[0], name="mask_var")
+    else:
+        mask = _validate_boolean_mask(selector, var.shape[0], name="mask_var")
+
+    n_vars_used = int(mask.sum())
+    if n_vars_used == 0:
+        raise ValueError("mask_var selected zero genes")
+
+    if was_default and use_highly_variable is None:
+        kind = "default"
+    elif selector is None:
+        kind = "none"
+    elif isinstance(selector, str):
+        kind = "var_key"
+    else:
+        kind = "array"
+    key = selector if isinstance(selector, str) else None
     if selector is None or isinstance(selector, str):
         standard_mask = selector
     else:
@@ -166,5 +162,5 @@ def _resolve_mask_var(
         values=mask,
         mask_var=standard_mask,
         use_highly_variable=uses_highly_variable,
-        details={"kind": kind, "key": key, "n_vars_used": int(mask.sum())},
+        details={"kind": kind, "key": key, "n_vars_used": n_vars_used},
     )

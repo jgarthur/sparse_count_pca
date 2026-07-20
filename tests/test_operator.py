@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_count_pca._operator import SparseLowRankLinearOperator
+from sparse_count_pca._operator import (
+    SparseLowRankLinearOperator,
+    _squared_norm_is_numerically_zero,
+)
 from sparse_count_pca._representation import SparseLowRankMatrix
 
 
@@ -21,9 +24,7 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
     left = rng.normal(size=(n_obs, rank))
     right = rng.normal(size=(n_vars, rank))
     representation = SparseLowRankMatrix(S, left, right)
-    operator = SparseLowRankLinearOperator(
-        representation, center=center, dtype=dtype
-    )
+    operator = SparseLowRankLinearOperator(representation, center=center, dtype=dtype)
 
     expected = dense_sparse + left @ right.T
     if dtype == "float32":
@@ -38,10 +39,11 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
     assert operator.frobenius_squared_uncentered() == pytest.approx(
         np.sum((dense_sparse + left @ right.T).astype(dtype).astype(float) ** 2),
         rel=tolerance,
+        abs=0.0,
     )
     expected_squared = np.sum(materialized.astype(float) ** 2)
     assert operator.frobenius_squared_centered() == pytest.approx(
-        expected_squared, rel=tolerance
+        expected_squared, rel=tolerance, abs=0.0
     )
 
 
@@ -59,9 +61,28 @@ def test_representation_selection_and_scaling():
     actual = scaled.sparse.toarray() + scaled.left @ scaled.right.T
     expected = dense[:, [0, 2]] * np.array([2.0, 3.0])[:, None]
     expected *= np.array([5.0, 7.0])[None, :]
-    np.testing.assert_allclose(actual, expected)
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=1e-14)
 
     scalar_scaled = scaled.scaled(0.25)
     actual = scalar_scaled.sparse.toarray()
     actual += scalar_scaled.left @ scalar_scaled.right.T
-    np.testing.assert_allclose(actual, 0.25 * expected)
+    np.testing.assert_allclose(actual, 0.25 * expected, rtol=0.0, atol=1e-14)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_numerically_zero_squared_norm_boundary_is_inclusive(dtype):
+    """Squared norms at the roundoff boundary pass and one ULP above fails."""
+    shape = (5, 4)
+    scale = 3.0
+    eps = np.finfo(dtype).eps
+    boundary = eps * eps * np.prod(shape) * scale
+
+    assert _squared_norm_is_numerically_zero(
+        boundary, scale=scale, shape=shape, dtype=dtype
+    )
+    assert not _squared_norm_is_numerically_zero(
+        np.nextafter(boundary, np.inf),
+        scale=scale,
+        shape=shape,
+        dtype=dtype,
+    )

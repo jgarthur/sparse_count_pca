@@ -55,7 +55,7 @@ def test_shifted_log_gauge_has_same_centered_pca_matrix_as_log_counts(counts):
     shifted_counts = np.log(counts.toarray() + count_shift)
     zero_baseline -= zero_baseline.mean(axis=0)
     shifted_counts -= shifted_counts.mean(axis=0)
-    np.testing.assert_allclose(zero_baseline, shifted_counts, atol=1e-15)
+    np.testing.assert_allclose(zero_baseline, shifted_counts, rtol=0.0, atol=1e-15)
 
 
 @pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
@@ -65,33 +65,36 @@ def test_count_shifted_clr_representation_matches_reference(counts, count_shift)
     actual = _materialize(representation)
     expected = count_shifted_clr(counts, count_shift)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
-    np.testing.assert_allclose(actual.mean(axis=1), 0.0, atol=1e-15)
+    np.testing.assert_allclose(actual.mean(axis=1), 0.0, rtol=0.0, atol=1e-15)
     assert representation.sparse.nnz == counts.nnz
     assert representation.rank == 1
 
 
 @pytest.mark.parametrize("composition_shift", [0.25, 1.0, 2.0])
 def test_proportion_shifted_clr_matches_historical_reference(counts, composition_shift):
-    """Proportion-shifted CLR values match the historical reference."""
+    """Values match the pinned June 10, 2026 BHGP formula reference."""
     representation = build_proportion_shifted_clr_representation(
         counts, composition_shift=composition_shift
     )
     actual = _materialize(representation)
     expected = proportion_shifted_clr(counts, composition_shift)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
-    np.testing.assert_allclose(actual.mean(axis=1), 0.0, atol=1e-15)
+    np.testing.assert_allclose(actual.mean(axis=1), 0.0, rtol=0.0, atol=1e-15)
     assert representation.sparse.nnz == counts.nnz
     assert representation.rank == 1
 
 
 def test_count_shifted_clr_matches_current_pflog_formula(counts):
-    """Count-shifted CLR agrees with the current PFlog formula."""
+    """Values match the pinned June 24, 2026 BHGP PFlog formula."""
     alpha = 0.37
     representation = build_shifted_clr_representation(
         counts, count_shift=1.0 / (4.0 * alpha)
     )
     np.testing.assert_allclose(
-        _materialize(representation), pflog(counts, alpha), atol=1e-14
+        _materialize(representation),
+        pflog(counts, alpha),
+        rtol=0.0,
+        atol=1e-14,
     )
 
 
@@ -105,7 +108,10 @@ def test_scalar_shifted_clr_equals_uniform_dirichlet_clr(counts):
         prior_proportions=None,
     )
     np.testing.assert_allclose(
-        _materialize(shifted), _materialize(dirichlet), atol=1e-15
+        _materialize(shifted),
+        _materialize(dirichlet),
+        rtol=0.0,
+        atol=1e-15,
     )
 
 
@@ -142,10 +148,15 @@ def test_log_pca_matches_dense_svd(counts, pca, kwargs, dense_transform):
     dense -= dense.mean(axis=0)
     _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), dense, atol=1e-12
+        result.operator @ np.eye(counts.shape[1]),
+        dense,
+        rtol=0.0,
+        atol=1e-12,
     )
-    np.testing.assert_allclose(result.singular_values, singular_values[:2], rtol=1e-10)
-    assert _compare_subspaces(result.components.T, Vt[:2].T, atol=1e-9)
+    np.testing.assert_allclose(
+        result.singular_values, singular_values[:2], rtol=1e-10, atol=0.0
+    )
+    assert _compare_subspaces(result.components.T, Vt[:2].T, rtol=0.0, atol=1e-9)
 
 
 @pytest.mark.parametrize(
@@ -188,20 +199,22 @@ def test_log_pca_mask_is_applied_after_full_transform(
         result.uns["log_pca"]["singular_values"],
         singular_values[:2],
         rtol=1e-10,
+        atol=0.0,
     )
     params = result.uns["log_pca"]["params"]
     assert params["normalization_n_vars"] == adata.n_vars
+    assert params["pca_n_vars"] == int(mask.sum())
     assert np.isnan(result.varm["log_pca"][~mask]).all()
 
 
-def test_count_shifted_transforms_allow_empty_cells(counts):
-    """Fixed-count shifted transforms support empty cells."""
+def test_count_shifted_transforms_reject_empty_cells(counts):
+    """Fixed-count shifted transforms reject cells with no counts."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
     for pca in (shifted_log_pca_matrix, shifted_clr_pca_matrix):
-        result = pca(with_empty, n_comps=2, count_shift=1.0)
-        assert np.isfinite(result.singular_values).all()
+        with pytest.raises(ValueError, match="zero total counts"):
+            pca(with_empty, n_comps=2, count_shift=1.0)
 
 
 def test_proportion_shifted_clr_rejects_empty_cells(counts):
@@ -224,7 +237,29 @@ def test_proportion_shifted_clr_is_row_scale_invariant(counts):
         scaled.tocsr(), composition_shift=0.3
     )
     np.testing.assert_allclose(
-        _materialize(original), _materialize(rescaled), atol=1e-15
+        _materialize(original),
+        _materialize(rescaled),
+        rtol=0.0,
+        atol=1e-15,
+    )
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [build_shifted_log_representation, build_shifted_clr_representation],
+)
+def test_count_shifted_transforms_are_invariant_to_joint_global_scaling(
+    counts, builder
+):
+    """Scaling counts and the raw-count shift together preserves values."""
+    original = builder(counts, count_shift=0.3)
+    rescaled = builder(counts * 7, count_shift=2.1)
+
+    np.testing.assert_allclose(
+        _materialize(original),
+        _materialize(rescaled),
+        rtol=0.0,
+        atol=1e-15,
     )
 
 
@@ -276,6 +311,17 @@ def test_log_pca_rejects_invalid_shifts(counts, pca, parameter, value):
     """Log PCA rejects shifts that are nonpositive or nonfinite."""
     with pytest.raises(ValueError, match="finite and positive"):
         pca(counts, n_comps=2, **{parameter: value})
+
+
+def test_log_transforms_reject_float64_ratio_overflow():
+    """Tiny shifts fail clearly when a stored ratio cannot fit in float64."""
+    counts = sparse.csr_matrix([[1.0, 1.0]])
+    tiny = np.nextafter(0.0, 1.0)
+
+    with pytest.raises(ValueError, match="Count-to-prior ratios overflow"):
+        build_shifted_log_representation(counts, count_shift=tiny)
+    with pytest.raises(ValueError, match="Count-to-composition ratios overflow"):
+        build_proportion_shifted_clr_representation(counts, composition_shift=tiny)
 
 
 @pytest.mark.parametrize(

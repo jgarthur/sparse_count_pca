@@ -44,6 +44,7 @@ def compute_pca_from_representation(
     random_state: int | None,
     tol: float,
     return_operator: bool,
+    copy_operator: bool,
 ) -> PCAResult:
     """Center and decompose an already validated implicit transform."""
     if solver != "arpack":
@@ -57,7 +58,10 @@ def compute_pca_from_representation(
         )
 
     operator = SparseLowRankLinearOperator(
-        representation, center=True, dtype=operator_dtype
+        representation,
+        center=True,
+        dtype=operator_dtype,
+        copy=copy_operator,
     )
     centered_squared = operator.frobenius_squared_centered()
     if operator.centered_variance_is_numerically_zero():
@@ -84,6 +88,7 @@ def compute_pca_from_representation(
         **params,
         "zero_center": True,
         "n_comps": n_comps,
+        "pca_n_vars": n_vars,
         "solver": solver,
         "random_state": random_state,
         "tol": tol,

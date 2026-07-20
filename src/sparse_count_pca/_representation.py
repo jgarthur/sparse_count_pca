@@ -26,7 +26,10 @@ class SparseLowRankMatrix:
         left: ArrayLike,
         right: ArrayLike,
     ) -> None:
-        sparse_csr = sparse_part.tocsr(copy=True)
+        # Builders hand off newly allocated data and treat the representation as
+        # immutable, so an existing CSR can be borrowed without another full
+        # data/index/indptr copy. Other sparse formats still allocate on conversion.
+        sparse_csr = sparse_part.tocsr(copy=False)
         left_array = np.asarray(left)
         right_array = np.asarray(right)
         if left_array.ndim == 1:

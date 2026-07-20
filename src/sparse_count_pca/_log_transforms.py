@@ -8,10 +8,13 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
 
+from ._counts import _sum_counts
 from ._representation import SparseLowRankMatrix
 
 PriorProportions: TypeAlias = ArrayLike | None
 Float64Array = NDArray[np.float64]
+PRIOR_SUM_RTOL = 1e-8
+PRIOR_SUM_ATOL = 1e-12
 
 
 def validate_positive_scalar(value: float, *, name: str) -> float:
@@ -43,7 +46,12 @@ def validate_dirichlet_prior(
         if (proportions <= 0).any():
             raise ValueError("prior_proportions must be strictly positive")
         total = float(np.sum(proportions))
-        if not np.isclose(total, 1.0, rtol=1e-8, atol=1e-12):
+        if not np.isclose(
+            total,
+            1.0,
+            rtol=PRIOR_SUM_RTOL,
+            atol=PRIOR_SUM_ATOL,
+        ):
             raise ValueError("prior_proportions must sum to one")
         proportions = proportions / total
     return concentration, proportions
@@ -51,11 +59,23 @@ def validate_dirichlet_prior(
 
 def log1p_count_correction(
     X: sparse.csr_matrix,
-    prior_counts: Float64Array,
+    prior_counts: Float64Array | float,
 ) -> sparse.csr_matrix:
     """Return sparse ``log1p(x_ij / prior_count_j)`` corrections."""
-    data = np.log1p(X.data.astype(np.float64, copy=False) / prior_counts[X.indices])
-    return sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
+    data = X.data.astype(np.float64, copy=True)
+    denominator = (
+        prior_counts
+        if np.ndim(prior_counts) == 0
+        else np.asarray(prior_counts)[X.indices]
+    )
+    with np.errstate(over="ignore"):
+        np.divide(data, denominator, out=data)
+    if not np.isfinite(data).all():
+        raise ValueError("Count-to-prior ratios overflow float64")
+    np.log1p(data, out=data)
+    return sparse.csr_matrix(
+        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    )
 
 
 def _rank_zero(
@@ -75,8 +95,7 @@ def build_shifted_log_representation(
 ) -> SparseLowRankMatrix:
     """Represent ``log1p(X / count_shift)`` as an exactly sparse matrix."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    prior_counts = np.full(X.shape[1], count_shift, dtype=np.float64)
-    return _rank_zero(log1p_count_correction(X, prior_counts))
+    return _rank_zero(log1p_count_correction(X, count_shift))
 
 
 def build_shifted_clr_representation(
@@ -86,8 +105,7 @@ def build_shifted_clr_representation(
 ) -> SparseLowRankMatrix:
     """Represent fixed-count shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    prior_counts = np.full(X.shape[1], count_shift, dtype=np.float64)
-    sparse_part = log1p_count_correction(X, prior_counts)
+    sparse_part = log1p_count_correction(X, count_shift)
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
     return SparseLowRankMatrix(
         sparse_part,
@@ -105,15 +123,24 @@ def build_proportion_shifted_clr_representation(
     composition_shift = validate_positive_scalar(
         composition_shift, name="composition_shift"
     )
-    row_totals = np.asarray(X.astype(np.float64).sum(axis=1)).ravel()
+    row_totals = _sum_counts(X, axis=1)
+    if not np.isfinite(row_totals).all():
+        raise ValueError("Cell totals overflow float64")
     if (row_totals == 0).any():
         raise ValueError("Cells with zero total counts are not supported")
     rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
-    data = np.log1p(
-        X.data.astype(np.float64, copy=False) / (row_totals[rows] * composition_shift)
-    )
+    data = X.data.astype(np.float64, copy=True)
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        np.divide(
+            data,
+            row_totals[rows] * composition_shift,
+            out=data,
+        )
+    if not np.isfinite(data).all():
+        raise ValueError("Count-to-composition ratios overflow float64")
+    np.log1p(data, out=data)
     sparse_part = sparse.csr_matrix(
-        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape
+        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
     )
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
     return SparseLowRankMatrix(
@@ -134,12 +161,20 @@ def build_dirichlet_log_representation(
         concentration, prior_proportions, X.shape[1]
     )
     prior_counts = concentration * proportions
+    if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
+        raise ValueError("Dirichlet prior counts must be representable in float64")
     sparse_part = log1p_count_correction(X, prior_counts)
-    row_totals = np.asarray(X.astype(np.float64).sum(axis=1)).ravel()
+    row_totals = _sum_counts(X, axis=1)
+    if not np.isfinite(row_totals).all():
+        raise ValueError("Cell totals overflow float64")
+    with np.errstate(over="ignore"):
+        posterior_totals = row_totals + concentration
+    if not np.isfinite(posterior_totals).all():
+        raise ValueError("Dirichlet posterior totals overflow float64")
     left = np.column_stack(
         (
             np.ones(X.shape[0], dtype=np.float64),
-            -np.log(row_totals + concentration),
+            -np.log(posterior_totals),
         )
     )
     right = np.column_stack(
@@ -162,6 +197,8 @@ def build_dirichlet_clr_representation(
         concentration, prior_proportions, X.shape[1]
     )
     prior_counts = concentration * proportions
+    if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
+        raise ValueError("Dirichlet prior counts must be representable in float64")
     sparse_part = log1p_count_correction(X, prior_counts)
     sparse_row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
     log_prior_counts = np.log(prior_counts)
