@@ -15,6 +15,16 @@ uv run mkdocs build --strict
 Normal tests are offline. External R and Python tooling used to regenerate
 pinned reference artifacts is provenance, not a runtime test dependency.
 
+## Executable documentation examples
+
+The scripts under `examples/` are the canonical source for the complete example
+workflows. They use Jupytext's percent format, so they remain ordinary Python
+files while also defining notebook cells. Pytest discovers and executes every
+example script. The strict MkDocs build independently converts each script to a
+notebook, executes its cells in order, and renders the executed notebook to a
+generated Markdown page. Generated pages are build artifacts and are not
+edited or committed.
+
 ## Dense transform oracles
 
 Every transform should be compared entry by entry with an independent explicit

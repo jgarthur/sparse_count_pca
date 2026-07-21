@@ -36,8 +36,8 @@ needs:
 - There are no benchmark results, preprint URL, figure assets, or citation
   metadata yet. The documentation will not invent placeholders or unsupported
   performance claims for them.
-- Notebooks, benchmark infrastructure, paper reproduction, custom site design,
-  versioned documentation, and a public roadmap are deferred.
+- Long-form notebooks, benchmark infrastructure, paper reproduction, custom
+  site design, versioned documentation, and a public roadmap are deferred.
 - No public root-level `AGENTS.md` will be added for the initial release.
   Durable rules belong in contributor, architecture, specification, and testing
   documentation; tool-specific routing stays private.
@@ -46,7 +46,9 @@ needs:
 - Existing Google-style Python docstrings will be retained and completed for
   the public API. Converting styles is lower priority than documenting exported
   behavior accurately and consistently.
-- Examples will be small, executable, fast, and checked in CI.
+- Examples will be small, executable, fast, and checked in CI. Their
+  Jupytext percent-format Python files are the canonical source for both tests
+  and generated Markdown example pages.
 
 ## Author-owned copy
 
@@ -237,13 +239,18 @@ examples/
 Each Python file must have a module docstring. Any tests added to execute these
 examples must give every test function a behavior-focused docstring.
 
+The scripts use Jupytext percent cells without changing their substantive
+content. Pytest executes every script discovered under `examples/`; the MkDocs
+build converts and executes the same files as notebooks, then exports their
+cells and captured outputs to ignored Markdown build artifacts.
+
 ## Deliberately deferred work
 
 - Read the Docs project setup and `.readthedocs.yaml` configuration;
 - measured performance pages and README benchmark figures;
 - benchmark scripts, environments, and machine-readable results;
 - preprint and citation links;
-- notebooks and notebook rendering;
+- long-form notebooks beyond the canonical generated examples;
 - paper reproduction workflows;
 - custom theme work;
 - documentation versioning;
@@ -293,6 +300,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 - Complete public docstrings using the repository's existing style.
 - Add curated generated API pages.
 - Add and test the canonical example scripts.
+- Render the canonical percent-format scripts as executed Markdown pages.
 - Ensure examples and guides use the same recommended patterns.
 
 ### 6. Release-readiness review
@@ -333,6 +341,8 @@ exists. Their absence must not leave broken links or placeholder sections.
 - [x] Add guides, concepts, and compatibility reference.
 - [x] Complete public API docstrings and generated reference pages.
 - [x] Add executable examples and CI coverage.
+- [x] Make percent-format example scripts the source for generated example pages.
+- [x] Enable MathJax rendering for existing documentation formulas.
 - [x] Pass strict documentation build, lint, and the full test suite.
 - [ ] Complete the author's editorial review of the README opening.
 - [ ] Perform visual browser QA when a browser session is available.
@@ -352,21 +362,26 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-21 | Describe memory benefit as density- and dtype-dependent. | No reproducible project benchmark exists yet, so a universal `10-20x` claim would be unsupported. |
 | 2026-07-21 | Name SciPy `svds` with ARPACK as the supported numerical path. | This is the exact function and solver used with the package's `LinearOperator`. |
 | 2026-07-21 | Integrate merged PR #2 before continuing editorial work. | Its final commits document the real-data oracle suite and update provenance contracts already covered by the overhaul; deferring would leave stale links and an obsolete branch base. |
+| 2026-07-21 | Generate example pages from Jupytext percent scripts. | One executable Python source now drives pytest, notebook execution, and rendered Markdown without copied code. |
+| 2026-07-21 | Render existing mathematics with MathJax. | Arithmatex preserves formula delimiters for MathJax while keeping the Markdown source unchanged. |
 
 ## Verification record
 
 Verified on 2026-07-21:
 
 ```text
-mkdocs build --strict: passed
+mkdocs build --strict with executed notebook rendering: passed
 ruff check .: passed
 pytest after main integration: 369 passed, 1 skipped
 canonical example scripts: 4 passed
+generated example pages: 4 executed notebooks rendered to Markdown
+math rendering: Arithmatex wrappers and MathJax scripts present in built HTML
 ```
 
 The Material theme emits an informational upstream notice about future MkDocs
 2.0 compatibility. It does not fail strict mode. Visual browser QA was
-attempted, but no browser session was available in the environment.
+attempted again after enabling MathJax, but no browser session was available in
+the environment.
 
 The branch was fast-forwarded to merged PR #2 at `ccb3958` before the final
 documentation reconciliation. Its PBMC3k fixture, shared-oracle,

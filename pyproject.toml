@@ -11,7 +11,13 @@ requires-python = ">=3.10"
 dependencies = ["anndata", "numpy", "scikit-learn", "scipy"]
 
 [project.optional-dependencies]
-docs = ["mkdocs-material", "mkdocstrings-python"]
+docs = [
+    "ipykernel",
+    "jupytext",
+    "mkdocs-material",
+    "mkdocstrings-python",
+    "nbconvert",
+]
 test = ["pytest", "ruff", "scanpy>=1.10", "zarr"]
 
 [tool.hatch.build.targets.wheel]

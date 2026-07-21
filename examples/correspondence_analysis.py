@@ -1,3 +1,4 @@
+# %%
 """Run classical correspondence analysis on a generated count table."""
 
 import numpy as np
@@ -6,6 +7,7 @@ from scipy.sparse import csr_matrix
 import sparse_count_pca as scp
 
 
+# %%
 def main() -> None:
     """Compute two CA axes and print row and column coordinate shapes."""
     counts = csr_matrix(
@@ -26,5 +28,6 @@ def main() -> None:
     print("column coordinates:", result.column_principal_coordinates.shape)
 
 
+# %%
 if __name__ == "__main__":
     main()

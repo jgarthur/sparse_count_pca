@@ -3,6 +3,12 @@ site_description: PCA and related spectral analysis of sparse count data
 repo_url: https://github.com/jgarthur/sparse_count_pca
 repo_name: jgarthur/sparse_count_pca
 
+hooks:
+  - docs/hooks/render_examples.py
+
+watch:
+  - examples
+
 theme:
   name: material
   features:
@@ -29,11 +35,17 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.details
   - pymdownx.superfences
   - tables
   - toc:
       permalink: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 not_in_nav: |
   history/**
@@ -43,6 +55,11 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Choosing a transform: choosing-a-transform.md
+  - Examples:
+      - Residual PCA with AnnData: examples/residual_pca_anndata.md
+      - Shifted CLR with AnnData: examples/shifted_clr_anndata.md
+      - Transform reuse: examples/transform_reuse.md
+      - Correspondence analysis: examples/correspondence_analysis.md
   - Guides:
       - Residual PCA: guides/residual-pca.md
       - Shifted log and CLR: guides/shifted-log-and-clr.md

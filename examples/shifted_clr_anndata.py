@@ -1,3 +1,4 @@
+# %%
 """Run fixed-count shifted-CLR PCA on a generated AnnData object."""
 
 import numpy as np
@@ -7,6 +8,7 @@ from scipy.sparse import csr_matrix
 import sparse_count_pca as scp
 
 
+# %%
 def main() -> None:
     """Apply a unit count shift and print the resulting PCA shapes."""
     counts = csr_matrix(
@@ -35,5 +37,6 @@ def main() -> None:
     print("components:", adata.varm["PCs"].shape)
 
 
+# %%
 if __name__ == "__main__":
     main()

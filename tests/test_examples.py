@@ -6,15 +6,10 @@ from pathlib import Path
 import pytest
 
 EXAMPLE_DIR = Path(__file__).parents[1] / "examples"
-EXAMPLES = [
-    "residual_pca_anndata.py",
-    "shifted_clr_anndata.py",
-    "transform_reuse.py",
-    "correspondence_analysis.py",
-]
+EXAMPLES = sorted(EXAMPLE_DIR.glob("*.py"))
 
 
-@pytest.mark.parametrize("filename", EXAMPLES)
-def test_example_script_runs(filename: str) -> None:
+@pytest.mark.parametrize("example_path", EXAMPLES, ids=lambda path: path.stem)
+def test_example_script_runs(example_path: Path) -> None:
     """Each canonical example executes successfully from start to finish."""
-    runpy.run_path(EXAMPLE_DIR / filename, run_name="__main__")
+    runpy.run_path(example_path, run_name="__main__")

@@ -1,3 +1,4 @@
+# %%
 """Run residual PCA on a small generated AnnData count matrix."""
 
 import numpy as np
@@ -7,6 +8,7 @@ from scipy.sparse import csr_matrix
 import sparse_count_pca as scp
 
 
+# %%
 def main() -> None:
     """Construct counts, run residual PCA, and print the output shapes."""
     counts = csr_matrix(
@@ -36,5 +38,6 @@ def main() -> None:
     print("components:", adata.varm["PCs"].shape)
 
 
+# %%
 if __name__ == "__main__":
     main()

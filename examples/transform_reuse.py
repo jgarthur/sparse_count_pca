@@ -1,3 +1,4 @@
+# %%
 """Fit one residual transform and reuse it for inspection and PCA."""
 
 import numpy as np
@@ -6,6 +7,7 @@ from scipy.sparse import csr_matrix
 import sparse_count_pca as scp
 
 
+# %%
 def main() -> None:
     """Materialize one row and run PCA on a selected variable subset."""
     counts = csr_matrix(
@@ -35,5 +37,6 @@ def main() -> None:
     print("masked components:", result.components.shape)
 
 
+# %%
 if __name__ == "__main__":
     main()
