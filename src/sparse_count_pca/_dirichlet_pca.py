@@ -87,7 +87,38 @@ def dirichlet_log_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of implicit log Dirichlet posterior-mean proportions."""
+    """Compute PCA of log Dirichlet posterior-mean compositions.
+
+    For prior concentration ``A`` and proportions ``p``, the analyzed
+    composition is ``(X + A * p) / (row_total + A)``.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of principal components.
+        concentration: Positive total Dirichlet prior concentration.
+        prior_proportions: Positive per-variable prior proportions summing to
+            one. ``None`` uses a uniform prior.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the centered operator in the result.
+
+    Returns:
+        PCA scores, components, variance statistics, metadata, and optionally
+        the centered operator.
+
+    Raises:
+        ValueError: If counts, dimensions, concentration, prior, or dtype are
+            invalid.
+
+    Examples:
+        >>> result = dirichlet_log_pca_matrix(
+        ...     counts, n_comps=20, concentration=1.0
+        ... )
+    """
     return _compute_dirichlet_pca(
         X,
         n_comps,
@@ -117,7 +148,39 @@ def dirichlet_clr_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of implicit CLR Dirichlet posterior-mean proportions."""
+    """Compute PCA of CLR Dirichlet posterior-mean compositions.
+
+    For prior concentration ``A`` and proportions ``p``, the posterior-mean
+    composition is ``(X + A * p) / (row_total + A)``; CLR then subtracts each
+    row's mean log composition.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of principal components.
+        concentration: Positive total Dirichlet prior concentration.
+        prior_proportions: Positive per-variable prior proportions summing to
+            one. ``None`` uses a uniform prior.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the centered operator in the result.
+
+    Returns:
+        PCA scores, components, variance statistics, metadata, and optionally
+        the centered operator.
+
+    Raises:
+        ValueError: If counts, dimensions, concentration, prior, or dtype are
+            invalid.
+
+    Examples:
+        >>> result = dirichlet_clr_pca_matrix(
+        ...     counts, n_comps=20, concentration=1.0
+        ... )
+    """
     return _compute_dirichlet_pca(
         X,
         n_comps,
@@ -230,7 +293,44 @@ def dirichlet_log_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute implicit Dirichlet-log PCA and write AnnData outputs."""
+    """Compute Dirichlet-log PCA and write AnnData outputs.
+
+    The prior is defined over the full variable universe before ``mask_var``
+    selects and centers PCA columns.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
+        concentration: Positive total Dirichlet prior concentration.
+        prior_proportions: Positive per-variable array, ``adata.var`` key, or
+            ``None`` for a uniform prior.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, prior, or dtype are invalid.
+        KeyError: If a requested layer, mask, or prior key is absent.
+
+    Examples:
+        >>> dirichlet_log_pca(
+        ...     adata, layer="counts", n_comps=20, concentration=1.0
+        ... )
+    """
     return _dirichlet_pca_anndata(
         adata,
         n_comps,
@@ -269,7 +369,44 @@ def dirichlet_clr_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute implicit Dirichlet-CLR PCA and write AnnData outputs."""
+    """Compute Dirichlet-CLR PCA and write AnnData outputs.
+
+    The prior and CLR row mean use the full variable universe before
+    ``mask_var`` selects and centers PCA columns.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
+        concentration: Positive total Dirichlet prior concentration.
+        prior_proportions: Positive per-variable array, ``adata.var`` key, or
+            ``None`` for a uniform prior.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, prior, or dtype are invalid.
+        KeyError: If a requested layer, mask, or prior key is absent.
+
+    Examples:
+        >>> dirichlet_clr_pca(
+        ...     adata, layer="counts", n_comps=20, concentration=1.0
+        ... )
+    """
     return _dirichlet_pca_anndata(
         adata,
         n_comps,

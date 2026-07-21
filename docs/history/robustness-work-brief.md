@@ -1,8 +1,9 @@
 # Correctness and numerical robustness work brief
 
 > Historical note: this brief predates the `sparse-count-pca` rename and the
-> completed generic PCA refactor. See [architecture](../architecture.md) and
-> the [package specification](../specification.md) for the current organization
+> completed generic PCA refactor. See
+> [architecture](../development/architecture.md) and the
+> [package specification](../development/specification.md) for the current organization
 > and API.
 
 ## Purpose

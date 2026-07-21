@@ -1,0 +1,67 @@
+site_name: sparse-count-pca
+site_description: PCA and related spectral analysis of sparse count data
+repo_url: https://github.com/jgarthur/sparse_count_pca
+repo_name: jgarthur/sparse_count_pca
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            heading_level: 2
+            show_root_heading: true
+            show_root_full_path: false
+            show_source: false
+            signature_crossrefs: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.details
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
+
+not_in_nav: |
+  history/**
+  wishlist.md
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Choosing a transform: choosing-a-transform.md
+  - Guides:
+      - Residual PCA: guides/residual-pca.md
+      - Shifted log and CLR: guides/shifted-log-and-clr.md
+      - Transform once, reuse: guides/transform-reuse.md
+      - Correspondence analysis: guides/correspondence-analysis.md
+      - AnnData workflows: guides/anndata-workflows.md
+  - Concepts:
+      - Sparse plus low rank: concepts/sparse-plus-low-rank.md
+      - Normalization, masking, and centering: concepts/normalization-masking-and-centering.md
+      - Clipping and precision: concepts/clipping-and-precision.md
+  - Reference:
+      - Compatibility: reference/compatibility.md
+      - API:
+          - AnnData functions: reference/api/anndata.md
+          - Matrix functions: reference/api/matrix.md
+          - Transforms: reference/api/transforms.md
+          - Result objects: reference/api/results.md
+  - Development:
+      - Architecture: development/architecture.md
+      - Specification: development/specification.md
+      - Testing: development/testing.md
+      - Log-transform design: development/design/log-transforms.md

@@ -18,7 +18,26 @@ FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
 @dataclass
 class PCAResult:
-    """Outputs from PCA of an implicit sparse-plus-low-rank transform."""
+    """Outputs from PCA of an implicit sparse-plus-low-rank transform.
+
+    Attributes:
+        scores: Observation coordinates with shape ``(n_obs, n_comps)``.
+        components: Right singular vectors with shape
+            ``(n_comps, n_vars_used)``.
+        loadings: Transposed component array with shape
+            ``(n_vars_used, n_comps)``. This is a convenience alias for
+            ``components.T``, not a variance-weighted statistical loading.
+        singular_values: Singular values in descending order.
+        explained_variance: Per-component sample variance, calculated as the
+            squared singular values divided by ``n_obs - 1``.
+        explained_variance_ratio: Fraction of total centered transformed
+            variance explained by each returned component.
+        mean: Column mean of the selected uncentered transform.
+        total_variance: Total sample variance of the centered transform.
+        params: Transform, solver, dtype, masking, and reproducibility metadata.
+        operator: Centered operator passed to ARPACK when
+            ``return_operator=True``; otherwise ``None``.
+    """
 
     scores: FloatArray
     components: FloatArray

@@ -1,5 +1,8 @@
 # sparse-count-pca package specification
 
+> **Audience:** maintainers, reviewers, and coding agents. This document is
+> normative. User-facing explanations are in the guides and concept pages.
+
 ## Scope
 
 The package computes spectral analyses of implicitly transformed sparse count
@@ -284,6 +287,7 @@ tests/
     generate_fixture.py
     generate_sctransform_reference.R
     test_fixture.py
+    test_gene_masks.py
     test_log_transform_dense_oracles.py
     test_residual_dense_oracle.py
     test_correspondence_reference.py
@@ -309,10 +313,11 @@ package has been installed into the active environment.
 The wheel contains only `src/sparse_count_pca`.
 
 The source distribution contains package sources, ordinary tests, committed
-real-data fixtures, transform reference formulas and provenance, `README.md`,
-the `docs/` tree, and `pyproject.toml`. It excludes editor configuration, lock
-files, and local development scripts. The Townes reference test runs offline;
-its adjacent R script is only needed to regenerate the pinned reference values.
+real-data fixtures, transform reference formulas and provenance, executable
+examples, `README.md`, `CONTRIBUTING.md`, `mkdocs.yml`, the `docs/` tree, and
+`pyproject.toml`. It excludes editor configuration, lock files, and local
+development scripts. The Townes reference test runs offline; its adjacent R
+script is only needed to regenerate the pinned reference values.
 
 ## Dependencies
 

@@ -78,7 +78,7 @@ compatibility the package claims but which are not yet exercised on the shared
 PBMC3k fixture: Scanpy, Townes, CORRAL, and the pinned BHGP formulas. Continue
 to use the deterministic cells and genes where the upstream method permits it.
 The completed fixture and dense-formula coverage are recorded in the
-[PBMC3k fixture documentation](../tests/real_data_reference/README.md).
+[PBMC3k fixture documentation](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/real_data_reference/README.md).
 
 For each transform, compare the most diagnostic independently generated
 artifacts available: selected transformed entries, clipping support and `nnz`,

@@ -531,9 +531,9 @@ Store `normalization_n_vars` in every affected result.
 ## Reference and test coverage
 
 The current fixed-count formula is covered by
-[`tests/shifted_clr_reference`](../../tests/shifted_clr_reference/). The
+[`tests/shifted_clr_reference`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference). The
 historical composition-shift formula is covered separately by
-[`tests/proportion_shifted_clr_reference`](../../tests/proportion_shifted_clr_reference/).
+[`tests/proportion_shifted_clr_reference`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference).
 Both references record their upstream formula and revision, while the normal
 test suite remains offline.
 

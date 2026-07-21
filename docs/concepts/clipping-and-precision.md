@@ -1,0 +1,64 @@
+# Clipping and numerical precision
+
+## Clipping is opt-in and exact
+
+Residual transforms are unclipped by default. Set a positive finite `clip`
+threshold to enable clipping before PCA centering.
+
+Two modes are available:
+
+- `clip_mode="symmetric"` clips to `[-clip, clip]`;
+- `clip_mode="upper"` clips only values above `clip`.
+
+The implementation represents the clipped residual matrix exactly at the
+chosen calculation dtype. It does not clip only the observed nonzero counts or
+silently approximate transformed zeros.
+
+## Why symmetric clipping may grow support
+
+Zero-count residuals are negative for the supported residual models. Symmetric
+clipping can therefore change an entry that was represented by the low-rank
+zero baseline. The changed entries must move into the sparse correction, which
+can expand its support.
+
+`clip_max_nnz_ratio` bounds that expansion. Its default is `2.0`; the operation
+raises before constructing a correction whose stored-entry ratio meets or
+exceeds the limit. Use `1.0` to reject any support growth or `None` to allow
+unlimited exact expansion.
+
+Upper-only clipping leaves negative zero-count residuals unchanged and cannot
+expand support for the implemented models.
+
+## Calculation dtype
+
+The default `dtype="float64"` controls the sparse correction, low-rank factors,
+linear operator, and arrays passed to ARPACK. It is the recommended mode for
+numerical accuracy and parity testing.
+
+Explicit `dtype="float32"` is a lower-memory approximate calculation mode. It
+changes the matrix presented to the SVD solver; it is not merely an output
+storage conversion. No other representation dtype is supported.
+
+If the decomposition should be calculated in `float64` but selected outputs
+stored compactly, downcast after PCA:
+
+```python
+result = scp.residual_pca_matrix(counts, n_comps=20, dtype="float64")
+scores32 = result.scores.astype("float32")
+components32 = result.components.astype("float32")
+```
+
+That conversion does not retroactively change the completed decomposition or
+its `float64` variance statistics, although downstream work on the converted
+arrays has `float32` precision.
+
+## Degenerate inputs
+
+The package rejects a transformed matrix whose centered variance is
+numerically zero, because its PCA directions are undefined. It also requires
+`n_comps` to be strictly smaller than both the number of observations and the
+number of selected variables when using ARPACK.
+
+See the [clipping contract](../development/specification.md#clipping) and
+[numerical implementation](../development/specification.md#numerical-implementation)
+for boundary behavior and validation details.

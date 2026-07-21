@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = ["anndata", "numpy", "scikit-learn", "scipy"]
 
 [project.optional-dependencies]
+docs = ["mkdocs-material", "mkdocstrings-python"]
 test = ["pytest", "ruff", "scanpy>=1.10", "zarr"]
 
 [tool.hatch.build.targets.wheel]
@@ -20,8 +21,11 @@ packages = ["src/sparse_count_pca"]
 only-include = [
     "/src",
     "/tests",
+    "/examples",
+    "/CONTRIBUTING.md",
     "/README.md",
     "/docs",
+    "/mkdocs.yml",
     "/pyproject.toml",
 ]
 

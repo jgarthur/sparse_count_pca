@@ -40,7 +40,13 @@ from ._svd import Solver
 
 
 class Transform(ABC):
-    """Configuration for a count transformation fitted to one matrix."""
+    """Abstract configuration for a count transformation.
+
+    Public transform specifications are immutable dataclasses passed to
+    ``transform``. Subclassing is not currently a supported public
+    extension mechanism because the representation-building contract is
+    private.
+    """
 
     @abstractmethod
     def _build(
@@ -86,7 +92,22 @@ def _serialize_parameter(value: Any, *, none: Any = None) -> Any:
 
 @dataclass(frozen=True)
 class Residual(Transform):
-    """Pearson or deviance residual transformation specification."""
+    """Specify a Pearson or deviance residual transformation.
+
+    Attributes:
+        model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
+        residual: ``"pearson"`` or ``"deviance"``.
+        alpha: Scalar, per-variable array, or AnnData variable key containing
+            nonnegative scaled-NB overdispersion. Used only by ``scaled_nb``.
+        clip: Positive clipping threshold, or ``None`` for no clipping.
+        clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
+        clip_max_nnz_ratio: Maximum support-growth ratio for exact symmetric
+            clipping, or ``None`` for no limit.
+
+    Examples:
+        >>> method = Residual(model="poisson", residual="pearson")
+        >>> transformed = transform(counts, method)
+    """
 
     model: Model = "poisson"
     residual: ResidualType = "pearson"
@@ -159,7 +180,14 @@ class Residual(Transform):
 
 @dataclass(frozen=True)
 class ShiftedLog(Transform):
-    """Fixed-count shifted-log transformation specification."""
+    """Specify the fixed-count transform ``log1p(X / count_shift)``.
+
+    Attributes:
+        count_shift: Positive shift on the raw-count scale.
+
+    Examples:
+        >>> transformed = transform(counts, ShiftedLog(count_shift=1.0))
+    """
 
     count_shift: float
 
@@ -184,7 +212,15 @@ class ShiftedLog(Transform):
 
 @dataclass(frozen=True)
 class ShiftedCLR(Transform):
-    """Fixed-count shifted-CLR transformation specification."""
+    """Specify CLR coordinates after a fixed raw-count shift.
+
+    Attributes:
+        count_shift: Positive shift added to every raw count. Current PFlog
+            uses ``1 / (4 * alpha)``.
+
+    Examples:
+        >>> transformed = transform(counts, ShiftedCLR(count_shift=1.0))
+    """
 
     count_shift: float
 
@@ -209,7 +245,17 @@ class ShiftedCLR(Transform):
 
 @dataclass(frozen=True)
 class ProportionShiftedCLR(Transform):
-    """Fixed-composition shifted-CLR transformation specification."""
+    """Specify CLR coordinates after a fixed composition-scale shift.
+
+    Attributes:
+        composition_shift: Positive shift added after dividing each row by its
+            count total.
+
+    Examples:
+        >>> transformed = transform(
+        ...     counts, ProportionShiftedCLR(composition_shift=1.0)
+        ... )
+    """
 
     composition_shift: float
 
@@ -237,7 +283,16 @@ class ProportionShiftedCLR(Transform):
 
 @dataclass(frozen=True)
 class DirichletLog(Transform):
-    """Dirichlet posterior-mean log transformation specification."""
+    """Specify log posterior-mean compositions under a Dirichlet prior.
+
+    Attributes:
+        concentration: Positive total prior concentration.
+        prior_proportions: Positive per-variable proportions, an AnnData
+            variable key, or ``None`` for a uniform prior.
+
+    Examples:
+        >>> transformed = transform(counts, DirichletLog(concentration=1.0))
+    """
 
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
@@ -273,7 +328,16 @@ class DirichletLog(Transform):
 
 @dataclass(frozen=True)
 class DirichletCLR(Transform):
-    """Dirichlet posterior-mean CLR transformation specification."""
+    """Specify CLR posterior-mean compositions under a Dirichlet prior.
+
+    Attributes:
+        concentration: Positive total prior concentration.
+        prior_proportions: Positive per-variable proportions, an AnnData
+            variable key, or ``None`` for a uniform prior.
+
+    Examples:
+        >>> transformed = transform(counts, DirichletCLR(concentration=1.0))
+    """
 
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
@@ -342,7 +406,22 @@ def _normalize_selector(
 
 
 class TransformedMatrix(LinearOperator):
-    """Uncentered implicit transformed matrix with inspection and PCA methods."""
+    """Uncentered implicit transformed matrix with inspection and PCA methods.
+
+    Instances are returned by ``transform``. The fitted representation owns
+    its sparse support and remains isolated from later mutation of caller-owned
+    input. It exists only in the current Python process and is not serialized
+    with AnnData.
+
+    Attributes:
+        shape: Transformed matrix shape ``(n_obs, n_vars)``.
+        dtype: Floating-point representation and operator dtype.
+        transform_label: Human-readable transform name.
+        params: Fitted transform and reproducibility metadata.
+        obs_names: Copied AnnData observation names, or ``None`` for matrix
+            input.
+        var_names: Copied AnnData variable names, or ``None`` for matrix input.
+    """
 
     def __init__(
         self,
@@ -420,12 +499,37 @@ class TransformedMatrix(LinearOperator):
         out: NDArray[Any] | None = None,
         block_size: int = 1024,
     ) -> NDArray[Any]:
-        """Materialize arbitrary observations and variables into a dense array.
+        """Materialize selected transformed values into a dense array.
 
         Integer selections retain a two-dimensional result. Positional arrays,
         boolean masks, slices, and names from an AnnData input are accepted.
-        Observation blocks are the efficient access direction of the current CSR
-        backend. Selecting variables across all observations emits a warning.
+        Observation blocks are the efficient access direction of the current
+        CSR backend. Selecting variables across all observations emits
+        ``SparseEfficiencyWarning``.
+
+        Args:
+            obs: Observation selector, or ``None`` for every observation.
+            var: Variable selector, or ``None`` for every variable.
+            out: Writable floating-point NumPy array or memory map with the
+                selected output shape. If omitted, allocate a new array.
+            block_size: Positive number of selected observations processed per
+                output block.
+
+        Returns:
+            Dense two-dimensional transformed values. When ``out`` is given,
+            the returned object is ``out``.
+
+        Raises:
+            IndexError: If an observation or variable selector is invalid.
+            KeyError: If a named AnnData selector is unknown.
+            TypeError: If named selection is used for matrix input or ``out``
+                has an unsupported type or dtype.
+            ValueError: If ``block_size`` or the shape or writability of ``out``
+                is invalid.
+
+        Examples:
+            >>> row = transformed.materialize(obs=10)
+            >>> block = transformed.materialize(obs=[10, 3], var=[25, 2, 8])
         """
         if not isinstance(block_size, int) or block_size <= 0:
             raise ValueError("block_size must be a positive integer")
@@ -481,7 +585,37 @@ class TransformedMatrix(LinearOperator):
         tol: float = 0.0,
         return_operator: bool = False,
     ) -> PCAResult:
-        """Run PCA after selecting variables from the fitted transform."""
+        """Run centered PCA after selecting variables from the fitted transform.
+
+        The fitted normalization state is reused. The variable mask is applied
+        to that transform, then a new column mean and truncated SVD are computed
+        for the selected columns.
+
+        Args:
+            n_comps: Number of principal components.
+            mask_var: Boolean array or, for AnnData-derived transforms, an
+                ``adata.var`` key. When omitted, use ``"highly_variable"`` if
+                present; explicit ``None`` selects every variable.
+            use_highly_variable: Deprecated Scanpy-compatible mask selector,
+                available only for AnnData-derived transforms.
+            solver: SVD solver. Only ``"arpack"`` is supported.
+            random_state: Seed used to construct ARPACK's starting vector.
+            tol: Convergence tolerance passed to SciPy.
+            return_operator: Whether to retain an isolated centered operator in
+                the result.
+
+        Returns:
+            PCA scores, components, variance statistics, metadata, and
+            optionally the centered operator.
+
+        Raises:
+            TypeError: If AnnData-only mask features are used for matrix input.
+            ValueError: If the mask, dimensions, or centered variance are
+                invalid.
+
+        Examples:
+            >>> result = transformed.pca(n_comps=20, mask_var=my_gene_mask)
+        """
         params = dict(self.params)
         if self._var is None:
             if use_highly_variable is not None:
@@ -596,6 +730,37 @@ def transform(
     The result is an in-process object: it is not stored by ``write_h5ad`` and
     must be reconstructed after restarting Python. Correspondence analysis is
     intentionally not a transform method because its mask defines table margins.
+
+    Args:
+        data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
+            object. Observations are rows and variables are columns.
+        method: Residual, shifted-log/CLR, or Dirichlet transform
+            specification.
+        layer: AnnData count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``. Valid only for AnnData and
+            mutually exclusive with ``layer``.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and operator dtype, either ``"float64"`` or
+            ``"float32"``.
+
+    Returns:
+        An uncentered implicit transformed matrix that supports matrix products,
+        bounded materialization, and repeated PCA.
+
+    Raises:
+        TypeError: If ``method`` is not a transform specification or AnnData-only
+            parameters are used with matrix input.
+        ValueError: If counts, transform parameters, or dtype are invalid.
+        KeyError: If a requested AnnData layer or variable parameter is absent.
+
+    Examples:
+        >>> transformed = transform(
+        ...     adata,
+        ...     Residual(model="poisson", residual="pearson"),
+        ...     layer="counts",
+        ... )
+        >>> transformed.shape
+        (adata.n_obs, adata.n_vars)
     """
     return _transform(
         data,

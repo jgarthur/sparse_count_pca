@@ -138,6 +138,20 @@ def residual_pca_matrix(
 
     Raises:
         ValueError: If counts, dimensions, or model parameters are invalid.
+
+    Examples:
+        >>> result = residual_pca_matrix(
+        ...     counts,
+        ...     n_comps=20,
+        ...     model="poisson",
+        ...     residual="pearson",
+        ... )
+        >>> result.scores.shape
+        (counts.shape[0], 20)
+
+    See Also:
+        residual_pca: AnnData entry point.
+        transform: Two-step transformation and PCA workflow.
     """
     return _compute_residual_pca(
         X,
@@ -214,7 +228,73 @@ def residual_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute residual PCA and write Scanpy-compatible AnnData outputs."""
+    """Compute residual PCA and write Scanpy-compatible AnnData outputs.
+
+    The chosen count matrix fits cell totals and gene proportions before
+    ``mask_var`` selects PCA variables. Residual clipping, when enabled, occurs
+    before centering the selected transformed columns.
+
+    By default, scores are written to ``adata.obsm["X_pca"]``, component
+    vectors to ``adata.varm["PCs"]``, and variance statistics and parameters to
+    ``adata.uns["pca"]``. Masked component rows contain ``NaN``.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components. Must be smaller than both the
+            observation count and number of selected variables.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``. Mutually exclusive with
+            ``layer``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional PCA keys.
+        model: Null model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
+        residual: Residual type: ``"pearson"`` or ``"deviance"``.
+        alpha: Scalar, per-variable array, or ``adata.var`` key containing
+            scaled-NB overdispersion. Required only for ``model="scaled_nb"``.
+        clip: Positive clipping threshold applied to uncentered residuals, or
+            ``None`` for no clipping.
+        clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
+        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
+            symmetric clipping, or ``None`` for no limit.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy. Otherwise mutate ``adata``
+            and return ``None``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, clipping, or model parameters
+            are invalid.
+        KeyError: If a requested layer, mask, or overdispersion key is absent.
+        RuntimeError: If exact symmetric clipping would meet or exceed the
+            configured sparse support-growth limit.
+
+    Examples:
+        >>> residual_pca(
+        ...     adata,
+        ...     layer="counts",
+        ...     n_comps=50,
+        ...     model="poisson",
+        ...     residual="pearson",
+        ... )
+        >>> adata.obsm["X_pca"].shape
+        (adata.n_obs, 50)
+
+    See Also:
+        residual_pca_matrix: Matrix entry point.
+        transform: Two-step transformation and PCA workflow.
+    """
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
