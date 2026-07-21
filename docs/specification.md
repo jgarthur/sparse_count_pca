@@ -279,13 +279,22 @@ tests/
     README.md
     generate_reference.R
     test_corral_reference.py
+  real_data_reference/
+    README.md
+    generate_fixture.py
+    generate_sctransform_reference.R
+    test_fixture.py
+    test_log_transform_dense_oracles.py
+    test_residual_dense_oracle.py
+    test_correspondence_reference.py
+    test_sctransform_reference.py
 ```
 
 All package modules other than `__init__.py` are private. `tests/_oracles.py`
-holds dense oracle helpers used by the test suite (`_materialize_dense_residual`,
-`_dense_poisson_deviance`, `_dense_binomial_deviance`,
-`_dense_scaled_nb_deviance`, `_compare_subspaces`) so test-only code is not
-installed in the runtime package.
+holds shared dense oracle helpers for residual, logarithmic, Dirichlet, and
+correspondence transforms, plus subspace comparison utilities, so test-only
+code is not installed in the runtime package. Simulated and real-data tests use
+the same formula implementations.
 
 `__init__.py` is the authoritative list of public transforms, analysis
 functions, and result types. The package-layout overview belongs to the
@@ -299,11 +308,11 @@ package has been installed into the active environment.
 
 The wheel contains only `src/sparse_count_pca`.
 
-The source distribution contains package sources, ordinary tests, transform
-reference formulas and provenance, `README.md`, the `docs/` tree, and
-`pyproject.toml`. It excludes editor configuration, lock files, and local
-development scripts. The Townes reference test runs offline; its adjacent R
-script is only needed to regenerate the pinned reference values.
+The source distribution contains package sources, ordinary tests, committed
+real-data fixtures, transform reference formulas and provenance, `README.md`,
+the `docs/` tree, and `pyproject.toml`. It excludes editor configuration, lock
+files, and local development scripts. The Townes reference test runs offline;
+its adjacent R script is only needed to regenerate the pinned reference values.
 
 ## Dependencies
 

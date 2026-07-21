@@ -1,6 +1,9 @@
 # Wishlist
 
-This file records plausible additions without treating them as committed API.
+This file records unfinished plausible additions without treating them as
+committed API. When work is completed, remove it from this file and record the
+outcome in the appropriate specification, design, architecture, or provenance
+documentation; do not leave completed work described as a wish.
 
 ## Block-wise inverse reconstruction to count space
 
@@ -70,20 +73,12 @@ logic on `PCAResult`. Decide after the metadata/state design is reviewed.
 
 ## Real-data oracle suite
 
-Add offline real-data regression coverage for every public transform and every
-external implementation whose compatibility the package claims. Use one small,
-deterministic subset of a public count dataset where possible so comparisons
-share the same cells and genes.
-
-Coverage should include:
-
-- Poisson, binomial, and scaled-NB Pearson and deviance residuals, with clipped
-  residual coverage where the reference supports it;
-- shifted log, shifted CLR, and proportion-shifted CLR;
-- Dirichlet log and Dirichlet CLR with uniform and nonuniform priors;
-- classical correspondence analysis and the experimental scaled-NB variant;
-- every existing external provenance family: Scanpy, SCTransform/Seurat,
-  Townes, CORRAL, and the pinned BHGP formulas.
+Add independently generated outputs from the external implementations whose
+compatibility the package claims but which are not yet exercised on the shared
+PBMC3k fixture: Scanpy, Townes, CORRAL, and the pinned BHGP formulas. Continue
+to use the deterministic cells and genes where the upstream method permits it.
+The completed fixture and dense-formula coverage are recorded in the
+[PBMC3k fixture documentation](../tests/real_data_reference/README.md).
 
 For each transform, compare the most diagnostic independently generated
 artifacts available: selected transformed entries, clipping support and `nnz`,
@@ -143,6 +138,10 @@ clearly identified normative API/specification entry point.
 
 ## Other candidates
 
+- Decide whether `transform(X, Residual(...))` should permit all-zero genes so
+  a later `.pca(mask_var=...)` can exclude them. The one-step AnnData residual
+  API can do this because it resolves the PCA mask before building residuals;
+  the two-step API currently validates every gene when the transform is fitted.
 - Quick recipes to reproduce Seurat, Cell Ranger, scanpy, BHGP, correspondence analysis recommendations
 - Skill.md for agentic usage. recommend shifted clr and possibly correpondence analysis
 - Highly variable gene selection based on residual variance.

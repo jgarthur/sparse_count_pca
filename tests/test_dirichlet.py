@@ -18,19 +18,7 @@ from sparse_count_pca._log_transforms import (
     validate_dirichlet_prior,
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-
-
-def _dense_dirichlet(X, concentration, prior_proportions, *, clr):
-    X = np.asarray(X, dtype=np.float64)
-    if prior_proportions is None:
-        prior_proportions = np.full(X.shape[1], 1.0 / X.shape[1])
-    posterior = (X + concentration * prior_proportions) / (
-        X.sum(axis=1)[:, None] + concentration
-    )
-    transformed = np.log(posterior)
-    if clr:
-        transformed -= transformed.mean(axis=1)[:, None]
-    return transformed
+from tests._oracles import _dense_dirichlet
 
 
 @pytest.mark.parametrize(
@@ -58,9 +46,7 @@ def test_dirichlet_representations_match_dense_oracle(
         representation, center=False, dtype="float64"
     )
     actual = operator @ np.eye(counts.shape[1])
-    expected = _dense_dirichlet(
-        counts.toarray(), concentration, prior_proportions, clr=clr
-    )
+    expected = _dense_dirichlet(counts, concentration, prior_proportions, clr=clr)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
     assert representation.sparse.nnz == counts.nnz
     assert representation.rank == 2
@@ -86,7 +72,7 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
         prior_proportions=prior,
         return_operator=True,
     )
-    dense = _dense_dirichlet(counts.toarray(), concentration, prior, clr=clr)
+    dense = _dense_dirichlet(counts, concentration, prior, clr=clr)
     dense -= dense.mean(axis=0)
     _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
 
@@ -119,7 +105,7 @@ def test_dirichlet_mask_is_applied_after_full_normalization(adata, pca, clr):
     """Dirichlet normalization uses all genes before PCA masking."""
     mask = np.array([True, True, True, False])
     prior = np.array([0.1, 0.2, 0.3, 0.4])
-    dense = _dense_dirichlet(adata.X.toarray(), 2.0, prior, clr=clr)[:, mask]
+    dense = _dense_dirichlet(adata.X, 2.0, prior, clr=clr)[:, mask]
     dense -= dense.mean(axis=0)
     result = pca(
         adata,

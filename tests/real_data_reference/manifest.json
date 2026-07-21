@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "source": {
+    "name": "3k PBMCs from a Healthy Donor",
+    "dataset_url": "https://www.10xgenomics.com/datasets/3-k-pbm-cs-from-a-healthy-donor-1-standard-1-1-0",
+    "archive_url": "https://cf.10xgenomics.com/samples/cell-exp/1.1.0/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz",
+    "archive_sha256": "847d6ebd9a1ec9a768f2be7e40ca42cbfe75ebeb6d76a4c24167041699dc28b5",
+    "license": "CC-BY-4.0"
+  },
+  "artifacts": {
+    "raw_counts": {
+      "filename": "pbmc3k_raw_counts.npz",
+      "sha256": "550a442b6c19a39215177d8889757c8d75ceb1029663abaddaafcea55e721ed3",
+      "shape": [
+        256,
+        1024
+      ],
+      "dtype": "int32",
+      "nnz": 95822,
+      "total_count": 599133
+    },
+    "equal_depth_counts": {
+      "filename": "pbmc3k_equal_depth_counts.npz",
+      "sha256": "1045d2bc2606f42b83360813f7e6008decb01c1262e5b996f281a891e498881a",
+      "shape": [
+        256,
+        1024
+      ],
+      "dtype": "int32",
+      "nnz": 64730,
+      "total_count": 256000,
+      "row_total": 1000
+    }
+  }
+}

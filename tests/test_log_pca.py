@@ -19,11 +19,13 @@ from sparse_count_pca._log_transforms import (
     build_shifted_log_representation,
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-from tests._oracles import _compare_subspaces
-from tests.proportion_shifted_clr_reference.oracle import (
-    proportion_shifted_clr,
+from tests._oracles import (
+    _compare_subspaces,
+    _dense_count_shifted_clr,
+    _dense_proportion_shifted_clr,
+    _dense_shifted_log,
 )
-from tests.shifted_clr_reference.oracle import count_shifted_clr, pflog
+from tests.shifted_clr_reference.oracle import pflog
 
 
 def _materialize(representation, *, center=False):
@@ -33,16 +35,12 @@ def _materialize(representation, *, center=False):
     return operator @ np.eye(representation.shape[1])
 
 
-def _shifted_log_dense(counts, count_shift):
-    return np.log1p(counts.toarray() / count_shift)
-
-
 @pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
 def test_shifted_log_representation_is_exactly_sparse(counts, count_shift):
     """The fixed-count shifted-log representation is exactly sparse."""
     representation = build_shifted_log_representation(counts, count_shift=count_shift)
     actual = _materialize(representation)
-    expected = _shifted_log_dense(counts, count_shift)
+    expected = _dense_shifted_log(counts, count_shift)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
     assert representation.sparse.nnz == counts.nnz
     assert representation.rank == 0
@@ -51,7 +49,7 @@ def test_shifted_log_representation_is_exactly_sparse(counts, count_shift):
 def test_shifted_log_gauge_has_same_centered_pca_matrix_as_log_counts(counts):
     """The sparse shifted-log gauge preserves the centered log-count matrix."""
     count_shift = 0.6
-    zero_baseline = _shifted_log_dense(counts, count_shift)
+    zero_baseline = _dense_shifted_log(counts, count_shift)
     shifted_counts = np.log(counts.toarray() + count_shift)
     zero_baseline -= zero_baseline.mean(axis=0)
     shifted_counts -= shifted_counts.mean(axis=0)
@@ -63,7 +61,7 @@ def test_count_shifted_clr_representation_matches_reference(counts, count_shift)
     """Count-shifted CLR values match the independent reference formula."""
     representation = build_shifted_clr_representation(counts, count_shift=count_shift)
     actual = _materialize(representation)
-    expected = count_shifted_clr(counts, count_shift)
+    expected = _dense_count_shifted_clr(counts, count_shift)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
     np.testing.assert_allclose(actual.mean(axis=1), 0.0, rtol=0.0, atol=1e-15)
     assert representation.sparse.nnz == counts.nnz
@@ -77,7 +75,7 @@ def test_proportion_shifted_clr_matches_historical_reference(counts, composition
         counts, composition_shift=composition_shift
     )
     actual = _materialize(representation)
-    expected = proportion_shifted_clr(counts, composition_shift)
+    expected = _dense_proportion_shifted_clr(counts, composition_shift)
     np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
     np.testing.assert_allclose(actual.mean(axis=1), 0.0, rtol=0.0, atol=1e-15)
     assert representation.sparse.nnz == counts.nnz
@@ -121,17 +119,17 @@ def test_scalar_shifted_clr_equals_uniform_dirichlet_clr(counts):
         (
             shifted_log_pca_matrix,
             {"count_shift": 0.7},
-            lambda X: _shifted_log_dense(X, 0.7),
+            lambda X: _dense_shifted_log(X, 0.7),
         ),
         (
             shifted_clr_pca_matrix,
             {"count_shift": 0.7},
-            lambda X: count_shifted_clr(X, 0.7),
+            lambda X: _dense_count_shifted_clr(X, 0.7),
         ),
         (
             proportion_shifted_clr_pca_matrix,
             {"composition_shift": 0.7},
-            lambda X: proportion_shifted_clr(X, 0.7),
+            lambda X: _dense_proportion_shifted_clr(X, 0.7),
         ),
     ],
 )
@@ -165,17 +163,17 @@ def test_log_pca_matches_dense_svd(counts, pca, kwargs, dense_transform):
         (
             shifted_log_pca,
             {"count_shift": 0.7},
-            lambda X: _shifted_log_dense(X, 0.7),
+            lambda X: _dense_shifted_log(X, 0.7),
         ),
         (
             shifted_clr_pca,
             {"count_shift": 0.7},
-            lambda X: count_shifted_clr(X, 0.7),
+            lambda X: _dense_count_shifted_clr(X, 0.7),
         ),
         (
             proportion_shifted_clr_pca,
             {"composition_shift": 0.7},
-            lambda X: proportion_shifted_clr(X, 0.7),
+            lambda X: _dense_proportion_shifted_clr(X, 0.7),
         ),
     ],
 )
