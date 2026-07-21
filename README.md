@@ -13,11 +13,8 @@ Supports both Pearson and deviance residuals for the following models:
 - Poisson
 - Binomial
 - [Negative binomial with size-factor-scaled dispersion](docs/specification.md#supported-residuals).
-  This is similar but not identical to the residual transform used by
-  SCTransform. When all cells have the same total and the fitted means agree,
-  its Pearson residuals reduce to the usual SCTransform negative-binomial form
-  with `alpha = 1 / theta`. Clipping is applied to residuals before PCA column
-  centering.
+  This is similar but not generally identical to the residual transform used
+  by SCTransform; the exact relationship is described below.
 
 It also supports fixed-count shifted-log and shifted-CLR PCA,
 fixed-composition shifted-CLR PCA, Dirichlet-log and Dirichlet-CLR PCA, and
@@ -106,6 +103,39 @@ scp.residual_pca(
 
 `alpha` may also be a scalar or an array of length `adata.n_vars`. Values below
 `1e-8` fall back to the Poisson model.
+
+#### Relation to SCTransform v2
+
+[SCTransform v2 as implemented by sctransform
+0.4.3](https://satijalab.org/seurat/reference/sctransform) fits each gene with
+an intercept and a fixed log-library-size offset, rather than estimating a
+separate coefficient for cell depth. On equal-depth data, its Pearson
+residuals therefore agree with this package's scaled-NB residuals when all of
+the following are aligned:
+
+- the final SCT intercept implies the empirical per-gene mean, as in an
+  unregularized or explicitly fixed-intercept fit;
+- this package receives the same per-gene dispersion as `alpha = 1 / theta`,
+  with infinite `theta` mapped to `alpha = 0`;
+- SCT uses `min_variance=0`, so its residual denominator is the standard
+  `sqrt(mu + mu**2 / theta)` without an additional variance floor; and
+- both paths clip to the same bounds before centering each gene across cells.
+
+These conditions describe a controlled equality oracle, not default
+end-to-end SCT output. The default v2 path [regularizes the fitted
+intercepts](https://github.com/satijalab/sctransform/blob/49e35b5aeb76a602910207cbfde1561093340be3/R/vst.R#L797-L865)
+and [enables an `umi_median` variance floor](https://github.com/satijalab/sctransform/blob/49e35b5aeb76a602910207cbfde1561093340be3/R/vst.R#L139-L159);
+either can change the residuals even when every cell has the same total. The
+fixed-offset implementation is
+[pinned here](https://github.com/satijalab/sctransform/blob/49e35b5aeb76a602910207cbfde1561093340be3/R/fit.R#L107-L176),
+and Seurat's clipping-before-centering order is
+[pinned here](https://github.com/satijalab/seurat/blob/4c0f2dc16fad4e8f0d7b5c98321d8bcb18caa13a/R/preprocessing.R#L4103-L4122).
+See the [full real-data equality
+test](tests/real_data_reference/test_sctransform_reference.py), its
+[provenance](tests/real_data_reference/README.md), and the smaller
+[algebraic identity test](tests/test_residual_scanpy.py). The real-data test
+checks all 262,144 centered residual entries, both unclipped and symmetrically
+clipped, with an absolute tolerance of `1e-12`.
 
 ## Two-step transform API
 
