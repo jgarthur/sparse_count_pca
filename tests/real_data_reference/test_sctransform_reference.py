@@ -14,7 +14,7 @@ import sparse_count_pca as scp
 REFERENCE_DIR = Path(__file__).resolve().parent
 COUNTS_PATH = REFERENCE_DIR / "pbmc3k_equal_depth_counts.npz"
 ORACLE_PATH = REFERENCE_DIR / "sctransform_equal_depth_reference.npz"
-ORACLE_SHA256 = "0180a25ed0ec7cb42829817d7d8219c0e285313076ad2037bbe68eef8870d86e"
+ORACLE_SHA256 = "5b93b51ba503576a930427cab3ec3d86bb56e119d300059f86e00d1d50081661"
 
 
 @pytest.fixture(scope="module")
@@ -58,7 +58,7 @@ def test_sctransform_final_parameters_match_the_shared_equal_depth_model(
     np.testing.assert_allclose(
         oracle["clip"], [np.sqrt(counts.shape[0] / 30)], rtol=0.0, atol=0.0
     )
-    np.testing.assert_array_equal(oracle["clip_counts"], [0.0, 7358.0])
+    np.testing.assert_array_equal(oracle["clip_counts"], [0.0, 7356.0])
 
 
 @pytest.mark.parametrize(

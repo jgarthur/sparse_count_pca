@@ -9,6 +9,7 @@ import pytest
 from scipy import sparse
 
 from sparse_count_pca import correspondence_analysis_matrix
+from tests._oracles import _dense_correspondence
 
 REFERENCE_DIR = Path(__file__).resolve().parent
 COUNTS_PATH = REFERENCE_DIR / "pbmc3k_raw_counts.npz"
@@ -17,39 +18,6 @@ COUNTS_PATH = REFERENCE_DIR / "pbmc3k_raw_counts.npz"
 def _load_counts() -> sparse.csr_matrix:
     """Load the pinned unequal-depth PBMC3k-derived matrix."""
     return sparse.load_npz(COUNTS_PATH).tocsr()
-
-
-def _dense_classical_correspondence(
-    counts: sparse.csr_matrix,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Construct the classical standardized residual matrix from probabilities."""
-    observed = counts.toarray().astype(np.float64)
-    row_totals = observed.sum(axis=1)
-    column_totals = observed.sum(axis=0)
-    grand_total = row_totals.sum(dtype=np.float64)
-    probabilities = observed / grand_total
-    row_masses = row_totals / grand_total
-    column_masses = column_totals / grand_total
-    independence = np.outer(row_masses, column_masses)
-    standardized = (probabilities - independence) / np.sqrt(independence)
-    return standardized, row_masses, column_masses
-
-
-def _dense_scaled_nb_correspondence(
-    counts: sparse.csr_matrix, alpha: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Construct the package's experimental scaled-NB CA matrix independently."""
-    observed = counts.toarray().astype(np.float64)
-    row_totals = observed.sum(axis=1)
-    column_totals = observed.sum(axis=0)
-    grand_total = row_totals.sum(dtype=np.float64)
-    row_masses = row_totals / grand_total
-    column_masses = column_totals / grand_total
-    expected = np.outer(row_totals, column_masses)
-    mean_depth = row_totals.mean(dtype=np.float64)
-    variance_scale = 1.0 + alpha * mean_depth * column_masses
-    residuals = (observed - expected) / np.sqrt(expected * variance_scale[None, :])
-    return residuals / np.sqrt(grand_total), row_masses, column_masses
 
 
 def _materialize_public_operator(result, n_vars: int) -> np.ndarray:
@@ -61,7 +29,7 @@ def _materialize_public_operator(result, n_vars: int) -> np.ndarray:
 def test_real_data_classical_correspondence_matches_full_dense_formula() -> None:
     """Classical CA represents every PBMC3k standardized residual exactly."""
     counts = _load_counts()
-    expected, row_masses, column_masses = _dense_classical_correspondence(counts)
+    expected, row_masses, column_masses = _dense_correspondence(counts)
     result = correspondence_analysis_matrix(
         counts,
         n_comps=2,
@@ -84,7 +52,9 @@ def test_real_data_scaled_nb_correspondence_matches_full_dense_formula() -> None
     """Experimental scaled-NB CA represents every PBMC3k residual exactly."""
     counts = _load_counts()
     alpha = 0.01
-    expected, row_masses, column_masses = _dense_scaled_nb_correspondence(counts, alpha)
+    expected, row_masses, column_masses = _dense_correspondence(
+        counts, model="scaled_nb", alpha=alpha
+    )
     with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
         result = correspondence_analysis_matrix(
             counts,

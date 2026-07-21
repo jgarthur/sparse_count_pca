@@ -10,48 +10,18 @@ from anndata import AnnData
 from scipy import sparse
 
 import sparse_count_pca as scp
+from tests._oracles import (
+    _dense_count_shifted_clr,
+    _dense_dirichlet,
+    _dense_proportion_shifted_clr,
+    _dense_shifted_log,
+)
 
 
 def _with_zero_gene(counts: sparse.csr_matrix) -> sparse.csr_matrix:
     """Append one all-zero gene without changing any cell totals."""
     zero_gene = sparse.csr_matrix((counts.shape[0], 1), dtype=counts.dtype)
     return sparse.hstack((counts, zero_gene), format="csr")
-
-
-def _center_rows(values: np.ndarray) -> np.ndarray:
-    """Return values centered independently within each row."""
-    return values - values.mean(axis=1, keepdims=True)
-
-
-def _shifted_log(values: np.ndarray) -> np.ndarray:
-    """Evaluate the shifted-log test formula densely."""
-    return np.log1p(values / 0.7)
-
-
-def _shifted_clr(values: np.ndarray) -> np.ndarray:
-    """Evaluate the count-shifted CLR test formula densely."""
-    return _center_rows(np.log(values + 0.7))
-
-
-def _proportion_shifted_clr(values: np.ndarray) -> np.ndarray:
-    """Evaluate the proportion-shifted CLR test formula densely."""
-    proportions = values / values.sum(axis=1, keepdims=True)
-    return _center_rows(np.log(proportions + 0.05))
-
-
-def _dirichlet(
-    values: np.ndarray,
-    prior: np.ndarray,
-    *,
-    clr: bool,
-) -> np.ndarray:
-    """Evaluate the Dirichlet posterior-mean log test formula densely."""
-    concentration = 2.5
-    posterior = (values + concentration * prior) / (
-        values.sum(axis=1, keepdims=True) + concentration
-    )
-    logged = np.log(posterior)
-    return _center_rows(logged) if clr else logged
 
 
 @pytest.mark.parametrize(
@@ -132,23 +102,23 @@ def test_residual_pca_rejects_selected_zero_gene_and_accepts_masked_zero_gene(
     [
         (
             lambda prior: scp.ShiftedLog(count_shift=0.7),
-            lambda values, prior: _shifted_log(values),
+            lambda values, prior: _dense_shifted_log(values, 0.7),
         ),
         (
             lambda prior: scp.ShiftedCLR(count_shift=0.7),
-            lambda values, prior: _shifted_clr(values),
+            lambda values, prior: _dense_count_shifted_clr(values, 0.7),
         ),
         (
             lambda prior: scp.ProportionShiftedCLR(composition_shift=0.05),
-            lambda values, prior: _proportion_shifted_clr(values),
+            lambda values, prior: _dense_proportion_shifted_clr(values, 0.05),
         ),
         (
             lambda prior: scp.DirichletLog(concentration=2.5, prior_proportions=prior),
-            lambda values, prior: _dirichlet(values, prior, clr=False),
+            lambda values, prior: _dense_dirichlet(values, 2.5, prior, clr=False),
         ),
         (
             lambda prior: scp.DirichletCLR(concentration=2.5, prior_proportions=prior),
-            lambda values, prior: _dirichlet(values, prior, clr=True),
+            lambda values, prior: _dense_dirichlet(values, 2.5, prior, clr=True),
         ),
     ],
     ids=[

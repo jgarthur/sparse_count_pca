@@ -7,13 +7,13 @@ from scipy.sparse.linalg import LinearOperator
 
 import sparse_count_pca as scp
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-from tests._oracles import _materialize_dense_residual
+from tests._oracles import _dense_shifted_log, _materialize_dense_residual
 
 
 def test_transformed_matrix_is_linear_operator_and_materializes_exactly(counts):
     """A transformed matrix is an exact uncentered SciPy linear operator."""
     transformed = scp.transform(counts, scp.ShiftedLog(count_shift=0.7))
-    expected = np.log1p(counts.toarray() / 0.7)
+    expected = _dense_shifted_log(counts, 0.7)
 
     assert isinstance(transformed, LinearOperator)
     np.testing.assert_allclose(
@@ -134,7 +134,7 @@ def test_transformed_matrix_dtype_controls_products_materialization_and_pca(coun
 def test_materialize_accepts_arbitrary_positional_selections_and_out(counts, tmp_path):
     """Materialization supports ordered selections, scalar indices, and out."""
     transformed = scp.transform(counts, scp.ShiftedLog(count_shift=0.7))
-    expected = np.log1p(counts.toarray() / 0.7)
+    expected = _dense_shifted_log(counts, 0.7)
     out = np.memmap(tmp_path / "subset.dat", mode="w+", shape=(3, 2), dtype=np.float32)
 
     actual = transformed.materialize(obs=[4, 1, 4], var=[3, 0], out=out, block_size=2)
@@ -149,7 +149,7 @@ def test_materialize_accepts_arbitrary_positional_selections_and_out(counts, tmp
 def test_materialize_accepts_anndata_names(adata):
     """Transforms built from AnnData accept observation and variable names."""
     transformed = scp.transform(adata, scp.ShiftedLog(count_shift=1.0))
-    expected = np.log1p(adata.X.toarray())
+    expected = _dense_shifted_log(adata.X, 1.0)
 
     actual = transformed.materialize(
         obs=[adata.obs_names[3], adata.obs_names[0]],

@@ -9,36 +9,12 @@ from sparse_count_pca import (
     correspondence_analysis,
     correspondence_analysis_matrix,
 )
-
-
-def _dense_ca_matrix(X):
-    X = np.asarray(X, dtype=np.float64)
-    total = X.sum()
-    P = X / total
-    row_masses = P.sum(axis=1)
-    column_masses = P.sum(axis=0)
-    standardized = P - np.outer(row_masses, column_masses)
-    standardized /= np.sqrt(np.outer(row_masses, column_masses))
-    return standardized, row_masses, column_masses
-
-
-def _dense_scaled_nb_ca_matrix(X, alpha):
-    X = np.asarray(X, dtype=np.float64)
-    row_totals = X.sum(axis=1)
-    total = row_totals.sum()
-    column_masses = X.sum(axis=0) / total
-    expected = np.outer(row_totals, column_masses)
-    alpha = np.asarray(alpha, dtype=np.float64)
-    effective_alpha = np.where(alpha < 1e-8, 0.0, alpha)
-    variance_scale = 1.0 + effective_alpha * row_totals.mean() * column_masses
-    standardized = (X - expected) / np.sqrt(expected * variance_scale[None, :])
-    return standardized / np.sqrt(total)
+from tests._oracles import _dense_correspondence
 
 
 def test_correspondence_analysis_matches_dense_oracle(counts):
     """Correspondence analysis matches an independent dense oracle."""
-    X = counts.toarray()
-    expected, row_masses, column_masses = _dense_ca_matrix(X)
+    expected, row_masses, column_masses = _dense_correspondence(counts)
     result = correspondence_analysis_matrix(
         counts, n_comps=2, dtype="float64", return_operator=True
     )
@@ -94,7 +70,7 @@ def test_total_inertia_equals_pearson_chi_squared_over_total(counts):
 def test_experimental_scaled_nb_ca_matches_dense_residual_ordination(counts):
     """Scaled-NB correspondence analysis matches dense residual ordination."""
     alpha = np.array([0.0, 0.05, 0.2, 1.0])
-    expected = _dense_scaled_nb_ca_matrix(counts.toarray(), alpha)
+    expected, _, _ = _dense_correspondence(counts, model="scaled_nb", alpha=alpha)
     with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
         result = correspondence_analysis_matrix(
             counts,

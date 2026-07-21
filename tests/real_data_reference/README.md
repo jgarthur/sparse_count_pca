@@ -7,15 +7,14 @@ generation.
 
 The two matrices have the same 256 cells and 1,024 genes, in the same order:
 
-- `pbmc3k_raw_counts.npz` is the selected, unequal-depth count restriction. It
-  retains cell-depth variation for normalization and transform oracle tests.
+- `pbmc3k_raw_counts.npz` contains the selected cells and genes at their
+  observed depths. It retains cell-depth variation for normalization and
+  transform oracle tests.
 - `pbmc3k_equal_depth_counts.npz` is an exact 1,000-count-per-cell molecule
-  subsample of that restriction. It supports comparisons for which constant
-  cell depth is part of the mathematical equivalence, notably the
-  controlled fixed-offset SCTransform comparison.
-- `manifest.json` records source and artifact checksums, license information,
-  every ordered cell and gene identity, all selection parameters, diagnostic
-  statistics, and the generation environment.
+  subsample of that restriction. It supports the controlled fixed-offset
+  SCTransform comparison.
+- `manifest.json` records source and artifact checksums plus a few count totals
+  that catch corruption or accidental artifact replacement.
 - `generate_fixture.py` is the complete provenance and regeneration tool.
 
 The checked-in matrices are SciPy CSR NPZ files with `int32` counts. Tests must
@@ -44,8 +43,7 @@ The archive URL is:
 https://cf.10xgenomics.com/samples/cell-exp/1.1.0/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz
 ```
 
-The generator verifies the complete archive before reading it. Checksums for
-the three members used from the archive are also pinned in `manifest.json`.
+The generator verifies the complete archive before reading it.
 
 ## Deterministic selection
 
@@ -86,8 +84,8 @@ at least 1,370 counts, so every cell is genuinely thinned.
 
 The equal-depth fixture has no empty cells or genes. At constant dispersion
 `theta = 100` and clip limit `sqrt(256 / 30)`, it contains both upper-tail
-clipping and negative clipping at structural zeros. The exact clipping counts
-and sparse-support growth are recorded in the manifest.
+clipping and negative clipping at structural zeros; the dense-oracle tests
+exercise both behaviors directly.
 
 ## SCTransform v2 equality oracle
 
@@ -108,21 +106,18 @@ contains the final regularized `theta`, `alpha = 1 / theta` with infinite
 Clipping is performed before gene centering, matching the order in the pinned
 [Seurat 5.5.1 wrapper](https://github.com/satijalab/seurat/blob/4c0f2dc16fad4e8f0d7b5c98321d8bcb18caa13a/R/preprocessing.R#L4103-L4122).
 
-The generation environment did not contain `glmGamPoi`, so sctransform used its
-documented native `nb_offset` fallback. The native fit reported 26
-`MASS::theta.ml` iteration-limit warnings; all final fitted parameters and
-residuals remained finite where required. This test does not claim that fitting
-backends estimate identical dispersions. Instead, it supplies this package with
-the exact final per-gene `alpha` stored by SCTransform, then tests the shared
-residual formula, clipping, and centering over every matrix entry. The generator
-therefore refuses to run when `glmGamPoi` is installed, preventing a silent
-change of oracle provenance.
+The generator requires `glmGamPoi` and verifies that sctransform selected its
+`glmGamPoi_offset` backend. This test does not claim that fitting backends
+estimate identical dispersions. Instead, it supplies this package with the
+exact final per-gene `alpha` stored by SCTransform, then tests the shared
+residual formula, clipping, and centering over every matrix entry.
 
 The recorded R environment was:
 
 ```text
 R 4.5.3 (2026-03-11), aarch64-apple-darwin25.3.0
 sctransform 0.4.3
+glmGamPoi 1.22.0
 Matrix 1.7.4
 MASS 7.3.65
 matrixStats 1.5.0
@@ -133,16 +128,15 @@ BLAS OpenBLAS 0.3.32
 LAPACK 3.12.1
 ```
 
-The checked-in oracle is 1,013,905 bytes. Its SHA-256 is recorded after the
+The checked-in oracle is 1,014,073 bytes. Its SHA-256 is recorded after the
 regeneration commands below.
 
 ## Dense formula regression tests
 
-The same pinned matrices also drive full-matrix comparisons with independent
-dense NumPy formulas. These tests calculate expected values at test time and
-compare every one of the 256-by-1,024 transformed entries; they do not use
-sampled coordinates, and their expected-value paths do not call production
-representation builders.
+The same pinned matrices also drive full-matrix comparisons with shared,
+independent dense NumPy formulas used by the simulated-data tests. They compare
+all 256-by-1,024 transformed entries, and the expected-value paths do not call
+production representation builders.
 
 Coverage includes:
 
@@ -213,23 +207,19 @@ The generator writes a deterministic NPZ container directly from R. Its
 current SHA-256 is:
 
 ```text
-0180a25ed0ec7cb42829817d7d8219c0e285313076ad2037bbe68eef8870d86e
+5b93b51ba503576a930427cab3ec3d86bb56e119d300059f86e00d1d50081661
 ```
 
-The NPZ file SHA-256 values verify exact serialized artifacts. The manifest
-also supplies canonical CSR checksums over shape, `indptr`, `indices`, and
-data, all encoded as little-endian signed 64-bit integers. Those canonical
-checksums distinguish matrix content from any future NPZ container-level
-serialization differences.
+The NPZ file SHA-256 values verify the exact serialized artifacts. Shape,
+`dtype`, `nnz`, and total counts provide compact diagnostics when a checksum
+changes.
 
 Current artifact checksums are:
 
-| Artifact | File SHA-256 | Canonical CSR SHA-256 |
-| --- | --- | --- |
-| Unequal-depth raw restriction | `550a442b6c19a39215177d8889757c8d75ceb1029663abaddaafcea55e721ed3` | `edc55662f10eb02b701521bb0f2549433c36a05a714e0bbde7fcca86ed57f513` |
-| Equal-depth restriction | `1045d2bc2606f42b83360813f7e6008decb01c1262e5b996f281a891e498881a` | `a1e80ccd9a8fb0ac67ae0777df10a998de64346684c41822af432f31e1e7d822` |
+| Artifact | File SHA-256 |
+| --- | --- |
+| Observed-depth restriction | `550a442b6c19a39215177d8889757c8d75ceb1029663abaddaafcea55e721ed3` |
+| Equal-depth restriction | `1045d2bc2606f42b83360813f7e6008decb01c1262e5b996f281a891e498881a` |
 
-The manifest records the Python, NumPy, and SciPy versions used to serialize
-the committed artifacts. Regeneration under another environment should first
-be judged by the canonical CSR checksums; intentional artifact refreshes must
-also update this table.
+Intentional artifact refreshes must update this table and the compact
+manifest.

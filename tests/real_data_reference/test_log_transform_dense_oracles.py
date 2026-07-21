@@ -9,6 +9,12 @@ import pytest
 from scipy import sparse
 
 import sparse_count_pca as scp
+from tests._oracles import (
+    _dense_count_shifted_clr,
+    _dense_dirichlet,
+    _dense_proportion_shifted_clr,
+    _dense_shifted_log,
+)
 
 REFERENCE_DIR = Path(__file__).resolve().parent
 RAW_COUNTS_PATH = REFERENCE_DIR / "pbmc3k_raw_counts.npz"
@@ -30,53 +36,6 @@ def raw_counts() -> sparse.csr_matrix:
 def equal_depth_counts() -> sparse.csr_matrix:
     """Load the pinned PBMC3k-derived counts with 1,000 reads per cell."""
     return sparse.load_npz(EQUAL_DEPTH_COUNTS_PATH).tocsr()
-
-
-def _dense_counts(counts: sparse.csr_matrix) -> np.ndarray:
-    """Convert a sparse count fixture to an independent float64 dense array."""
-    return counts.toarray().astype(np.float64)
-
-
-def _dense_clr(logged: np.ndarray) -> np.ndarray:
-    """Center logged compositions independently within every cell."""
-    return logged - logged.mean(axis=1, keepdims=True)
-
-
-def _dense_shifted_log(counts: sparse.csr_matrix, count_shift: float) -> np.ndarray:
-    """Evaluate the fixed-count shifted-log definition densely."""
-    return np.log1p(_dense_counts(counts) / count_shift)
-
-
-def _dense_count_shifted_clr(
-    counts: sparse.csr_matrix, count_shift: float
-) -> np.ndarray:
-    """Evaluate the fixed-count shifted-CLR definition densely."""
-    return _dense_clr(np.log(_dense_counts(counts) + count_shift))
-
-
-def _dense_proportion_shifted_clr(
-    counts: sparse.csr_matrix, composition_shift: float
-) -> np.ndarray:
-    """Evaluate the fixed-composition shifted-CLR definition densely."""
-    dense = _dense_counts(counts)
-    proportions = dense / dense.sum(axis=1, keepdims=True)
-    return _dense_clr(np.log(proportions + composition_shift))
-
-
-def _dense_dirichlet(
-    counts: sparse.csr_matrix,
-    concentration: float,
-    prior_proportions: np.ndarray,
-    *,
-    clr: bool,
-) -> np.ndarray:
-    """Evaluate a Dirichlet posterior-mean log transform densely."""
-    dense = _dense_counts(counts)
-    posterior = (dense + concentration * prior_proportions) / (
-        dense.sum(axis=1, keepdims=True) + concentration
-    )
-    logged = np.log(posterior)
-    return _dense_clr(logged) if clr else logged
 
 
 def _prior_proportions(n_vars: int, kind: str) -> np.ndarray:

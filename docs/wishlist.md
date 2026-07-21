@@ -1,6 +1,9 @@
 # Wishlist
 
-This file records plausible additions without treating them as committed API.
+This file records unfinished plausible additions without treating them as
+committed API. When work is completed, remove it from this file and record the
+outcome in the specification, a focused design document, or `docs/history/` as
+appropriate; do not leave completed work described as a wish.
 
 ## Block-wise inverse reconstruction to count space
 
@@ -70,22 +73,12 @@ logic on `PCAResult`. Decide after the metadata/state design is reviewed.
 
 ## Real-data oracle suite
 
-The committed PBMC3k fixture now provides offline full-matrix dense-formula
-coverage for every public transform, plus a direct SCTransform equality oracle.
-Extend that foundation with independently generated outputs from every other
-external implementation whose compatibility the package claims. Continue to
-use the shared deterministic cells and genes where the upstream method permits
-it.
-
-Coverage should include:
-
-- Poisson, binomial, and scaled-NB Pearson and deviance residuals, with clipped
-  residual coverage where the reference supports it;
-- shifted log, shifted CLR, and proportion-shifted CLR;
-- Dirichlet log and Dirichlet CLR with uniform and nonuniform priors;
-- classical correspondence analysis and the experimental scaled-NB variant;
-- every existing external provenance family: Scanpy, SCTransform/Seurat,
-  Townes, CORRAL, and the pinned BHGP formulas.
+Add independently generated outputs from the external implementations whose
+compatibility the package claims but which are not yet exercised on the shared
+PBMC3k fixture: Scanpy, Townes, CORRAL, and the pinned BHGP formulas. Continue
+to use the deterministic cells and genes where the upstream method permits it.
+The completed fixture and dense-formula coverage are recorded in the
+[real-data oracle history](history/real-data-oracle-suite.md).
 
 For each transform, compare the most diagnostic independently generated
 artifacts available: selected transformed entries, clipping support and `nnz`,

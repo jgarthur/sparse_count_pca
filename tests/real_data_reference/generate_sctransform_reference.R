@@ -2,6 +2,7 @@
 
 suppressPackageStartupMessages(library(Matrix))
 suppressPackageStartupMessages(library(sctransform))
+suppressPackageStartupMessages(library(glmGamPoi))
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 2L) {
@@ -22,12 +23,8 @@ output_path <- file.path(
 if (as.character(packageVersion("sctransform")) != "0.4.3") {
   stop("reference generation requires sctransform 0.4.3", call. = FALSE)
 }
-if (requireNamespace("glmGamPoi", quietly = TRUE)) {
-  stop(
-    "this pinned reference records the native nb_offset fallback; ",
-    "regenerate in an environment without glmGamPoi",
-    call. = FALSE
-  )
+if (as.character(packageVersion("glmGamPoi")) != "1.22.0") {
+  stop("reference generation requires glmGamPoi 1.22.0", call. = FALSE)
 }
 
 # SciPy exports the fixture transposed because sctransform expects genes x cells.
@@ -44,11 +41,9 @@ if (any(rowSums(umi) == 0)) {
   stop("all genes must have positive margins", call. = FALSE)
 }
 
-# v2 selects glmGamPoi_offset when glmGamPoi is present and the native
-# nb_offset implementation otherwise. The checked-in environment intentionally
-# exercises the documented fallback. The equality test consumes the final
-# regularized theta values, so it does not assume that another backend would
-# estimate the same dispersions.
+# Use sctransform's preferred v2 offset backend. The equality test consumes the
+# final regularized theta values, so it does not assume that another backend
+# would estimate the same dispersions.
 fit <- sctransform::vst(
   umi = umi,
   vst.flavor = "v2",
@@ -70,8 +65,8 @@ fit_warnings <- warnings()
 if (!is.null(fit_warnings)) {
   print(fit_warnings)
 }
-if (!identical(fit$arguments$method, "nb_offset")) {
-  stop("expected vst.flavor='v2' to select the native nb_offset fallback")
+if (!identical(fit$arguments$method, "glmGamPoi_offset")) {
+  stop("expected vst.flavor='v2' to select glmGamPoi_offset")
 }
 
 parameters <- fit$model_pars_fit[rownames(umi), , drop = FALSE]
