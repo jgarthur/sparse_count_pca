@@ -333,8 +333,10 @@ scp.dirichlet_clr_pca(
 ```
 
 The prior and posterior normalization use all input genes before `mask_var`
-selects genes for PCA. Dirichlet transforms and fixed-count shifted transforms
-permit cells with zero observed counts.
+selects genes for PCA. These transforms can represent all-zero genes, which
+remain part of that normalization universe even when masked out of PCA. The
+package-wide input policy nevertheless rejects cells with zero observed
+counts.
 
 ## Correspondence analysis
 

@@ -160,6 +160,13 @@ with `return_operator=True`, after ARPACK has run. Those tests materialize that
 operator on the full standard basis, but use only its matrix values—not its
 computed singular vectors—as oracle evidence.
 
+Real-data mask tests additionally apply a deterministic noncontiguous gene
+mask to every transform family and compare the complete centered masked
+operator with columns selected from the full fitted transform. They include
+symmetric residual clipping, all-true and all-false mask boundaries, and a
+runtime-appended all-zero gene. The committed count artifacts remain unchanged;
+the zero column exists only in memory during those tests.
+
 ## Regeneration
 
 With the project environment installed, download the official archive and run:

@@ -145,6 +145,10 @@ clearly identified normative API/specification entry point.
 
 ## Other candidates
 
+- Decide whether `transform(X, Residual(...))` should permit all-zero genes so
+  a later `.pca(mask_var=...)` can exclude them. The one-step AnnData residual
+  API can do this because it resolves the PCA mask before building residuals;
+  the two-step API currently validates every gene when the transform is fitted.
 - Quick recipes to reproduce Seurat, Cell Ranger, scanpy, BHGP, correspondence analysis recommendations
 - Skill.md for agentic usage. recommend shifted clr and possibly correpondence analysis
 - Highly variable gene selection based on residual variance.
