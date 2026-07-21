@@ -136,6 +136,30 @@ LAPACK 3.12.1
 The checked-in oracle is 1,013,905 bytes. Its SHA-256 is recorded after the
 regeneration commands below.
 
+## Dense formula regression tests
+
+The same pinned matrices also drive full-matrix comparisons with independent
+dense NumPy formulas. These tests calculate expected values at test time and
+compare every one of the 256-by-1,024 transformed entries; they do not use
+sampled coordinates, and their expected-value paths do not call production
+representation builders.
+
+Coverage includes:
+
+- all six Poisson, binomial, and scaled-NB Pearson/deviance residual families;
+- upper clipping without support growth and symmetric clipping that adds real
+  structural-zero corrections;
+- shifted log, count-shifted CLR, and proportion-shifted CLR, including their
+  matched-shift identity on the equal-depth fixture;
+- Dirichlet log and CLR with uniform and nonuniform priors; and
+- classical and experimental scaled-NB correspondence matrices, their masses,
+  and total inertia.
+
+The correspondence API currently returns its complete implicit matrix only
+with `return_operator=True`, after ARPACK has run. Those tests materialize that
+operator on the full standard basis, but use only its matrix values—not its
+computed singular vectors—as oracle evidence.
+
 ## Regeneration
 
 With the project environment installed, download the official archive and run:

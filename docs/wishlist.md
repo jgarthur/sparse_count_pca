@@ -70,10 +70,12 @@ logic on `PCAResult`. Decide after the metadata/state design is reviewed.
 
 ## Real-data oracle suite
 
-Add offline real-data regression coverage for every public transform and every
-external implementation whose compatibility the package claims. Use one small,
-deterministic subset of a public count dataset where possible so comparisons
-share the same cells and genes.
+The committed PBMC3k fixture now provides offline full-matrix dense-formula
+coverage for every public transform, plus a direct SCTransform equality oracle.
+Extend that foundation with independently generated outputs from every other
+external implementation whose compatibility the package claims. Continue to
+use the shared deterministic cells and genes where the upstream method permits
+it.
 
 Coverage should include:
 
