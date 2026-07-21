@@ -25,6 +25,10 @@ notebook, executes its cells in order, and renders the executed notebook to a
 generated Markdown page. Generated pages are build artifacts and are not
 edited or committed.
 
+The documentation build also rejects `$$` display delimiters that survive as
+plain HTML paragraphs. Within Markdown lists, display-math blocks must use the
+four-space continuation indentation required for Arithmatex to process them.
+
 ## Dense transform oracles
 
 Every transform should be compared entry by entry with an independent explicit

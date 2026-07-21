@@ -5,6 +5,7 @@ repo_name: jgarthur/sparse_count_pca
 
 hooks:
   - docs/hooks/render_examples.py
+  - docs/hooks/validate_math.py
 
 watch:
   - examples

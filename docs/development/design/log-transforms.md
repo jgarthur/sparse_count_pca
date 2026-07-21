@@ -15,18 +15,18 @@ transforms, not a public normalization-construction DSL.
 
 1. Make `shifted_clr` mean a **fixed raw-count shift**:
 
-   $$
-   \operatorname{clr}(x_c + a\mathbf 1), \qquad a>0.
-   $$
+    $$
+    \operatorname{clr}(x_c + a\mathbf 1), \qquad a>0.
+    $$
 
 2. Rename the current implementation to `proportion_shifted_clr`, because it
    uses a **fixed composition-scale shift**:
 
-   $$
-   \operatorname{clr}\left(\frac{x_c}{s_c}+\tau\mathbf 1\right)
-   =
-   \operatorname{clr}(x_c+s_c\tau\mathbf 1).
-   $$
+    $$
+    \operatorname{clr}\left(\frac{x_c}{s_c}+\tau\mathbf 1\right)
+    =
+    \operatorname{clr}(x_c+s_c\tau\mathbf 1).
+    $$
 
 3. Keep `dirichlet_log` and `dirichlet_clr`. They already provide the
    gene-specific prior-count generalization using total prior concentration
@@ -35,12 +35,12 @@ transforms, not a public normalization-construction DSL.
 4. Add `shifted_log` as the uncentered-coordinate partner of count-shifted
    CLR. For PCA, define its zero-baseline gauge as
 
-   $$
-   \log\left(1+\frac{x_{cg}}{a}\right).
-   $$
+    $$
+    \log\left(1+\frac{x_{cg}}{a}\right).
+    $$
 
-   It has the same column-centered PCA as $\log(x_{cg}+a)$ and is exactly
-   sparse.
+    It has the same column-centered PCA as $\log(x_{cg}+a)$ and is exactly
+    sparse.
 
 5. Do not expose `PFlog` or `logPF` as canonical function names. Those names
    have referred to different formulas. Document the current paper recipe as a
