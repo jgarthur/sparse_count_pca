@@ -291,7 +291,8 @@ Reference coverage is in
 
 The suite has four complementary layers:
 
-1. independent dense formulas for small matrices;
+1. shared independent dense formulas for small simulated matrices and the full
+   real-data fixture;
 2. operator product and stable-statistic checks;
 3. dense SVD comparisons for singular values and subspaces;
 4. pinned external provenance for literature/software compatibility.
@@ -304,7 +305,10 @@ Reference directories:
 - [`tests/shifted_clr_reference/`](../tests/shifted_clr_reference/): current
   count-shift PFlog;
 - [`tests/proportion_shifted_clr_reference/`](../tests/proportion_shifted_clr_reference/):
-  historical composition-shifted CLR.
+  historical composition-shifted CLR;
+- [`tests/real_data_reference/`](../tests/real_data_reference/): deterministic
+  observed-depth and equal-depth PBMC3k-derived fixtures, full-matrix coverage
+  for every transform family, and a pinned SCTransform v2 equality oracle.
 
 Normal tests are offline. Regeneration tooling is provenance, not a runtime
 dependency.

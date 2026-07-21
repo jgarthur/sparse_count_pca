@@ -19,8 +19,6 @@ matrix representations, and PCA. Start with the path that matches your goal.
 - [Correctness and numerical robustness brief](history/robustness-work-brief.md)
   records the hardening work that preceded the generic PCA architecture. It is
   archival rather than normative.
-- [Real-data oracle suite history](history/real-data-oracle-suite.md) records
-  the completed PBMC3k fixture and shared dense-oracle work.
 
 The former standalone PFlog correction note was removed after its conclusions
 were incorporated into the log-transform design, implementation, tests, and

@@ -2,8 +2,8 @@
 
 This file records unfinished plausible additions without treating them as
 committed API. When work is completed, remove it from this file and record the
-outcome in the specification, a focused design document, or `docs/history/` as
-appropriate; do not leave completed work described as a wish.
+outcome in the appropriate specification, design, architecture, or provenance
+documentation; do not leave completed work described as a wish.
 
 ## Block-wise inverse reconstruction to count space
 
@@ -78,7 +78,7 @@ compatibility the package claims but which are not yet exercised on the shared
 PBMC3k fixture: Scanpy, Townes, CORRAL, and the pinned BHGP formulas. Continue
 to use the deterministic cells and genes where the upstream method permits it.
 The completed fixture and dense-formula coverage are recorded in the
-[real-data oracle history](history/real-data-oracle-suite.md).
+[PBMC3k fixture documentation](../tests/real_data_reference/README.md).
 
 For each transform, compare the most diagnostic independently generated
 artifacts available: selected transformed entries, clipping support and `nnz`,
