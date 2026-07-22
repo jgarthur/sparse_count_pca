@@ -364,15 +364,17 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-21 | Integrate merged PR #2 before continuing editorial work. | Its final commits document the real-data oracle suite and update provenance contracts already covered by the overhaul; deferring would leave stale links and an obsolete branch base. |
 | 2026-07-21 | Generate example pages from Jupytext percent scripts. | One executable Python source now drives pytest, notebook execution, and rendered Markdown without copied code. |
 | 2026-07-21 | Render existing mathematics with MathJax. | Arithmatex preserves formula delimiters for MathJax while keeping the Markdown source unchanged. |
+| 2026-07-22 | De-emphasize Dirichlet transforms in user-facing navigation. | The prior-based transforms are experimental; they remain documented in the API reference and normative developer material, but are not recommended starting workflows. |
+| 2026-07-22 | Define `scaled_nb` as a package-specific model label. | The name is not a standard external method and must be accompanied by its mean, variance, and supplied-dispersion contract. |
 
 ## Verification record
 
-Verified on 2026-07-21:
+Verified on 2026-07-22 after the author-comment review:
 
 ```text
 mkdocs build --strict with executed notebook rendering: passed
 ruff check .: passed
-pytest after main integration: 369 passed, 1 skipped
+pytest: 371 passed, 1 skipped
 canonical example scripts: 4 passed
 generated example pages: 4 executed notebooks rendered to Markdown
 math rendering: Arithmatex wrappers and MathJax scripts present in built HTML
@@ -397,3 +399,18 @@ development, testing, and compatibility pages.
   `"counts"` layer, or construct a tiny complete object?
 - Which limitations deserve visibility in the README rather than only in the
   compatibility and concept pages?
+
+## Deferred technical and API questions
+
+These questions were identified during the README review but require code or
+API decisions rather than editorial changes:
+
+- Decide whether the raw-count `ShiftedLog` API should remain, be deprecated,
+  or be complemented by a library-size-normalized log transform. Do not present
+  raw-count shifted log as the conventional Scanpy log-normalization workflow.
+- Decide before the first stable release whether `scaled_nb` is sufficiently
+  clear as a public model name or should be renamed to expose its
+  exposure-scaled dispersion parameterization.
+- Compare package-level outputs and defaults directly with `cleartools/scclr`.
+  The current dense PFlog oracle establishes formula-level parity only, not
+  end-to-end package equivalence.

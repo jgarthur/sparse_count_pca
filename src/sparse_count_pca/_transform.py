@@ -215,8 +215,9 @@ class ShiftedCLR(Transform):
     """Specify CLR coordinates after a fixed raw-count shift.
 
     Attributes:
-        count_shift: Positive shift added to every raw count. Current PFlog
-            uses ``1 / (4 * alpha)``.
+        count_shift: Positive shift added to every raw count. The PFlog
+            formulation in Booeshaghi et al. preprint v4 uses
+            ``1 / (4 * alpha)``.
 
     Examples:
         >>> transformed = transform(counts, ShiftedCLR(count_shift=1.0))
@@ -734,7 +735,7 @@ def transform(
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
             object. Observations are rows and variables are columns.
-        method: Residual, shifted-log/CLR, or Dirichlet transform
+        method: Residual, shifted-log/CLR, or experimental Dirichlet transform
             specification.
         layer: AnnData count layer to use. By default, use ``adata.X``.
         use_raw: Whether to use ``adata.raw.X``. Valid only for AnnData and

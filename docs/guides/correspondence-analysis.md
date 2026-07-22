@@ -66,4 +66,6 @@ result = scp.correspondence_analysis_matrix(
 This is a correspondence-like residual ordination, not classical
 correspondence analysis. It emits a warning and records `experimental=True`.
 The reported `total_inertia` is scaled-NB Pearson-residual inertia; it does not
-have the classical chi-square or barycentric interpretation.
+have the classical chi-square or barycentric interpretation. `scaled_nb` is a
+package-specific model name; its mean and variance are defined in the
+[residual-PCA guide](residual-pca.md#choose-the-count-model).

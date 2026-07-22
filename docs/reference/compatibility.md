@@ -50,7 +50,10 @@ The fixed-count shifted-CLR transform is
 clr(x + count_shift).
 ```
 
-Current PFlog is obtained with `count_shift = 1 / (4 * alpha)`. The independent
+The PFlog normalization proposed in
+[Booeshaghi et al., preprint version 4 (June 22,
+2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
+with `count_shift = 1 / (4 * alpha)`. The independent
 [`cleartools/scclr`](https://github.com/cleartools/scclr) project describes the
 same PFlog formula and represents it as sparse values plus a per-cell mean
 before implicit PCA. It provides Rust-backed Python tooling; related
@@ -62,7 +65,8 @@ metadata, dtype behavior, clipping behavior, or AnnData ownership semantics
 across packages.
 
 `ProportionShiftedCLR` is a different historical formula with a fixed shift
-after library-size division. It should not be labeled as current PFlog.
+after library-size division. It should not be labeled as the PFlog formulation
+from Booeshaghi et al. preprint v4.
 
 ## scan-rs and Cell Ranger
 
@@ -87,4 +91,5 @@ the reported row and column coordinates are principal coordinates.
 With `model="scaled_nb"`, the API is an experimental residual ordination. Its
 inertia does not have the classical chi-square or barycentric interpretation.
 The mode emits a warning and records its experimental status in result
-metadata.
+metadata. `scaled_nb` is a package-specific model name, not a claim of parity
+with an external named method.

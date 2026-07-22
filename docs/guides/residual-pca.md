@@ -29,6 +29,26 @@ layer, or `adata.raw.X`; see [AnnData workflows](anndata-workflows.md).
 | `"binomial"` | Counts are draws from each cell total with gene probability `p_j`. | None |
 | `"scaled_nb"` | Negative-binomial variance with per-gene overdispersion and exposure-scaled means. | Nonnegative `alpha` |
 
+`scaled_nb` is a package-specific label, not a standard method name. If `n_i`
+is cell total, `p_j` is gene proportion, and `bar(n)` is the mean cell total,
+the model uses
+
+$$
+\mu_{ij}=n_i p_j,
+\qquad
+\widetilde\alpha_{ij}=\alpha_j\frac{\bar n}{n_i},
+\qquad
+\operatorname{Var}(X_{ij})
+=\mu_{ij}+\widetilde\alpha_{ij}\mu_{ij}^2
+=\mu_{ij}\left(1+\alpha_j\bar n p_j\right).
+$$
+
+Thus expected counts follow cell depth, while the effective negative-binomial
+dispersion scales inversely with depth. Negative-binomial mean/dispersion
+models with library scaling have a long history in bulk RNA-seq, including
+[sSeq](https://doi.org/10.1093/bioinformatics/btt143), but this package does
+not claim to implement sSeq.
+
 The fitted cell totals and gene proportions use every gene in the chosen count
 matrix before the PCA variable mask is applied. A selected gene with zero total
 count is invalid because its residual scale is undefined.
@@ -118,7 +138,7 @@ normalization universe and PCA variables must differ.
 ## Relationship to SCTransform
 
 The scaled-NB residual transform is related to, but is not generally identical
-to, default SCTransform v2 output. Agreement requires controlled parameter,
-variance-floor, clipping, and centering conditions. See the
+to, default SCTransform v2 output. Agreement requires controlled model and
+post-processing conditions. See the
 [compatibility reference](../reference/compatibility.md) before making parity
 claims.

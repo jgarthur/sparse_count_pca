@@ -15,7 +15,10 @@ return result objects without mutating the input.
 
 ::: sparse_count_pca.proportion_shifted_clr_pca_matrix
 
-## Dirichlet PCA
+## Experimental Dirichlet PCA
+
+These prior-based transforms are experimental and are not part of the
+recommended starting workflows.
 
 ::: sparse_count_pca.dirichlet_log_pca_matrix
 

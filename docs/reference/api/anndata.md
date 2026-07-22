@@ -15,7 +15,10 @@ These functions mutate an `AnnData` object by default and return `None`. Pass
 
 ::: sparse_count_pca.proportion_shifted_clr_pca
 
-## Dirichlet PCA
+## Experimental Dirichlet PCA
+
+These prior-based transforms are experimental and are not part of the
+recommended starting workflows.
 
 ::: sparse_count_pca.dirichlet_log_pca
 

@@ -8,9 +8,8 @@ intend to interpret.
 | --- | --- | --- |
 | Residual PCA | You want PCA after removing a count-model expectation based on cell depth and gene abundance. | Choose a Poisson, binomial, or scaled-NB model and Pearson or deviance residuals. |
 | Fixed-count shifted log | You want PCA of `log1p(x / count_shift)` on the raw-count scale. | This does **not** perform library-size normalization before taking logs. |
-| Fixed-count shifted CLR | You want within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | Current PFlog is obtained with `count_shift = 1 / (4 * alpha)`. |
+| Fixed-count shifted CLR | You want within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | [PFlog in Booeshaghi et al. v4](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained with `count_shift = 1 / (4 * alpha)`. |
 | Proportion-shifted CLR | You need the historical formula with a fixed shift after dividing by each cell total. | Its effective raw-count shift varies by cell depth. |
-| Dirichlet log or CLR | You want posterior-mean compositions under an explicit Dirichlet prior. | The prior covers the full normalization gene universe before the PCA mask. |
 | Correspondence analysis | You want classical row and column coordinates for a contingency table. | It does not apply ordinary PCA column centering; a mask defines new table margins. |
 
 ## A practical starting point
@@ -34,7 +33,9 @@ Pearson residuals are optimal for every dataset.
 
 Use scaled negative-binomial residuals only when you have defensible
 nonnegative per-gene overdispersion values. The package does not estimate those
-values for you.
+values for you. `scaled_nb` is a package-specific label; see the
+[residual-PCA guide](guides/residual-pca.md#choose-the-count-model) for its
+formula.
 
 ## Questions that separate the methods
 
@@ -52,8 +53,8 @@ composition shift. These are not alternative parameterizations of one formula.
 
 ### Do selected variables define normalization or only PCA?
 
-Residual, log, CLR, and Dirichlet transforms fit their normalization state on
-the full selected count matrix before `mask_var` chooses PCA variables.
+Residual, log, and CLR transforms fit their normalization state on the full
+selected count matrix before `mask_var` chooses PCA variables.
 Correspondence analysis is different: its variable mask creates a new
 contingency table and recomputes the margins.
 

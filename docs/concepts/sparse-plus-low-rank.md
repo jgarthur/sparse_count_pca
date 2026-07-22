@@ -4,9 +4,8 @@
 
 A sparse count matrix stores observed nonzero counts and omits zeros. Many
 normalizations assign a nonzero transformed value to an observed zero. Pearson
-residuals, deviance residuals, shifted CLR coordinates, and Dirichlet posterior
-log compositions are therefore generally dense even when the count matrix is
-very sparse.
+residuals, deviance residuals, and shifted CLR coordinates are therefore
+generally dense even when the count matrix is very sparse.
 
 A dense `float64` matrix with `n_obs * n_vars` entries requires
 `8 * n_obs * n_vars` bytes for its entries alone. CSR storage instead scales
@@ -32,8 +31,7 @@ The details vary by transform:
 
 - residual expectations factor through cell totals and gene parameters;
 - fixed-count log corrections are nonzero only on observed support;
-- CLR subtracts a row-specific mean, adding a rank-one term;
-- Dirichlet priors factor through cell totals and per-gene prior mass.
+- CLR subtracts a row-specific mean, adding a rank-one term.
 
 The [normative specification](../development/specification.md#sparse-plus-low-rank-representation)
 gives the exact formulas.

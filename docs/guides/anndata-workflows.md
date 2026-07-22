@@ -32,9 +32,9 @@ scp.residual_pca(adata, mask_var=boolean_array)
 Masks must have genuinely boolean dtype and the correct length. Numeric,
 string, and nullable masks are rejected instead of being coerced.
 
-For residual, log, CLR, and Dirichlet PCA, the mask changes the PCA variables
-but not the normalization universe. For correspondence analysis, it defines a
-new table and new margins. See
+For residual, log, and CLR PCA, the mask changes the PCA variables but not the
+normalization universe. For correspondence analysis, it defines a new table
+and new margins. See
 [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
 
 ## Output keys

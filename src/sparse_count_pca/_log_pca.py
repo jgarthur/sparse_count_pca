@@ -138,7 +138,8 @@ def shifted_clr_pca_matrix(
 ) -> PCAResult:
     """Compute PCA of CLR coordinates after a fixed raw-count shift.
 
-    The transform is ``clr(X + count_shift)``. Current PFlog is obtained with
+    The transform is ``clr(X + count_shift)``. The PFlog formulation in
+    Booeshaghi et al. preprint v4 is obtained with
     ``count_shift = 1 / (4 * alpha)``.
 
     Args:
@@ -383,7 +384,7 @@ def shifted_clr_pca(
             columns.
         n_comps: Number of principal components.
         count_shift: Positive raw-count shift. Use ``1 / (4 * alpha)`` for the
-            current PFlog parameterization.
+            PFlog formulation in Booeshaghi et al. preprint v4.
         layer: Count layer to use. By default, use ``adata.X``.
         use_raw: Whether to use ``adata.raw.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.

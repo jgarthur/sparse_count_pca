@@ -1,8 +1,9 @@
 # Shifted log and shifted CLR
 
-The log-family APIs make the shift domain explicit. A count-scale shift and a
-composition-scale shift imply different transforms, especially when cell
-totals vary.
+The log-family APIs make the shift domain explicit. Centered log-ratio (CLR)
+coordinates subtract each observation's mean log abundance, representing
+within-observation log ratios. A count-scale shift and a composition-scale
+shift imply different transforms, especially when cell totals vary.
 
 ## Fixed-count shifted log
 
@@ -46,8 +47,10 @@ scp.shifted_clr_pca(
 )
 ```
 
-Current PFlog is this transform with
-`count_shift = 1 / (4 * alpha)`:
+The PFlog normalization proposed in
+[Booeshaghi et al., preprint version 4 (June 22,
+2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is this
+transform with `count_shift = 1 / (4 * alpha)`:
 
 ```python
 alpha = 0.25
@@ -93,11 +96,3 @@ row-mean denominator if it remains in the normalization universe.
 
 See [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md)
 for the package-wide ordering rule.
-
-## Related Dirichlet transforms
-
-`DirichletLog` and `DirichletCLR` replace a single fixed shift with an explicit
-Dirichlet prior whose per-gene pseudocounts are
-`concentration * prior_proportions`. Use them when that prior has a meaningful
-interpretation; see [choosing a transform](../choosing-a-transform.md) and the
-[transform API](../reference/api/transforms.md).

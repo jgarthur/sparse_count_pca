@@ -3,19 +3,21 @@
 Single-cell transcriptomics data reaches the user as a large, very sparse
 matrix of integer counts. Many normalization methods assign nonzero values to
 observed zeros, making the transformed matrix dense and potentially increasing
-entry storage by an order of magnitude or more, depending on the original
-density and dtypes.
+entry storage by an order of magnitude or more.
 
-Most workflows do not need every normalized entry at once: their primary
-consumer is PCA. `sparse-count-pca` represents supported count transforms
-exactly as a sparse matrix plus a small low-rank term, then computes centered
-truncated SVD through SciPy's `LinearOperator` interface without materializing
-the full transformed matrix.
+Most workflows do not need every normalized entry at once, because their
+primary consumer is PCA. `sparse-count-pca` represents supported count
+transforms exactly as a sparse matrix plus a small low-rank term. This
+factorization provides efficient matrix-vector and matrix-matrix products
+without materializing the full transformed matrix. The package uses those
+products to compute PCA of the column-centered transform through SciPy's
+`LinearOperator` interface and truncated SVD.
 
-The implementation is pure Python and is tested against independent dense
-oracles and pinned external references. It covers residual PCA, fixed-count
-shifted log and shifted CLR, proportion-shifted CLR, Dirichlet-prior log and CLR
-transforms, and correspondence analysis.
+The implementation is pure Python and is tested against independent
+dense-matrix implementations and pinned external reference outputs. It covers
+PCA of model residuals, fixed-count shifted logs, shifted centered log-ratio
+(CLR) coordinates, proportion-shifted CLR coordinates, and classical
+correspondence analysis.
 
 ## Installation
 
@@ -49,14 +51,23 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 
 ## Supported transforms
 
+CLR coordinates subtract each observation's mean log abundance, so PCA sees
+within-observation log ratios rather than absolute logged abundance.
+
 | Transform | Public specification | Main use |
 | --- | --- | --- |
 | Residual | `Residual(model=..., residual=...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB models |
 | Fixed-count shifted log | `ShiftedLog(count_shift=...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
-| Fixed-count shifted CLR | `ShiftedCLR(count_shift=...)` | Within-observation log ratios; includes current PFlog parameterization |
+| Fixed-count shifted CLR | `ShiftedCLR(count_shift=...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
 | Proportion-shifted CLR | `ProportionShiftedCLR(composition_shift=...)` | Historical fixed-composition-shift CLR formula |
-| Dirichlet log / CLR | `DirichletLog(...)`, `DirichletCLR(...)` | Log or CLR coordinates of posterior-mean compositions under an explicit prior |
-| Correspondence analysis | separate one-step API | Classical contingency-table ordination and an experimental scaled-NB variant |
+| Correspondence analysis | separate one-step API | Classical contingency-table ordination |
+
+`scaled_nb` is a package-specific name for a residual model whose expected
+counts scale with each cell's total count and whose supplied per-gene `alpha`
+values add negative-binomial overdispersion. The package does not estimate
+`alpha`. The scaled-NB correspondence-analysis extension is experimental; see
+the [residual PCA](docs/guides/residual-pca.md) and
+[correspondence-analysis](docs/guides/correspondence-analysis.md) guides.
 
 [Choose a transform](docs/choosing-a-transform.md)
 
@@ -65,18 +76,21 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 Supported dense transforms have an exact representation
 
 ```text
-transformed matrix = sparse correction + low-rank baseline.
+transformed matrix = sparse matrix + low-rank baseline.
 ```
 
-Selecting PCA variables preserves this form, and column centering adds one
-rank-one term. The package implements forward and transpose products with the
-resulting matrix and passes a `scipy.sparse.linalg.LinearOperator` to
-`scipy.sparse.linalg.svds` with the ARPACK solver.
+The factorization combines sparse multiplication with small dense low-rank
+products. Selecting PCA variables preserves this form, and column centering
+adds one rank-one term. A `scipy.sparse.linalg.LinearOperator` exposes forward
+and transpose matrix-vector and matrix-matrix products to
+`scipy.sparse.linalg.svds`, currently using the ARPACK solver.
 
-"Exact" refers to the represented transform and clipping behavior at the
-chosen floating-point dtype. Truncated SVD is still a numerical iterative
-calculation. The current backend owns an in-memory CSR correction; backed
-inputs are not yet processed out of core.
+Optional Pearson or deviance residual clipping is also represented exactly;
+symmetric clipping may add sparse corrections for zero-count entries.
+"Exact" refers to the represented transform at the chosen floating-point
+dtype. Truncated SVD is still a numerical iterative calculation. The current
+backend owns an in-memory CSR correction; backed inputs are not yet processed
+out of core.
 
 [Read the mathematical explanation](docs/concepts/sparse-plus-low-rank.md)
 
@@ -90,7 +104,12 @@ Counts may come from `.X`, a layer, or `.raw.X`.
 
 ### One-step matrix API
 
-Use the corresponding `_matrix` functions outside AnnData:
+Use the corresponding `_matrix` functions on dense or sparse matrices outside
+AnnData. Non-CSR sparse inputs are converted to CSR. CSR inputs with duplicate
+or unsorted indices, or with explicitly stored zeros, are copied before
+canonicalization; already
+[canonical CSR](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.has_canonical_format.html)
+input can be borrowed without mutation.
 
 ```python
 result = scp.residual_pca_matrix(
@@ -126,22 +145,28 @@ result = transformed.pca(n_comps=50, mask_var="highly_variable")
 
 ## Important distinctions
 
-- **Masking and normalization are separate.** For PCA transforms,
-  normalization is fitted on the full chosen count matrix before `mask_var`
-  selects PCA variables. Correspondence analysis instead recomputes table
-  margins after masking.
-- **Scaled-NB residuals are not default SCTransform v2.** Controlled equality
-  requires aligned means, dispersions, variance floors, clipping, and
-  centering.
+- **A gene mask usually selects PCA columns, not normalization inputs.** For
+  residual, shifted-log, and shifted-CLR PCA, normalization is fitted on the
+  full chosen count matrix before `mask_var` selects variables for PCA. Slice
+  the count matrix first if excluded genes should not affect cell totals, gene
+  proportions, or CLR row means. In correspondence analysis, the mask instead
+  defines the contingency table itself; expected counts depend on that table's
+  margins, so the margins are recomputed after masking.
+- **Scaled-NB residuals are not a drop-in SCTransform v2 implementation.** Do
+  not expect default outputs to match. The compatibility guide describes the
+  controlled conditions under which equality can be tested.
 - **Shift domain matters.** A fixed raw-count shift and a fixed shift after
-  library-size division are different CLR transforms. Current PFlog uses the
-  fixed-count form.
-- **Precision is a computation choice.** `float64` is the default. Explicit
-  `float32` changes the representation passed to ARPACK; it is not merely
-  compact output storage.
-- **Clipping remains exact.** Symmetric clipping can change transformed zeros
-  and expand sparse support; upper-only clipping cannot for the supported
-  residual models.
+  library-size division are different CLR transforms. The PFlog normalization
+  proposed by [Booeshaghi et al. in preprint version 4 (June 22,
+  2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4)
+  uses the fixed-count form.
+- **Precision is a computation choice.** Keep the recommended `float64`
+  default for accuracy and parity testing. Explicit `float32` reduces memory
+  but changes the representation passed to ARPACK.
+- **Residual clipping is optional and exact.** Symmetric clipping of Pearson or
+  deviance residuals can alter negative residuals for zero-count entries. The
+  representation must then store those corrections, increasing sparse
+  support. Upper-only clipping leaves those entries unchanged.
 
 See [normalization, masking, and centering](docs/concepts/normalization-masking-and-centering.md),
 [clipping and precision](docs/concepts/clipping-and-precision.md), and the
@@ -154,9 +179,8 @@ Rust-backed tooling for shifted CLR / PFlog workflows, including the Python
 [`scclr`](https://github.com/cleartools/scclr) package.
 
 [`10XGenomics/scan-rs`](https://github.com/10XGenomics/scan-rs) is a Rust
-library used by Cell Ranger and contains related matrix-representation and
-normalization machinery. `sparse-count-pca` is an independent pure-Python
-implementation; no output-parity claim with `scan-rs` is currently made.
+library used by Cell Ranger and contains similar matrix-representation and
+normalization machinery.
 
 ## Documentation
 
