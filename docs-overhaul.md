@@ -395,7 +395,10 @@ development, testing, and compatibility pages.
 
 - What exact problem statement and promise should open the README?
 - Which transform should be presented as the default starting point for a user
-  who has sparse single-cell counts but no method preference?
+  who has sparse single-cell counts but no method preference? Revisit the
+  current Pearson-residual recommendation in `choosing-a-transform.md`; the
+  author is leaning toward foregrounding correspondence analysis and shifted
+  CLR after Booeshaghi et al. v4.
 - Should the first quick start assume an existing `AnnData` object with a
   `"counts"` layer, or construct a tiny complete object?
 - Which limitations deserve visibility in the README rather than only in the
