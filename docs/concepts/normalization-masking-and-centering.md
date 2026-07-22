@@ -55,6 +55,13 @@ In correspondence analysis, a variable mask defines the contingency table
 being analyzed. The implementation applies the mask first, then recomputes row
 totals, column totals, masses, expected values, and inertia:
 
+This can look surprising because Poisson Pearson-residual PCA and classical CA
+both construct expected counts from row and column margins. The distinction is
+what the analysis holds fixed. Residual PCA treats the full-matrix margins as
+fitted normalization state and uses `mask_var` for downstream PCA feature
+selection. CA treats the selected contingency table as the object of analysis,
+so changing its columns necessarily changes its margins, masses, and inertia.
+
 ```text
 select X, layer, or raw counts
         ↓

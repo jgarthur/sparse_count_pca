@@ -366,6 +366,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-21 | Render existing mathematics with MathJax. | Arithmatex preserves formula delimiters for MathJax while keeping the Markdown source unchanged. |
 | 2026-07-22 | De-emphasize Dirichlet transforms in user-facing navigation. | The prior-based transforms are experimental; they remain documented in the API reference and normative developer material, but are not recommended starting workflows. |
 | 2026-07-22 | Define `scaled_nb` as a package-specific model label. | The name is not a standard external method and must be accompanied by its mean, variance, and supplied-dispersion contract. |
+| 2026-07-22 | Keep the existing method-specific `mask_var` ordering and document it prominently. | Residual PCA and correspondence analysis both use count margins, but for different contracts: residual models fit normalization on the full chosen count matrix before selecting PCA columns, whereas a CA mask defines the contingency table whose recomputed margins, masses, and inertia define the ordination. Forcing one ordering onto both would either make residual normalization depend on the PCA feature mask or make masked CA cease to be classical CA of the selected table. |
 
 ## Verification record
 
@@ -414,3 +415,8 @@ API decisions rather than editorial changes:
 - Compare package-level outputs and defaults directly with `cleartools/scclr`.
   The current dense PFlog oracle establishes formula-level parity only, not
   end-to-end package equivalence.
+- Revisit the masking API before the first stable release. The current direction
+  is to preserve `mask_var` and its method-specific ordering, with the distinction
+  stated in the README, concept guide, CA guide, and public docstrings. Confirm
+  that this visibility is sufficient; otherwise consider a more explicit CA
+  parameter name without changing the underlying mathematics.

@@ -51,9 +51,6 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 
 ## Supported transforms
 
-CLR coordinates subtract each observation's mean log abundance, so PCA sees
-within-observation log ratios rather than absolute logged abundance.
-
 | Transform | Public specification | Main use |
 | --- | --- | --- |
 | Residual | `Residual(model=..., residual=...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB models |
@@ -166,7 +163,7 @@ result = transformed.pca(n_comps=50, mask_var="highly_variable")
 - **Residual clipping is optional and exact.** Symmetric clipping of Pearson or
   deviance residuals can alter negative residuals for zero-count entries. The
   representation must then store those corrections, increasing sparse
-  support. Upper-only clipping leaves those entries unchanged.
+  support. Clipping only the positive tail does not expand sparse support.
 
 See [normalization, masking, and centering](docs/concepts/normalization-masking-and-centering.md),
 [clipping and precision](docs/concepts/clipping-and-precision.md), and the
