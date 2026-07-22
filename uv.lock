@@ -3201,6 +3201,7 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
     { name = "nbconvert" },
+    { name = "ruff" },
 ]
 test = [
     { name = "pytest" },
@@ -3222,6 +3223,7 @@ requires-dist = [
     { name = "nbconvert", marker = "extra == 'docs'" },
     { name = "numpy" },
     { name = "pytest", marker = "extra == 'test'" },
+    { name = "ruff", marker = "extra == 'docs'" },
     { name = "ruff", marker = "extra == 'test'" },
     { name = "scanpy", marker = "extra == 'test'", specifier = ">=1.10" },
     { name = "scikit-learn" },

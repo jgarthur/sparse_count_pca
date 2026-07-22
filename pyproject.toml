@@ -17,6 +17,7 @@ docs = [
     "mkdocs-material",
     "mkdocstrings-python",
     "nbconvert",
+    "ruff",
 ]
 test = ["pytest", "ruff", "scanpy>=1.10", "zarr"]
 
