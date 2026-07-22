@@ -66,7 +66,8 @@ values add negative-binomial overdispersion. The package does not estimate
 the [residual PCA](docs/guides/residual-pca.md) and
 [correspondence-analysis](docs/guides/correspondence-analysis.md) guides.
 
-[Choose a transform](docs/choosing-a-transform.md)
+[Compare formulas, provenance, and API maturity](docs/transforms.md), or
+[choose a transform by scientific goal](docs/choosing-a-transform.md).
 
 ## How it works
 
@@ -182,6 +183,7 @@ normalization machinery.
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Transform catalogue](docs/transforms.md)
 - [Choosing a transform](docs/choosing-a-transform.md)
 - [User guides](docs/guides/residual-pca.md)
 - [Concepts](docs/concepts/sparse-plus-low-rank.md)

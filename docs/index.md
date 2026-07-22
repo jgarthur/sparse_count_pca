@@ -47,7 +47,9 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 - **I need to choose a count source, select variables, or control output keys.**
   See [AnnData workflows](guides/anndata-workflows.md).
 - **I want to compare the supported analyses.** Read
-  [choosing a transform](choosing-a-transform.md).
+  [choosing a transform](choosing-a-transform.md), then use the
+  [transform catalogue](transforms.md) for formulas, provenance, and exact
+  interface names.
 
 ## Core idea
 
@@ -71,6 +73,8 @@ on input density, dtype, transform, and clipping behavior.
 
 - [Getting started](getting-started.md) provides an installation path and a
   complete small analysis.
+- [Transforms](transforms.md) catalogues formulas, interfaces, scientific
+  provenance, validation, and maturity.
 - [Guides](guides/residual-pca.md) show task-oriented workflows.
 - [Concepts](concepts/sparse-plus-low-rank.md) explain the mathematical and
   numerical ideas.

@@ -343,6 +343,8 @@ exists. Their absence must not leave broken links or placeholder sections.
 - [x] Add executable examples and CI coverage.
 - [x] Make percent-format example scripts the source for generated example pages.
 - [x] Enable MathJax rendering for existing documentation formulas.
+- [x] Add a canonical transform catalogue with formulas, provenance, validation,
+  API mappings, and maturity labels.
 - [x] Pass strict documentation build, lint, and the full test suite.
 - [ ] Complete the author's editorial review of the README opening.
 - [ ] Perform visual browser QA when a browser session is available.
@@ -368,6 +370,8 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-22 | Define `scaled_nb` as a package-specific model label. | The name is not a standard external method and must be accompanied by its mean, variance, and supplied-dispersion contract. |
 | 2026-07-22 | Keep the existing method-specific `mask_var` ordering and document it prominently. | Residual PCA and correspondence analysis both use count margins, but for different contracts: residual models fit normalization on the full chosen count matrix before selecting PCA columns, whereas a CA mask defines the contingency table whose recomputed margins, masses, and inertia define the ordination. Forcing one ordering onto both would either make residual normalization depend on the PCA feature mask or make masked CA cease to be classical CA of the selected table. |
 | 2026-07-22 | Render API signatures separately from headings with `mkdocstrings`. | The supported `separate_signature` and `line_length` options produce normally sized, formatted code blocks without brittle theme-specific CSS. Ruff is included in the documentation environment so formatting is consistent locally, in CI, and on Read the Docs. |
+| 2026-07-22 | Treat fenced `math` blocks as first-class Arithmatex input and exclude hooks, history, and wishlist sources from the built site. | The specification uses fenced formulas extensively; configuring the documented SuperFences formatter renders them consistently, while build-only and internal files should not become public pages. |
+| 2026-07-22 | Add a canonical transform catalogue without restoring experimental methods to the recommended workflow. | Scientists need one user-facing place for formulas, provenance, validation, and API mappings. Dirichlet methods remain visible as experimental reference material rather than suggested starting points. |
 
 ## Verification record
 

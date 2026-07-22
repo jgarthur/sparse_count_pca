@@ -4,6 +4,9 @@ No transform is a universal default for every scientific question. Choose the
 model whose normalization assumptions and coordinates match the analysis you
 intend to interpret.
 
+For complete formulas, API mappings, provenance, and validation status, see
+the [transform catalogue](transforms.md).
+
 | Transform | Use it when | Important distinction |
 | --- | --- | --- |
 | Residual PCA | You want PCA after removing a count-model expectation based on cell depth and gene abundance. | Choose a Poisson, binomial, or scaled-NB model and Pearson or deviance residuals. |
