@@ -40,6 +40,18 @@ scp.residual_pca(adata, mask_var=mask)
 Use the second form when the omitted variables should still contribute to the
 normalization state.
 
+If genes should be removed as a preprocessing step, subset the `AnnData` object
+before calling the package:
+
+```python
+adata_for_pca = adata[:, keep_genes].copy()
+scp.residual_pca(adata_for_pca, layer="counts", mask_var=None)
+```
+
+Subsetting this way removes the genes from `.X` and every layer used for the
+analysis. Keep the original object separately, or save an appropriate snapshot
+in `.raw` before subsetting, if the full-gene data will be needed later.
+
 ## Centering follows variable selection
 
 PCA column means are computed from the transformed columns that survive the
@@ -51,23 +63,25 @@ Clipping, when enabled, occurs before this centering step.
 
 ## Correspondence analysis is different
 
-In correspondence analysis, a variable mask defines the contingency table
-being analyzed. The implementation applies the mask first, then recomputes row
-totals, column totals, masses, expected values, and inertia:
+In correspondence analysis, a variable mask defines the count table being
+analyzed. The implementation applies the mask first, then recomputes cell
+totals, gene totals, expected counts, and the relative weights of cells and
+genes.
 
 This can look surprising because Poisson Pearson-residual PCA and classical CA
-both construct expected counts from row and column margins. The distinction is
-what the analysis holds fixed. Residual PCA treats the full-matrix margins as
-fitted normalization state and uses `mask_var` for downstream PCA feature
-selection. CA treats the selected contingency table as the object of analysis,
-so changing its columns necessarily changes its margins, masses, and inertia.
+both derive an expected count for each cell-gene entry from cell totals and gene
+proportions. The distinction is what remains fixed. Residual PCA estimates those
+quantities from the full input and uses `mask_var` only to select PCA genes. CA
+treats the selected count table as the complete dataset, so removing a gene can
+change the totals, relative weights, and coordinates of every remaining cell
+and gene.
 
 ```text
 select X, layer, or raw counts
         ↓
 apply mask_var to define the table
         ↓
-fit table margins and residual representation
+compute selected cell totals and gene proportions
         ↓
 run uncentered truncated SVD
 ```
@@ -86,6 +100,8 @@ Masked component rows in `adata.varm` contain `NaN`. This makes exclusion
 visible and prevents a masked variable from being mistaken for a valid zero
 component value.
 
-The exact default-mask resolution and metadata schema are specified in the
+Readers who need the exact default-mask resolution and metadata schema can
+consult the
 [variable masking](../development/specification.md#variable-masking) and
-[output keys](../development/specification.md#output-keys) contracts.
+[output keys](../development/specification.md#output-keys) sections of the
+package specification.

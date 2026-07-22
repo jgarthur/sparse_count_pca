@@ -48,17 +48,20 @@ scores32 = result.scores.astype("float32")
 components32 = result.components.astype("float32")
 ```
 
-That conversion does not retroactively change the completed decomposition or
-its `float64` variance statistics, although downstream work on the converted
-arrays has `float32` precision.
-
 ## Degenerate inputs
 
 The package rejects a transformed matrix whose centered variance is
-numerically zero, because its PCA directions are undefined. It also requires
-`n_comps` to be strictly smaller than both the number of observations and the
-number of selected variables when using ARPACK.
+numerically zero. This occurs when every observation has the same transformed
+values across the selected variables—for example, when the same count row is
+repeated for every cell—or when differences are too small to distinguish at the
+chosen calculation dtype. PCA directions are not defined in that situation. An
+all-zero count matrix is rejected earlier because its cells have zero total
+counts.
 
-See the [clipping contract](../development/specification.md#clipping) and
+ARPACK also requires `n_comps` to be strictly smaller than both the number of
+observations and the number of selected variables.
+
+Readers who need exact validation boundaries can consult the
+[clipping contract](../development/specification.md#clipping) and
 [numerical implementation](../development/specification.md#numerical-implementation)
-for boundary behavior and validation details.
+in the package specification.
