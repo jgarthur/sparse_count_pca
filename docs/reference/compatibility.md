@@ -53,7 +53,7 @@ clr(x + count_shift).
 The PFlog normalization proposed in
 [Booeshaghi et al., preprint version 4 (June 22,
 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
-with `count_shift = 1 / (4 * alpha)`. The independent
+with `count_shift = 1 / (4 * alpha)`. The follow-up
 [`cleartools/scclr`](https://github.com/cleartools/scclr) project describes the
 same PFlog formula and represents it as sparse values plus a per-cell mean
 before implicit PCA. It provides Rust-backed Python tooling; related
