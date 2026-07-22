@@ -2,7 +2,8 @@
 
 ## Installation
 
-Install the package from PyPI:
+Activate the Python environment where you use Scanpy or AnnData, then install
+the package from PyPI:
 
 ```bash
 python -m pip install sparse-count-pca
@@ -10,12 +11,6 @@ python -m pip install sparse-count-pca
 
 Python 3.10 or newer is required. The runtime dependencies are AnnData, NumPy,
 SciPy, and scikit-learn.
-
-For a source checkout, use uv to install the locked development environment:
-
-```bash
-uv sync --extra test --extra docs
-```
 
 ## A complete residual-PCA example
 
@@ -65,7 +60,7 @@ By default, PCA outputs follow Scanpy's key layout:
 | Location | Contents |
 | --- | --- |
 | `adata.obsm["X_pca"]` | observation scores |
-| `adata.varm["PCs"]` | component vectors, transposed into variables by components |
+| `adata.varm["PCs"]` | variable loadings with shape `(n_variables, n_components)` |
 | `adata.uns["pca"]` | variance statistics and reproducibility parameters |
 
 Passing `key_added="my_pca"` uses that exact key in all three mappings.
