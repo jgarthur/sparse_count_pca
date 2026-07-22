@@ -7,27 +7,22 @@ normalizations assign a nonzero transformed value to an observed zero. Pearson
 residuals, deviance residuals, and shifted CLR coordinates are therefore
 generally dense even when the count matrix is very sparse.
 
-Other normalizations, including fixed-count `log1p`, map zero to zero and remain
-sparse before PCA. PCA nevertheless subtracts each column mean, which generally
-makes the centered matrix dense. That centering step is only a rank-one
-correction and can already be applied implicitly. This package uses the same
-idea for centering and extends it to methods whose normalized matrix is dense
-even before centering.
+Other normalizations, including the common library-size normalization followed
+by `log1p`, map zero to zero and remain sparse before PCA. PCA nevertheless
+subtracts each column mean, which generally makes the centered matrix dense.
+PCA implementations using iterative solvers such as IRLBA or ARPACK can already
+apply this rank-one centering correction through matrix-vector products. This
+package uses the same pattern and extends it to methods whose normalized matrix
+is dense even before centering.
 
 A dense `float64` matrix with `n_obs * n_vars` entries requires
-`8 * n_obs * n_vars` bytes for its entries alone. Sparse matrix storage scales
-instead with the number of stored entries. Ignoring small object overhead, the
-three arrays in CSR storage require
+`8 * n_obs * n_vars` bytes of storage. Assuming 32-bit sparse indices and row
+pointers, and ignoring small object overhead, a CSR `float64` matrix with `nnz`
+nonzero entries requires
 
 ```text
-nnz * data_itemsize
-+ nnz * index_itemsize
-+ (n_obs + 1) * pointer_itemsize
+8 * nnz + 4 * nnz + 4 * (n_obs + 1) bytes
 ```
-
-The ratio depends on input density, data and index dtypes, transform parameters,
-and whether clipping expands support, so the package does not claim one
-universal memory multiplier.
 
 ## Zero baselines factor
 
@@ -45,8 +40,9 @@ stores how observed nonzero counts differ from the factored zero baseline.
 The details vary by transform:
 
 - residual expectations factor through cell totals and gene parameters;
-- fixed-count `log1p` maps zeros to zero, so its uncentered matrix remains
-  sparse and only PCA centering adds a dense rank-one term;
+- the package's fixed-count log transform computes
+  `log1p(x / count_shift)` without library-size normalization; zeros remain
+  zero, so only PCA centering adds a dense rank-one term;
 - CLR subtracts a row-specific mean, adding a rank-one term.
 
 The [package specification](../development/specification.md#sparse-plus-low-rank-representation)

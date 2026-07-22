@@ -49,8 +49,10 @@ scp.residual_pca(adata_for_pca, layer="counts", mask_var=None)
 ```
 
 Subsetting this way removes the genes from `.X` and every layer used for the
-analysis. Keep the original object separately, or save an appropriate snapshot
-in `.raw` before subsetting, if the full-gene data will be needed later.
+analysis. The example creates a filtered copy and leaves the original `adata`
+unchanged. If the full-gene data are already stored appropriately in `.raw`, the
+filtered copy can instead replace the working object. Keeping `.copy()` is still
+recommended because slicing an `AnnData` object produces a view.
 
 ## Centering follows variable selection
 
@@ -65,16 +67,16 @@ Clipping, when enabled, occurs before this centering step.
 
 In correspondence analysis, a variable mask defines the count table being
 analyzed. The implementation applies the mask first, then recomputes cell
-totals, gene totals, expected counts, and the relative weights of cells and
-genes.
+totals, gene totals, the expected count for each cell-gene entry under an
+independence model, and the relative weights of cells and genes.
 
 This can look surprising because Poisson Pearson-residual PCA and classical CA
-both derive an expected count for each cell-gene entry from cell totals and gene
-proportions. The distinction is what remains fixed. Residual PCA estimates those
-quantities from the full input and uses `mask_var` only to select PCA genes. CA
-treats the selected count table as the complete dataset, so removing a gene can
-change the totals, relative weights, and coordinates of every remaining cell
-and gene.
+both analyze Pearson residuals based on the same independence expectation: each
+cell's total multiplied by each gene's overall proportion. The distinction is
+what remains fixed. Residual PCA estimates those quantities from the full input
+and uses `mask_var` only to select PCA genes. CA treats the selected count table
+as the complete dataset, so removing a gene can change the totals, relative
+weights, and coordinates of every remaining cell and gene.
 
 ```text
 select X, layer, or raw counts

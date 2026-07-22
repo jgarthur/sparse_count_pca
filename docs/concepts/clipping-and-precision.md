@@ -53,8 +53,7 @@ components32 = result.components.astype("float32")
 The package rejects a transformed matrix whose centered variance is
 numerically zero. This occurs when every observation has the same transformed
 values across the selected variables—for example, when the same count row is
-repeated for every cell—or when differences are too small to distinguish at the
-chosen calculation dtype. PCA directions are not defined in that situation. An
+repeated for every cell. PCA directions are not defined in that situation. An
 all-zero count matrix is rejected earlier because its cells have zero total
 counts.
 
