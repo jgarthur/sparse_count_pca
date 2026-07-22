@@ -6,7 +6,7 @@ Activate the Python environment where you use Scanpy or AnnData, then install
 the package from PyPI:
 
 ```bash
-python -m pip install sparse-count-pca
+pip install sparse-count-pca
 ```
 
 Python 3.10 or newer is required. The runtime dependencies are AnnData, NumPy,

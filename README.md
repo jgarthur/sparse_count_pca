@@ -24,7 +24,7 @@ correspondence analysis.
 Python 3.10 or newer is required.
 
 ```bash
-python -m pip install sparse-count-pca
+pip install sparse-count-pca
 ```
 
 ## Quick start
