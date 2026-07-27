@@ -1,5 +1,5 @@
 # %%
-"""Run fixed-count shifted-CLR PCA on a generated AnnData object."""
+"""Run count-scale shifted-CLR PCA on a generated AnnData object."""
 
 import numpy as np
 from anndata import AnnData

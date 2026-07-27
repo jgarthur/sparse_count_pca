@@ -30,19 +30,19 @@ def _dense_clr(logged: ArrayLike) -> Float64Array:
 
 
 def _dense_shifted_log(X: DenseOrSparse, count_shift: float) -> Float64Array:
-    """Evaluate the fixed-count shifted-log definition densely."""
+    """Evaluate the count-scale shifted-log definition densely."""
     return np.log1p(_as_dense_float64(X) / count_shift)
 
 
 def _dense_count_shifted_clr(X: DenseOrSparse, count_shift: float) -> Float64Array:
-    """Evaluate the fixed-count shifted-CLR reference definition densely."""
+    """Evaluate the count-scale shifted-CLR reference definition densely."""
     return count_shifted_clr(X, count_shift)
 
 
 def _dense_proportion_shifted_clr(
     X: DenseOrSparse, composition_shift: float
 ) -> Float64Array:
-    """Evaluate the historical fixed-composition shifted-CLR definition densely."""
+    """Evaluate the historical composition-scale shifted-CLR definition densely."""
     return proportion_shifted_clr(X, composition_shift)
 
 

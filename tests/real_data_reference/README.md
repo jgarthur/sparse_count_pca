@@ -143,7 +143,7 @@ Coverage includes:
 - all six Poisson, binomial, and scaled-NB Pearson/deviance residual families;
 - upper clipping without support growth and symmetric clipping that adds real
   structural-zero corrections;
-- shifted log, count-shifted CLR, and proportion-shifted CLR, including their
+- shifted log, count-scale shifted CLR, and composition-scale shifted CLR, including their
   matched-shift identity on the equal-depth fixture;
 - Dirichlet log and CLR with uniform and nonuniform priors; and
 - classical and experimental scaled-NB correspondence matrices, their masses,

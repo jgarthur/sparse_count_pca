@@ -1,4 +1,4 @@
-"""Independent dense oracle for current count-shifted PFlog."""
+"""Independent dense oracle for current count-scale shifted PFlog."""
 
 import numpy as np
 

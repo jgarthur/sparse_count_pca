@@ -15,9 +15,9 @@ project is pre-1.0, so **supported** does not yet promise a frozen API.
 | Transform | AnnData function | Matrix function | Two-step specification | Status |
 | --- | --- | --- | --- | --- |
 | Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; `scaled_nb` is package-specific |
-| Fixed-count shifted log | `shifted_log_pca` | `shifted_log_pca_matrix` | `ShiftedLog` | Supported |
-| Fixed-count shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes PFlog v4 |
-| Proportion-shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported for historical reproducibility |
+| Count-scale shifted log | `shifted_log_pca` | `shifted_log_pca_matrix` | `ShiftedLog` | Supported |
+| Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes PFlog v4 |
+| Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported for historical reproducibility |
 | Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Experimental |
 | Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Experimental |
 | Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is experimental |
@@ -149,7 +149,7 @@ support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
 
-## Fixed-count shifted log
+## Count-scale shifted log
 
 ### Formula
 
@@ -179,9 +179,9 @@ implementation.
 
 This transform does **not** divide by observation totals and is not the usual
 Scanpy `normalize_total` followed by `log1p` workflow. See
-[Shifted log and CLR](guides/shifted-log-and-clr.md#fixed-count-shifted-log).
+[Shifted log and CLR](guides/shifted-log-and-clr.md#count-scale-shifted-log).
 
-## Fixed-count shifted CLR
+## Count-scale shifted CLR
 
 ### Formula
 
@@ -213,7 +213,7 @@ and the follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr)
 implementation.
 
 Tests compare transformed values with an independently written dense
-[count-shifted PFlog oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).
+[count-scale shifted PFlog oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).
 
 ### Caveats
 
@@ -222,7 +222,7 @@ shift added after library-size division, and formula parity with another
 package does not imply identical defaults or outputs. See
 [PFlog and cleartools compatibility](reference/compatibility.md#shifted-clr-pflog-and-cleartools).
 
-## Proportion-shifted CLR
+## Composition-scale shifted CLR
 
 ### Formula
 
@@ -251,7 +251,7 @@ manuscript revision. Tests use an independent dense oracle tied to the pinned
 ### Caveats
 
 This transform is invariant to deterministic rescaling of each observation,
-unlike fixed-count shifted CLR. It should not be described as the current
+unlike count-scale shifted CLR. It should not be described as the current
 PFlog v4 formula.
 
 ## Dirichlet log and Dirichlet CLR
@@ -278,7 +278,7 @@ while Dirichlet CLR analyzes
 Z_i=\operatorname{clr}(X_i+a).
 ```
 
-Fixed-count shifted CLR is the uniform-prior special case with
+Count-scale shifted CLR is the uniform-prior special case with
 \(A=G\,\mathtt{count\_shift}\).
 
 ### Interfaces and parameters

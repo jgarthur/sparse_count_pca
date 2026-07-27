@@ -44,7 +44,7 @@ generated with `sctransform` 0.4.3 and smaller algebraic identity tests.
 
 ## Shifted CLR, PFlog, and cleartools
 
-The fixed-count shifted-CLR transform is
+The count-scale shifted-CLR transform is
 
 ```text
 clr(x + count_shift).

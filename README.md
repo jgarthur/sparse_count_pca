@@ -15,8 +15,8 @@ products to compute PCA of the column-centered transform through SciPy's
 
 The implementation is pure Python and is tested against independent
 dense-matrix implementations and pinned external reference outputs. It covers
-PCA of model residuals, fixed-count shifted logs, shifted centered log-ratio
-(CLR) coordinates, proportion-shifted CLR coordinates, and classical
+PCA of model residuals, count-scale shifted logs, shifted centered log-ratio
+(CLR) coordinates, composition-scale shifted CLR coordinates, and classical
 correspondence analysis.
 
 ## Installation
@@ -54,9 +54,9 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 | Transform | Public specification | Main use |
 | --- | --- | --- |
 | Residual | `Residual(model=..., residual=...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB models |
-| Fixed-count shifted log | `ShiftedLog(count_shift=...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
-| Fixed-count shifted CLR | `ShiftedCLR(count_shift=...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
-| Proportion-shifted CLR | `ProportionShiftedCLR(composition_shift=...)` | Historical fixed-composition-shift CLR formula |
+| Count-scale shifted log | `ShiftedLog(count_shift=...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
+| Count-scale shifted CLR | `ShiftedCLR(count_shift=...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
+| Composition-scale shifted CLR | `ProportionShiftedCLR(composition_shift=...)` | Historical composition-scale shifted CLR formula |
 | Correspondence analysis | separate one-step API | Classical contingency-table ordination |
 
 `scaled_nb` is a package-specific name for a residual model whose expected
@@ -157,7 +157,7 @@ result = transformed.pca(n_comps=50, mask_var="highly_variable")
   library-size division are different CLR transforms. The PFlog normalization
   proposed by [Booeshaghi et al. in preprint version 4 (June 22,
   2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4)
-  uses the fixed-count form.
+  uses the count-scale form.
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.

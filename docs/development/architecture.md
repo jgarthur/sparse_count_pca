@@ -56,8 +56,8 @@ Start with [`src/sparse_count_pca/__init__.py`](https://github.com/jgarthur/spar
 It exports complete one-step analyses plus an explicit two-step transform API:
 
 - residual PCA: `residual_pca`, `residual_pca_matrix`;
-- fixed-count logs: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
-- fixed-composition CLR: `proportion_shifted_clr_pca` and matrix variant;
+- count-scale log and CLR: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
+- composition-scale CLR: `proportion_shifted_clr_pca` and matrix variant;
 - prior-count transforms: `dirichlet_log_pca`, `dirichlet_clr_pca` and matrix
   variants;
 - correspondence analysis;
@@ -147,8 +147,8 @@ S_ij = log1p(X_ij / prior_count_j),
 
 which is zero on structural zeros and therefore preserves sparse support.
 
-[`_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_pca.py) provides the fixed-count and
-fixed-composition PCA APIs.
+[`_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_pca.py) provides the count-scale and
+composition-scale PCA APIs.
 [`_dirichlet_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_dirichlet_pca.py) provides the
 prior-count parameterization and AnnData prior alignment.
 
@@ -156,7 +156,7 @@ prior-count parameterization and AnnData prior alignment.
 | --- | --- | ---: | --- |
 | shifted log | fixed raw count | 0 | rejected by input policy |
 | shifted CLR | fixed raw count | 1 | rejected by input policy |
-| proportion-shifted CLR | fixed composition | 1 | rejected |
+| composition-scale shifted CLR | composition scale | 1 | rejected |
 | Dirichlet log closure | prior counts | at most 2 | rejected by input policy |
 | Dirichlet CLR | prior counts | at most 2 | rejected by input policy |
 
@@ -303,9 +303,9 @@ Reference directories:
 - [`tests/corral_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/corral_reference): correspondence
   analysis;
 - [`tests/shifted_clr_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference): current
-  count-shift PFlog;
+  count-scale PFlog;
 - [`tests/proportion_shifted_clr_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference):
-  historical composition-shifted CLR;
+  historical composition-scale shifted CLR;
 - [`tests/real_data_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/real_data_reference):
   deterministic observed-depth and equal-depth PBMC3k-derived fixtures,
   full-matrix coverage for every transform family, and a pinned SCTransform v2

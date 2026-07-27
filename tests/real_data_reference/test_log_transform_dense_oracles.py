@@ -61,7 +61,7 @@ def test_shifted_log_matches_dense_oracle_on_unequal_depth_real_data(
 def test_count_shifted_clr_matches_dense_oracle_on_unequal_depth_real_data(
     raw_counts: sparse.csr_matrix,
 ) -> None:
-    """Every real-data count-shifted CLR entry matches its dense formula."""
+    """Every real-data count-scale shifted CLR entry matches its dense formula."""
     actual = scp.transform(
         raw_counts, scp.ShiftedCLR(count_shift=COUNT_SHIFT)
     ).materialize()
@@ -73,7 +73,7 @@ def test_count_shifted_clr_matches_dense_oracle_on_unequal_depth_real_data(
 def test_proportion_shifted_clr_matches_dense_oracle_on_unequal_depth_real_data(
     raw_counts: sparse.csr_matrix,
 ) -> None:
-    """Every real-data proportion-shifted CLR entry matches its dense formula."""
+    """Every real-data composition-scale shifted CLR entry matches its dense formula."""
     actual = scp.transform(
         raw_counts,
         scp.ProportionShiftedCLR(composition_shift=COMPOSITION_SHIFT),

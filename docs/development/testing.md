@@ -68,8 +68,8 @@ Pinned references cover:
 
 - Scanpy AnnData conventions;
 - controlled SCTransform v2 residual equality;
-- current count-shift PFlog values;
-- the historical proportion-shifted CLR formula;
+- current count-scale PFlog values;
+- the historical composition-scale shifted CLR formula;
 - classical correspondence analysis through independent R implementations;
 - real-data dense oracles for every public transform family.
 

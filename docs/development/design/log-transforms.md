@@ -32,7 +32,7 @@ transforms, not a public normalization-construction DSL.
    gene-specific prior-count generalization using total prior concentration
    and a prior composition.
 
-4. Add `shifted_log` as the uncentered-coordinate partner of count-shifted
+4. Add `shifted_log` as the uncentered-coordinate partner of count-scale shifted
    CLR. For PCA, define its zero-baseline gauge as
 
     $$
@@ -125,7 +125,7 @@ Every transform continues to have an AnnData function and a matrix function.
 The signatures below omit the common PCA, AnnData-selection, and output
 arguments.
 
-### 1. Count-shifted log PCA
+### 1. Count-scale shifted log PCA
 
 ```python
 shifted_log_pca_matrix(X, *, count_shift, ...)
@@ -153,7 +153,7 @@ Special cases include:
 This method does not normalize library sizes. That is a statistical property,
 not a sparse-representation limitation.
 
-### 2. Count-shifted CLR PCA
+### 2. Count-scale shifted CLR PCA
 
 ```python
 shifted_clr_pca_matrix(X, *, count_shift, ...)
@@ -198,7 +198,7 @@ The implementation may evaluate the sparse entries as
 Do not add a `pflog_pca` alias. Documentation should show the formula above
 and identify the paper/version to which it refers.
 
-### 3. Proportion-shifted CLR PCA
+### 3. Composition-scale shifted CLR PCA
 
 ```python
 proportion_shifted_clr_pca_matrix(X, *, composition_shift, ...)
@@ -223,7 +223,7 @@ undefined for zero-total cells.
 
 Keep it because it is a coherent transform, has a pinned historical oracle,
 and reproduces the June 10 formulation. Its explicit name prevents it from
-being mistaken for current count-shift PFlog.
+being mistaken for current count-scale PFlog.
 
 ### 4. Dirichlet log-closure PCA
 
@@ -289,7 +289,7 @@ $$
 \operatorname{clr}(x_c+\lambda\pi).
 $$
 
-This is the generalized gene-specific count-shift CLR. The scalar
+This is the generalized gene-specific count-scale shifted CLR. The scalar
 `shifted_clr` API is exactly its uniform-prior special case:
 
 $$
@@ -421,8 +421,8 @@ The proposed transforms fit the existing `SparseLowRankMatrix` exactly:
 | Transform | Exact representation before PCA column centering | Low-rank factor rank |
 | --- | --- | ---: |
 | shifted log | $S$ | 0 |
-| count-shifted CLR | $S-\operatorname{rowmean}(S)\mathbf 1^\top$ | 1 |
-| proportion-shifted CLR | same form, with $a_c=s_c\tau$ | 1 |
+| count-scale shifted CLR | $S-\operatorname{rowmean}(S)\mathbf 1^\top$ | 1 |
+| composition-scale shifted CLR | same form, with $a_c=s_c\tau$ | 1 |
 | Dirichlet log | $S+\mathbf 1\log(a)^\top-\log(s+A)\mathbf 1^\top$ | at most 2 |
 | Dirichlet CLR | $S-\operatorname{rowmean}(S)\mathbf 1^\top+\mathbf 1(\log a-\operatorname{mean}\log a)^\top$ | at most 2 |
 
@@ -435,7 +435,7 @@ $$
 No additional matrix representation is needed. The `shifted_log` tests
 exercise the rank-zero case directly.
 
-The gene-offset term in a count-shifted log is absent because the canonical
+The gene-offset term in a count-scale shifted log is absent because the canonical
 transform is `log1p(x / count_shift)`. For Dirichlet log closure, the row
 denominator is scientifically meaningful and cannot be discarded before PCA.
 
@@ -450,7 +450,7 @@ returns
 S.data = np.log1p(X.data / prior_counts[X.indices])
 ```
 
-with copied CSR indices and indptr. Count-shifted CLR and both Dirichlet
+with copied CSR indices and indptr. Count-scale shifted CLR and both Dirichlet
 transforms use it.
 
 The builder layout is:
@@ -530,7 +530,7 @@ Store `normalization_n_vars` in every affected result.
 
 ## Reference and test coverage
 
-The current fixed-count formula is covered by
+The current count-scale formula is covered by
 [`tests/shifted_clr_reference`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference). The
 historical composition-shift formula is covered separately by
 [`tests/proportion_shifted_clr_reference`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference).
@@ -545,13 +545,13 @@ $$
 
 The defining tests verify all of the following:
 
-1. Count-shifted CLR equals a dense direct implementation.
-2. Every count-shifted CLR row sums to zero within floating-point tolerance.
-3. Count-shifted CLR is mathematically finite on a zero-total row, but the
+1. Count-scale shifted CLR equals a dense direct implementation.
+2. Every count-scale shifted CLR row sums to zero within floating-point tolerance.
+3. Count-scale shifted CLR is mathematically finite on a zero-total row, but the
    package-wide input policy rejects that row before transform construction.
-4. Proportion-shifted CLR is also mathematically undefined on a zero-total row.
-5. Proportion-shifted CLR is invariant to multiplying each row by a positive
-   scalar; count-shifted CLR is not claimed to be.
+4. Composition-scale shifted CLR is also mathematically undefined on a zero-total row.
+5. Composition-scale shifted CLR is invariant to multiplying each row by a
+   positive scalar; count-scale shifted CLR is not claimed to be.
 6. With $G$ genes, `shifted_clr(count_shift=a)` equals
    `dirichlet_clr(concentration=G*a, uniform prior)`.
 7. `shifted_log(count_shift=a)` has the same centered dense matrix as
@@ -614,7 +614,7 @@ value to this package.
 
 Do not implement it. Dividing by a size factor and then adding
 $1/(4\alpha)$ gives a cell-specific raw-count shift $r_c/(4\alpha)$. It is
-neither the fixed-count approximation adopted here nor needed as a
+neither the count-scale approximation adopted here nor needed as a
 compatibility target.
 
 ### Arbitrary size-factor and library-target logs
@@ -644,9 +644,9 @@ The implementation has the following contracts:
 
 - no canonical public name hides whether its shift is on the count or
   composition scale;
-- current PFlog is reproducible as fixed-count `shifted_clr`;
+- current PFlog is reproducible as count-scale `shifted_clr`;
 - the historical formulation remains reproducible under an explicit name;
-- uniform `dirichlet_clr` and scalar count-shifted CLR share implementation and
+- uniform `dirichlet_clr` and scalar count-scale shifted CLR share implementation and
   agree exactly up to floating-point error;
 - all transforms retain exact sparse-plus-low-rank representations;
 - old ambiguous calls fail rather than silently change results;

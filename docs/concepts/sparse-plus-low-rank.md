@@ -40,7 +40,7 @@ stores how observed nonzero counts differ from the factored zero baseline.
 The details vary by transform:
 
 - residual expectations factor through cell totals and gene parameters;
-- the package's fixed-count log transform computes
+- the package's count-scale log transform computes
   `log1p(x / count_shift)` without library-size normalization; zeros remain
   zero, so only PCA centering adds a dense rank-one term;
 - CLR subtracts a row-specific mean, adding a rank-one term.

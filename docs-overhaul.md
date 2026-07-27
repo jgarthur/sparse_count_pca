@@ -360,7 +360,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-21 | Keep the README opening author-owned. | Project framing and scientific positioning should carry the author's voice. |
 | 2026-07-21 | Do not add a public `AGENTS.md` initially. | Durable engineering knowledge belongs in public contributor documentation; tool workflow remains private. |
 | 2026-07-21 | Retain and complete Google-style public docstrings. | The repository already uses this style; completeness matters more than format conversion. |
-| 2026-07-21 | Describe shifted log as a fixed-count transform, not standard library-size-normalized log1p. | The implemented formula is `log1p(X / count_shift)` and does not estimate or apply row size factors. |
+| 2026-07-21 | Describe shifted log as a count-scale transform, not standard library-size-normalized log1p. | The implemented formula is `log1p(X / count_shift)` and does not estimate or apply row size factors. |
 | 2026-07-21 | Describe memory benefit as density- and dtype-dependent. | No reproducible project benchmark exists yet, so a universal `10-20x` claim would be unsupported. |
 | 2026-07-21 | Name SciPy `svds` with ARPACK as the supported numerical path. | This is the exact function and solver used with the package's `LinearOperator`. |
 | 2026-07-21 | Integrate merged PR #2 before continuing editorial work. | Its final commits document the real-data oracle suite and update provenance contracts already covered by the overhaul; deferring would leave stale links and an obsolete branch base. |

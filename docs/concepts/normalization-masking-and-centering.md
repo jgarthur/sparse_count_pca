@@ -6,7 +6,8 @@ those roles separate.
 
 ## The PCA transform order
 
-For residual, shifted-log, shifted-CLR, and proportion-shifted-CLR transforms,
+For residual, shifted-log, count-scale shifted-CLR, and composition-scale
+shifted-CLR transforms,
 the order is:
 
 ```text

@@ -5,7 +5,7 @@ coordinates subtract each observation's mean log abundance, representing
 within-observation log ratios. A count-scale shift and a composition-scale
 shift imply different transforms, especially when cell totals vary.
 
-## Fixed-count shifted log
+## Count-scale shifted log
 
 `ShiftedLog` uses
 
@@ -24,11 +24,11 @@ result = scp.shifted_log_pca_matrix(
 )
 ```
 
-This is a fixed raw-count transform. It does not divide rows by library size
+This is a count-scale transform. It does not divide rows by library size
 before taking logs and should not be described as Scanpy's usual
 `normalize_total` plus `log1p` workflow.
 
-## Fixed-count shifted CLR
+## Count-scale shifted CLR
 
 `ShiftedCLR` subtracts the within-observation mean after applying the same
 raw-count shift to every gene:
@@ -66,7 +66,7 @@ implementation provides the same PFlog parameterization through Rust-backed
 Python tooling. See [compatibility](../reference/compatibility.md) for the
 scope of this relationship.
 
-## Fixed-composition shifted CLR
+## Composition-scale shifted CLR
 
 `ProportionShiftedCLR` is a distinct historical transform:
 

@@ -38,13 +38,13 @@ normalization state.
 | --- | --- |
 | shifted log | `count_shift`; direct `count_shift * expm1(z)` |
 | shifted CLR | `count_shift` plus original or supplied row total to restore the removed log gauge |
-| proportion-shifted CLR | `composition_shift` recovers proportions; original row totals are needed for counts |
+| composition-scale shifted CLR | `composition_shift` recovers proportions; original row totals are needed for counts |
 | Dirichlet log | concentration, prior proportions, and row totals |
 | Dirichlet CLR | prior counts plus row totals to restore the removed log gauge |
 | residual PCA | fitted null-model state and a stable analytic or numerical inverse for the selected residual family |
 | correspondence analysis | row/column masses and grand total, with semantics distinct from PCA reconstruction |
 
-For fixed-count shifted CLR with reconstructed CLR values `z`, row total `s`,
+For count-scale shifted CLR with reconstructed CLR values `z`, row total `s`,
 and `G` genes, the missing log gauge is identifiable from
 
 ```text
@@ -52,7 +52,7 @@ exp(t) = (s + G * count_shift) / sum(exp(z)).
 ```
 
 Then the approximate counts are `exp(z + t) - count_shift`. Analogous closure
-constraints apply to Dirichlet CLR and proportion-shifted CLR.
+constraints apply to Dirichlet CLR and composition-scale shifted CLR.
 
 ### Likely API shape
 

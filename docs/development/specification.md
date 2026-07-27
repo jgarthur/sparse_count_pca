@@ -21,9 +21,9 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
-* fixed-count shifted-log PCA
-* fixed-count shifted-CLR PCA
-* fixed-composition shifted-CLR PCA
+* count-scale shifted-log PCA
+* count-scale shifted-CLR PCA
+* composition-scale shifted-CLR PCA
 * Dirichlet-log PCA
 * Dirichlet-CLR PCA
 * classical correspondence analysis with principal coordinates
@@ -184,7 +184,7 @@ Shift parameters are keyword-only, required, finite, and positive. The API
 does not use a bare `pseudocount` parameter because its scale would be
 ambiguous.
 
-### Fixed-count shifted log
+### Count-scale shifted log
 
 For `count_shift=a`, `shifted_log` analyzes
 
@@ -195,7 +195,7 @@ Z_{ij} = \log(1 + X_{ij}/a).
 This is an exactly sparse, zero-at-zero gauge of `log(X + a)`. Ordinary PCA
 column centering removes the omitted constant `log(a)`.
 
-### Fixed-count shifted CLR
+### Count-scale shifted CLR
 
 For `count_shift=a`, `shifted_clr` analyzes
 
@@ -210,7 +210,7 @@ as row-centered `log1p(4 * alpha * X)`. Although that formula is finite on a
 zero-total row, the package-wide input policy rejects empty cells before any
 transform is fitted.
 
-### Fixed-composition shifted CLR
+### Composition-scale shifted CLR
 
 For `composition_shift=tau`, `proportion_shifted_clr` analyzes
 
@@ -231,7 +231,7 @@ For total concentration `A` and prior composition `p`, the prior counts are
 \log\frac{X_{ij}+a_j}{s_i+A},
 ```
 
-and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar fixed-count shifted CLR is
+and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar count-scale shifted CLR is
 the uniform-prior special case `A = G * count_shift`.
 
 All normalization quantities and CLR row means use the full selected input

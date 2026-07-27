@@ -103,7 +103,7 @@ def build_shifted_clr_representation(
     *,
     count_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent fixed-count shifted CLR as sparse plus rank one."""
+    """Represent count-scale shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
     sparse_part = log1p_count_correction(X, count_shift)
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
@@ -119,7 +119,7 @@ def build_proportion_shifted_clr_representation(
     *,
     composition_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent fixed-composition shifted CLR as sparse plus rank one."""
+    """Represent composition-scale shifted CLR as sparse plus rank one."""
     composition_shift = validate_positive_scalar(
         composition_shift, name="composition_shift"
     )

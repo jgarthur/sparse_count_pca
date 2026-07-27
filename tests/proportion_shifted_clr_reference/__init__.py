@@ -1,1 +1,1 @@
-"""Reference formula for historical composition-shifted CLR."""
+"""Reference formula for historical composition-scale shifted CLR."""

@@ -19,9 +19,9 @@ the [transform catalogue](transforms.md).
 | Transform | What it represents | Important distinction |
 | --- | --- | --- |
 | Residual PCA | PCA of deviations from a count-model expectation based on cell depth and gene abundance. | The model may be Poisson, binomial, or scaled-NB, with Pearson or deviance residuals. |
-| Fixed-count shifted log | PCA of `log1p(x / count_shift)` on the raw-count scale. | This does **not** perform library-size normalization before taking logs. |
-| Fixed-count shifted CLR | Within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | PFlog in [Booeshaghi et al.](https://doi.org/10.1101/2022.05.06.490859) is obtained with `count_shift = 1 / (4 * alpha)`. |
-| Proportion-shifted CLR | CLR coordinates with a fixed shift after dividing by each cell total. | Its effective raw-count shift varies by cell depth. |
+| Count-scale shifted log | PCA of `log1p(x / count_shift)` on the raw-count scale. | This does **not** perform library-size normalization before taking logs. |
+| Count-scale shifted CLR | Within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | PFlog in [Booeshaghi et al.](https://doi.org/10.1101/2022.05.06.490859) is obtained with `count_shift = 1 / (4 * alpha)`. |
+| Composition-scale shifted CLR | CLR coordinates with a fixed shift after dividing by each cell total. | Its effective raw-count shift varies by cell depth. |
 | Correspondence analysis | Classical row and column coordinates for a contingency table. | It does not apply ordinary PCA column centering; a mask defines new table margins. |
 
 ## Minimal residual-PCA example

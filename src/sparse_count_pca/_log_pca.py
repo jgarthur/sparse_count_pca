@@ -83,7 +83,7 @@ def shifted_log_pca_matrix(
 ) -> PCAResult:
     """Compute PCA of ``log1p(X / count_shift)`` without densifying.
 
-    This fixed-count transform does not perform library-size normalization.
+    This count-scale transform does not perform library-size normalization.
 
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
@@ -136,7 +136,7 @@ def shifted_clr_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of CLR coordinates after a fixed raw-count shift.
+    """Compute PCA of count-scale shifted CLR coordinates.
 
     The transform is ``clr(X + count_shift)``. The PFlog formulation in
     Booeshaghi et al. preprint v4 is obtained with
@@ -193,11 +193,11 @@ def proportion_shifted_clr_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of CLR coordinates after a fixed composition shift.
+    """Compute PCA of composition-scale shifted CLR coordinates.
 
     The transform is ``clr(X / row_total + composition_shift)``. Its effective
     raw-count shift varies with row depth and it is distinct from current
-    count-shift PFlog.
+    count-scale PFlog.
 
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
@@ -301,7 +301,7 @@ def shifted_log_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-count shifted-log PCA and write AnnData outputs.
+    """Compute count-scale shifted-log PCA and write AnnData outputs.
 
     The transform is ``log1p(X / count_shift)`` and does not perform
     library-size normalization. Normalization uses the full variable universe
@@ -374,7 +374,7 @@ def shifted_clr_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-count shifted-CLR PCA and write AnnData outputs.
+    """Compute count-scale shifted-CLR PCA and write AnnData outputs.
 
     CLR row means use the full variable universe before ``mask_var`` selects
     and centers PCA columns.
@@ -447,7 +447,7 @@ def proportion_shifted_clr_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-composition shifted-CLR PCA and write AnnData outputs.
+    """Compute composition-scale shifted-CLR PCA and write AnnData outputs.
 
     The transform is ``clr(X / row_total + composition_shift)``. CLR row means
     use the full variable universe before ``mask_var`` selects PCA columns.

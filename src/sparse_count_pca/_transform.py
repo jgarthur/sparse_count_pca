@@ -180,7 +180,7 @@ class Residual(Transform):
 
 @dataclass(frozen=True)
 class ShiftedLog(Transform):
-    """Specify the fixed-count transform ``log1p(X / count_shift)``.
+    """Specify the count-scale transform ``log1p(X / count_shift)``.
 
     Attributes:
         count_shift: Positive shift on the raw-count scale.
@@ -212,7 +212,7 @@ class ShiftedLog(Transform):
 
 @dataclass(frozen=True)
 class ShiftedCLR(Transform):
-    """Specify CLR coordinates after a fixed raw-count shift.
+    """Specify count-scale shifted CLR coordinates.
 
     Attributes:
         count_shift: Positive shift added to every raw count. The PFlog
@@ -246,7 +246,7 @@ class ShiftedCLR(Transform):
 
 @dataclass(frozen=True)
 class ProportionShiftedCLR(Transform):
-    """Specify CLR coordinates after a fixed composition-scale shift.
+    """Specify composition-scale shifted CLR coordinates.
 
     Attributes:
         composition_shift: Positive shift added after dividing each row by its
@@ -271,7 +271,7 @@ class ProportionShiftedCLR(Transform):
             representation = representation.select_columns(columns)
         return (
             representation,
-            "Proportion-shifted CLR",
+            "Composition-scale shifted CLR",
             {
                 "transform": "proportion_shifted_clr",
                 "shift_domain": "composition",
