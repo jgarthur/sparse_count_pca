@@ -67,7 +67,7 @@ the [residual PCA](docs/guides/residual-pca.md) and
 [correspondence-analysis](docs/guides/correspondence-analysis.md) guides.
 
 [Compare formulas, provenance, and API maturity](docs/transforms.md), or
-[choose a transform by scientific goal](docs/choosing-a-transform.md).
+[compare the assumptions behind the available transforms](docs/choosing-a-transform.md).
 
 ## How it works
 
@@ -184,7 +184,7 @@ normalization machinery.
 
 - [Getting started](docs/getting-started.md)
 - [Transform catalogue](docs/transforms.md)
-- [Choosing a transform](docs/choosing-a-transform.md)
+- [Comparing transforms](docs/choosing-a-transform.md)
 - [User guides](docs/guides/residual-pca.md)
 - [Concepts](docs/concepts/sparse-plus-low-rank.md)
 - [Compatibility](docs/reference/compatibility.md)

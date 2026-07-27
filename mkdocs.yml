@@ -65,7 +65,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Transforms: transforms.md
-  - Choosing a transform: choosing-a-transform.md
+  - Comparing transforms: choosing-a-transform.md
   - Examples:
       - Residual PCA with AnnData: examples/residual_pca_anndata.md
       - Shifted CLR with AnnData: examples/shifted_clr_anndata.md

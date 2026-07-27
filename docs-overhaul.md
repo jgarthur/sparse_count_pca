@@ -14,7 +14,7 @@ scientific, numerical, and implementation contracts for readers who need them.
 The documentation should serve three audiences without interleaving their
 needs:
 
-1. **Users** need installation, task-oriented guides, transform selection,
+1. **Users** need installation, task-oriented guides, transform comparison,
    expected outputs, caveats, examples, and API reference.
 2. **Scientific readers and reviewers** need the mathematical representation,
    model derivations, exactness claims, compatibility analysis, and explicit
@@ -67,7 +67,7 @@ The documentation work can proceed around that section. Codex can:
 Other passages that may benefit from direct author input are:
 
 - why this package should exist alongside related methods;
-- which workflow should be presented as the recommended default;
+- how the tradeoffs among transforms should be framed;
 - the strength and boundaries of exactness and compatibility claims;
 - limitations that should be prominent before the first release.
 
@@ -135,7 +135,7 @@ Restructure `README.md` around:
 1. author-written opening and central promise;
 2. installation;
 3. minimal AnnData quick start;
-4. a compact transform-selection table;
+4. a compact transform-comparison table;
 5. a short explanation of sparse-plus-low-rank computation;
 6. the three interface paths;
 7. concise compatibility and precision caveats;
@@ -283,7 +283,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 
 - Reserve the opening section for author-written copy.
 - Add installation and the minimal working example.
-- Add the transform-selection table and interface overview.
+- Add the transform-comparison table and interface overview.
 - Move detailed material into guides, concepts, and references.
 - Keep only concise, carefully scoped compatibility statements in the README.
 
@@ -316,7 +316,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 
 - A new user can install the package and reach a successful first call from the
   README or documentation homepage without reading developer material.
-- A user can choose among residual, shifted-log/CLR, Dirichlet, and
+- A user can compare residual, shifted-log/CLR, Dirichlet, and
   correspondence-analysis workflows without reading the specification.
 - Detailed masking, clipping, precision, AnnData, and compatibility behavior
   has one clear home and is linked rather than repeatedly restated.
@@ -372,6 +372,7 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-22 | Render API signatures separately from headings with `mkdocstrings`. | The supported `separate_signature` and `line_length` options produce normally sized, formatted code blocks without brittle theme-specific CSS. Ruff is included in the documentation environment so formatting is consistent locally, in CI, and on Read the Docs. |
 | 2026-07-22 | Treat fenced `math` blocks as first-class Arithmatex input and exclude hooks, history, and wishlist sources from the built site. | The specification uses fenced formulas extensively; configuring the documented SuperFences formatter renders them consistently, while build-only and internal files should not become public pages. |
 | 2026-07-22 | Add a canonical transform catalogue without restoring experimental methods to the recommended workflow. | Scientists need one user-facing place for formulas, provenance, validation, and API mappings. Dirichlet methods remain visible as experimental reference material rather than suggested starting points. |
+| 2026-07-27 | Frame the transform overview as comparison rather than selection by scientific goal. | The package can state formulas, assumptions, and implementation differences, but it cannot reduce method choice to a package-authored decision rule. Broader context belongs in comparative methods literature. |
 
 ## Verification record
 
@@ -399,11 +400,6 @@ development, testing, and compatibility pages.
 ## Open editorial questions
 
 - What exact problem statement and promise should open the README?
-- Which transform should be presented as the default starting point for a user
-  who has sparse single-cell counts but no method preference? Revisit the
-  current Pearson-residual recommendation in `choosing-a-transform.md`; the
-  author is leaning toward foregrounding correspondence analysis and shifted
-  CLR after Booeshaghi et al. v4.
 - Should the first quick start assume an existing `AnnData` object with a
   `"counts"` layer, or construct a tiny complete object?
 - Which limitations deserve visibility in the README rather than only in the

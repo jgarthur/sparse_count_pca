@@ -2,8 +2,8 @@
 
 This page defines the transformations currently exposed by
 `sparse-count-pca`, shows how each one is called, and records its scientific
-lineage and validation. For advice on selecting a method, see
-[Choosing a transform](choosing-a-transform.md). For exact input validation,
+lineage and validation. For a shorter comparison of their assumptions, see
+[Comparing transforms](choosing-a-transform.md). For exact input validation,
 masking, dtype, and output contracts, use the [API reference](reference/api/anndata.md)
 and [normative specification](development/specification.md).
 

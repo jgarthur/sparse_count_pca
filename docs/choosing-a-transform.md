@@ -1,25 +1,33 @@
-# Choosing a transform
+# Comparing transforms
 
-No transform is a universal default for every scientific question. Choose the
-model whose normalization assumptions and coordinates match the analysis you
-intend to interpret.
+This page compares what the package's transforms represent and highlights
+differences that affect interpretation. It is not a general method-selection
+guide: choosing a normalization requires scientific and empirical judgments
+that extend beyond this package.
+
+For broader comparisons, see
+[Ahlmann-Eltze and Huber (2023), *Comparison of transformations for single-cell
+RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1), and
+[Booeshaghi et al., *Normalization for sampled count data*](https://doi.org/10.1101/2022.05.06.490859),
+which develops and benchmarks the shifted-CLR/PFlog approach. These papers
+have different scopes and should be read as methodological context, not as a
+single decision rule.
 
 For complete formulas, API mappings, provenance, and validation status, see
 the [transform catalogue](transforms.md).
 
-| Transform | Use it when | Important distinction |
+| Transform | What it represents | Important distinction |
 | --- | --- | --- |
-| Residual PCA | You want PCA after removing a count-model expectation based on cell depth and gene abundance. | Choose a Poisson, binomial, or scaled-NB model and Pearson or deviance residuals. |
-| Fixed-count shifted log | You want PCA of `log1p(x / count_shift)` on the raw-count scale. | This does **not** perform library-size normalization before taking logs. |
-| Fixed-count shifted CLR | You want within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | [PFlog in Booeshaghi et al. v4](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained with `count_shift = 1 / (4 * alpha)`. |
-| Proportion-shifted CLR | You need the historical formula with a fixed shift after dividing by each cell total. | Its effective raw-count shift varies by cell depth. |
-| Correspondence analysis | You want classical row and column coordinates for a contingency table. | It does not apply ordinary PCA column centering; a mask defines new table margins. |
+| Residual PCA | PCA of deviations from a count-model expectation based on cell depth and gene abundance. | The model may be Poisson, binomial, or scaled-NB, with Pearson or deviance residuals. |
+| Fixed-count shifted log | PCA of `log1p(x / count_shift)` on the raw-count scale. | This does **not** perform library-size normalization before taking logs. |
+| Fixed-count shifted CLR | Within-cell log-ratio coordinates after adding the same raw-count shift to every gene. | PFlog in [Booeshaghi et al.](https://doi.org/10.1101/2022.05.06.490859) is obtained with `count_shift = 1 / (4 * alpha)`. |
+| Proportion-shifted CLR | CLR coordinates with a fixed shift after dividing by each cell total. | Its effective raw-count shift varies by cell depth. |
+| Correspondence analysis | Classical row and column coordinates for a contingency table. | It does not apply ordinary PCA column centering; a mask defines new table margins. |
 
-## A practical starting point
+## Minimal residual-PCA example
 
-For sparse single-cell counts where the scientific aim is to remove an
-independence-model expectation before PCA, begin with Poisson Pearson residual
-PCA:
+The getting-started material uses Poisson Pearson residual PCA as a compact
+example of the primary AnnData interface:
 
 ```python
 scp.residual_pca(
@@ -31,8 +39,8 @@ scp.residual_pca(
 )
 ```
 
-That recommendation is a workflow starting point, not a claim that Poisson
-Pearson residuals are optimal for every dataset.
+This example demonstrates the API; it is not a recommendation that Poisson
+Pearson residuals are optimal for a particular dataset.
 
 Use scaled negative-binomial residuals only when you have defensible
 nonnegative per-gene overdispersion values. The package does not estimate those

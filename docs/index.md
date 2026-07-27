@@ -47,7 +47,7 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 - **I need to choose a count source, select variables, or control output keys.**
   See [AnnData workflows](guides/anndata-workflows.md).
 - **I want to compare the supported analyses.** Read
-  [choosing a transform](choosing-a-transform.md), then use the
+  [comparing transforms](choosing-a-transform.md), then use the
   [transform catalogue](transforms.md) for formulas, provenance, and exact
   interface names.
 
