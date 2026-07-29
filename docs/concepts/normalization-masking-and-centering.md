@@ -71,12 +71,11 @@ analyzed. The implementation applies the mask first, then recomputes cell
 totals, gene totals, the expected count for each cell-gene entry under an
 independence model, and the relative weights of cells and genes.
 
-This can look surprising because Poisson Pearson-residual PCA and classical CA
-both analyze Pearson residuals based on the same independence expectation: each
-cell's total multiplied by each gene's overall proportion. The distinction is
-what remains fixed. Residual PCA estimates those quantities from the full input
-and uses `mask_var` only to select PCA genes. CA treats the selected count table
-as the complete dataset, so removing a gene can change the totals, relative
+Poisson Pearson-residual PCA and classical CA analyze residuals against the
+same independence expectation — each cell's total multiplied by each gene's
+overall proportion — so the difference lies in what stays fixed. Residual PCA
+estimates those quantities once from the full input; CA treats the selected
+table as the complete dataset, so removing a gene can change the totals,
 weights, and coordinates of every remaining cell and gene.
 
 ```text

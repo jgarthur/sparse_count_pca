@@ -2,17 +2,15 @@
 
 ## Clipping is opt-in and exact
 
-Residual transforms are unclipped by default. Set a positive finite `clip`
-threshold to enable clipping before PCA centering.
+Residual transforms do not clip outliers by default. Set a positive finite
+`clip` threshold to enable clipping before PCA centering.
 
 Two modes are available:
 
 - `clip_mode="symmetric"` clips to `[-clip, clip]`;
 - `clip_mode="upper"` clips only values above `clip`.
 
-The implementation represents the clipped residual matrix exactly at the
-chosen calculation dtype. It does not clip only the observed nonzero counts or
-silently approximate transformed zeros.
+The implementation represents the clipped residual matrix exactly.
 
 ## Why symmetric clipping may grow support
 
@@ -38,15 +36,6 @@ numerical accuracy and parity testing.
 Explicit `dtype="float32"` is a lower-memory approximate calculation mode. It
 changes the matrix presented to the SVD solver; it is not merely an output
 storage conversion. No other representation dtype is supported.
-
-If the decomposition should be calculated in `float64` but selected outputs
-stored compactly, downcast after PCA:
-
-```python
-result = scp.residual_pca_matrix(counts, n_comps=20, dtype="float64")
-scores32 = result.scores.astype("float32")
-components32 = result.components.astype("float32")
-```
 
 ## Degenerate inputs
 
