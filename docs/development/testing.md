@@ -17,13 +17,32 @@ pinned reference artifacts is provenance, not a runtime test dependency.
 
 ## Executable documentation examples
 
-The scripts under `examples/` are the canonical source for the complete example
-workflows. They use Jupytext's percent format, so they remain ordinary Python
-files while also defining notebook cells. Pytest discovers and executes every
-example script. The strict MkDocs build independently converts each script to a
-notebook, executes its cells in order, and renders the executed notebook to a
-generated Markdown page. Generated pages are build artifacts and are not
-edited or committed.
+Each user guide has a companion script under `examples/`, named after the guide
+it belongs to. These scripts are the canonical source for the guides' complete
+example workflows. They use Jupytext's percent format, so they remain ordinary
+Python files while also defining notebook cells that readers can open directly
+in Jupyter or VS Code.
+
+Pytest discovers and executes every example script. A cold MkDocs build
+independently converts each script to a notebook, executes its cells in order,
+and renders the result to a Markdown fragment under `docs/examples/`. Those
+fragments are excluded from the site's own pages and are pulled into the
+matching guide with a `pymdownx.snippets` include, so a guide's complete
+example is always code that ran for its current inputs. The fragments are build
+artifacts and are not edited or committed.
+
+The renderer caches each notebook using the example source, package source,
+documentation dependency lockfile, and rendering hook. This keeps
+Markdown-only live reloads fast while invalidating outputs when executable
+inputs change. A clean CI checkout has no cache and executes every notebook.
+Force the same behavior locally with:
+
+```bash
+DOCS_FORCE_EXAMPLES=1 uv run mkdocs build --strict
+```
+
+Adding a guide therefore means adding its companion script; renaming one means
+renaming both the script and the guide's include.
 
 The documentation build also rejects `$$` display delimiters that survive as
 plain HTML paragraphs. Within Markdown lists, display-math blocks must use the
