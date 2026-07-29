@@ -25,7 +25,8 @@ The principal inertias are the squared singular values, also called the
 eigenvalues of the decomposition, so they are amounts of inertia rather than
 proportions; `inertia_ratio` holds the proportions, dividing each principal
 inertia by `total_inertia`. Only the requested `n_comps` axes are returned, so
-those ratios sum to less than one.
+those ratios sum to at most one, reaching one only when the returned axes
+exhaust the table's inertia.
 
 `total_inertia` equals Pearson chi-squared divided by the grand total. Standard
 coordinates are not stored; derive them by dividing principal coordinates by

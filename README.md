@@ -71,7 +71,8 @@ for the transforms it deliberately omits.
 scales overdispersion inversely with cell depth, as in the sSeq model from
 [Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143). If
 `s_i = cell_total_i / mean_cell_total`, the overdispersion for gene
-`j` in cell `i` is `alpha_j / s_i`. Pearson residuals from this model correspond with
+`j` in cell `i` is `alpha_j / s_i`. At positive overdispersion, Pearson residuals
+from this model correspond with
 [SCTransform](https://doi.org/10.1186/s13059-019-1874-1) only when every cell has the
 same total count, with additional model-fitting and post-processing choices
 matched. See the [residual-PCA model definition](docs/guides/residual-pca.md#choose-the-count-model)

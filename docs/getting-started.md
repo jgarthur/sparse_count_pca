@@ -88,6 +88,10 @@ sc.pp.neighbors(adata)
 sc.tl.umap(adata)
 ```
 
+Scanpy looks for `obsm["X_pca"]` by name. Pass `use_rep` with your own key if
+you used a custom `key_added`, or `use_rep="X_pca"` if the matrix has 50 or
+fewer variables and Scanpy would otherwise read `.X` directly.
+
 ## Next steps
 
 - Read the [transform catalogue](transforms.md) before switching

@@ -224,6 +224,15 @@ written:
   correct on GitHub and are not the PyPI reader's concern;
 - add `[project.urls]` with Homepage, Documentation, and Repository.
 
+The guides' evidence links have the same publication dependency. Every link
+into `examples/*.py` and `tests/` targets `main` on a repository that is
+currently private, and the examples were renamed during the documentation
+overhaul, so `main` does not yet contain those paths at all. They resolve once
+this branch merges and the repository is public. Re-verify them at that point
+rather than rewriting them now. The same applies to the advertised
+`pip install sparse-count-pca`, which cannot work until the package is
+published.
+
 The division of labor these links assume: `README.md` serves readers who have
 not yet decided to install, on PyPI and GitHub, and must support that decision
 on its own. `docs/index.md` serves readers already on the site and is a router

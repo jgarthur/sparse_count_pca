@@ -1,9 +1,9 @@
 # AnnData workflows
 
 The AnnData functions are meant to drop into a Scanpy workflow in place of a
-normalization-plus-PCA step. They read counts from the same places Scanpy
-does, resolve the same `highly_variable` mask, and write scores and components
-to the same keys, so everything downstream continues unchanged.
+normalization-plus-PCA step. They read counts from `.X`, a layer, or `.raw.X`,
+resolve the same `highly_variable` mask, and write scores and components to the
+same keys, so everything downstream continues unchanged.
 
 This guide's [complete example](#complete-example) is
 [`examples/anndata_workflows.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/anndata_workflows.py).
@@ -40,8 +40,13 @@ string, and object columns are rejected rather than coerced.
 A pandas nullable `boolean` column is accepted when it holds no missing values,
 because it converts to a plain boolean array. One containing `pd.NA` does not
 convert, and is rejected: `pd.NA` has no defined meaning for variable
-selection. Decide what missing should mean for your analysis, then convert with
-`.astype(bool)`.
+selection. Decide what missing should mean for your analysis, then fill it in
+before converting; `.astype(bool)` on its own raises on a column that still
+holds `pd.NA`.
+
+```python
+adata.var["my_mask"] = adata.var["my_mask"].fillna(False).astype(bool)
+```
 
 In practice this rarely comes up. Scanpy's `highly_variable_genes` writes a
 plain boolean column, and it stays boolean across an `h5ad` round trip.
@@ -73,6 +78,12 @@ sc.experimental.pp.highly_variable_genes(
 
 scp.residual_pca(adata, layer="counts", n_comps=50)
 ```
+
+Selection and PCA fit separate null models, and their parameters need not
+agree: Scanpy's `"pearson_residuals"` flavor defaults to a negative binomial
+with `theta=100` and clips residuals, while `residual_pca` defaults to Poisson
+without clipping. The pairing above is a match of residual family, not of
+parameters; selection only decides which genes enter the PCA.
 
 Scanpy's other flavors (`"seurat"`, `"cell_ranger"`, `"seurat_v3"`) expect
 log-normalized or raw counts depending on the flavor; consult the Scanpy
@@ -114,7 +125,8 @@ unchanged:
 result_adata = scp.residual_pca(adata, layer="counts", copy=True)
 ```
 
-Backed AnnData keeps only `.X` on disk. `.obsm`, `.varm`, and `.uns` are
+Backed AnnData keeps `.X` on disk, along with `.raw.X` when a `.raw` is
+present. `.obsm`, `.varm`, and `.uns` are
 ordinary in-memory mappings, so results are written to the object exactly as
 usual and `copy=False` works on a `backed="r"` object. Nothing is written back
 to the file; save the results yourself if you want them persisted.
@@ -136,6 +148,16 @@ sc.pp.neighbors(adata)
 sc.tl.leiden(adata)
 sc.tl.umap(adata)
 sc.pl.umap(adata, color="leiden")
+```
+
+Scanpy finds those scores by name, under `obsm["X_pca"]`. Two cases defeat
+that: a custom `key_added`, where Scanpy does not find them and runs its own
+default PCA instead, and a matrix of 50 or fewer variables, where it reads `.X`
+directly. Naming the representation avoids both — with the key you actually
+wrote to:
+
+```python
+sc.pp.neighbors(adata, use_rep="X_pca")
 ```
 
 The metadata also records the count source, mask resolution, transform

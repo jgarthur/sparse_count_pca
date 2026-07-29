@@ -139,12 +139,13 @@ normalization universe and PCA variables must differ.
 The scaled-NB residual transform is related to the Pearson-residual
 normalization introduced with
 [SCTransform by Hafemeister and Satija (2019)](https://doi.org/10.1186/s13059-019-1874-1),
-but is not an implementation of it. Its Pearson residuals are identical to
-SCTransform's only when every cell has the same total count, with additional
-model-fitting and post-processing choices matched. Equal cell depth is not
-expected in ordinary real data and is believed to be required for SCTransform
-residuals to retain this package's efficient sparse-plus-low-rank
-representation. See the
+but is not an implementation of it. At positive overdispersion, its Pearson
+residuals are identical to SCTransform's only when every cell has the same
+total count, with additional model-fitting and post-processing choices matched.
+(At `alpha = 0` both models reduce to Poisson, where matching fitted means
+suffice and equal depth is not required.) Equal cell depth is not expected in
+ordinary real data and is believed to be required for SCTransform residuals to
+retain this package's efficient sparse-plus-low-rank representation. See the
 [compatibility reference](../reference/compatibility.md) for the full
 conditions before making parity claims.
 
