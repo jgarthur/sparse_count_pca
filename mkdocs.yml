@@ -1,5 +1,5 @@
 site_name: sparse-count-pca
-site_description: PCA and related spectral analysis of sparse count data
+site_description: PCA and correspondence analysis of sparse count data
 repo_url: https://github.com/jgarthur/sparse_count_pca
 repo_name: jgarthur/sparse_count_pca
 
@@ -41,11 +41,15 @@ markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.details
+  - pymdownx.snippets:
+      base_path: [docs]
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - name: math
           class: arithmatex
-          format: !!python/object/apply:pymdownx.arithmatex.arithmatex_fenced_format
+          format:
+            !!python/object/apply:pymdownx.arithmatex.arithmatex_fenced_format
             kwds:
               mode: generic
   - tables
@@ -57,6 +61,7 @@ extra_javascript:
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 exclude_docs: |
+  examples/**
   history/**
   hooks/**
   wishlist.md
@@ -65,15 +70,9 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Transforms: transforms.md
-  - Comparing transforms: choosing-a-transform.md
-  - Examples:
-      - Residual PCA with AnnData: examples/residual_pca_anndata.md
-      - Shifted CLR with AnnData: examples/shifted_clr_anndata.md
-      - Transform reuse: examples/transform_reuse.md
-      - Correspondence analysis: examples/correspondence_analysis.md
   - Guides:
       - Residual PCA: guides/residual-pca.md
-      - Shifted log and CLR: guides/shifted-log-and-clr.md
+      - Shifted CLR: guides/shifted-clr.md
       - Transform once, reuse: guides/transform-reuse.md
       - Correspondence analysis: guides/correspondence-analysis.md
       - AnnData workflows: guides/anndata-workflows.md

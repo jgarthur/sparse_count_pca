@@ -127,7 +127,10 @@ def build_proportion_shifted_clr_representation(
     if not np.isfinite(row_totals).all():
         raise ValueError("Cell totals overflow float64")
     if (row_totals == 0).any():
-        raise ValueError("Cells with zero total counts are not supported")
+        raise ValueError(
+            "Cells with zero total counts are not supported; filter empty rows "
+            "out of the count matrix first"
+        )
     rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
     data = X.data.astype(np.float64, copy=True)
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):

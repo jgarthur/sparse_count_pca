@@ -5,8 +5,8 @@
 
 ## Scope
 
-The package computes spectral analyses of implicitly transformed sparse count
-data without materializing dense transformed matrices.
+The package computes PCA and correspondence analysis of implicitly transformed
+sparse count data without materializing dense transformed matrices.
 
 The package is AnnData-first. The one-step public API operates on `AnnData` and
 writes Scanpy-compatible PCA outputs. A public two-step transform API supports
@@ -773,10 +773,17 @@ Edge cases on the chosen count matrix:
 
 ```python
 if (n == 0).any():
-    raise ValueError("Cells with zero total counts are not supported")
+    raise ValueError(
+        "Cells with zero total counts are not supported; filter empty rows "
+        "out of the count matrix first"
+    )
 
 if (p_j[mask] == 0).any():
-    raise ValueError("Selected genes with zero total counts are not supported")
+    raise ValueError(
+        "Selected genes with zero total counts are not supported; filter "
+        "empty columns out of the count matrix first, or exclude them with "
+        "mask_var"
+    )
 ```
 
 For `model="binomial"`:

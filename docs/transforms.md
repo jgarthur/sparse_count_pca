@@ -1,30 +1,66 @@
 # Transform catalogue
 
 This page defines the transformations currently exposed by
-`sparse-count-pca`, shows how each one is called, and records its scientific
-lineage and validation. For a shorter comparison of their assumptions, see
-[Comparing transforms](choosing-a-transform.md). For exact input validation,
-masking, dtype, and output contracts, use the [API reference](reference/api/anndata.md)
-and [normative specification](development/specification.md).
+`sparse-count-pca`, shows how each one is called, and records citations
+and validation. It compares differences that affect interpretation but
+is not a scientific method-selection guide. For exact
+input validation, masking, dtype, and output contracts, use the
+[API reference](reference/api/anndata.md) and
+[normative specification](development/specification.md).
 
-The status labels below describe maturity within the current package. The
-project is pre-1.0, so **supported** does not yet promise a frozen API.
+For broader comparisons, see
+[Ahlmann-Eltze and Huber (2023), *Comparison of transformations for single-cell
+RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1), and
+[Booeshaghi et al., *Normalization for sampled count data*](https://doi.org/10.1101/2022.05.06.490859).
+The former provides benchmarks and commentary on the rationale of different
+methods; the latter proposes the shifted-CLR/PFlog approach and provides strong
+theoretical and empirical evidence in its favor. It is also worth noting
+correspondence analysis, discussed in the context of omics data by
+[Hsu and Culhane (2023), *Correspondence analysis for dimension reduction, batch
+integration, and visualization of single-cell RNA-seq data*](https://doi.org/10.1038/s41598-022-26434-1).
 
 ## At a glance
 
 | Transform | AnnData function | Matrix function | Two-step specification | Status |
 | --- | --- | --- | --- | --- |
-| Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; `scaled_nb` is package-specific |
+| Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; see notes on `scaled_nb` |
 | Count-scale shifted log | `shifted_log_pca` | `shifted_log_pca_matrix` | `ShiftedLog` | Supported |
-| Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes PFlog v4 |
-| Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported for historical reproducibility |
+| Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes the PFlog parameterization |
+| Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported |
 | Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Experimental |
 | Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Experimental |
 | Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is experimental |
 
-All PCA functions use observations in rows and variables in columns. The
-two-step specifications are passed to `transform` when transformed values must
-be inspected or one fitted transformation must be reused.
+All PCA functions use observations in rows and variables in columns. A two-step
+specification is passed as the `method` argument of `transform`, which returns
+a `TransformedMatrix` for inspecting transformed values or running PCA more
+than once from one fitted normalization.
+
+Every transform is tested against an independently written dense implementation
+of its formula, covering materialized values, operator products, and PCA or CA
+outputs. The sections below name only the additional pinned external references
+for each transform;
+[what validation means here](#what-validation-means-here) explains what those
+tests do and do not establish.
+
+## What this package does not do
+
+The table above is the complete set of transforms, and one absence is worth
+stating directly because a reader arriving from Scanpy may expect it: **there
+is no library-size-normalized log transform.** The count-scale shifted log
+applies `log1p(X / count_shift)` to raw counts; it does not estimate or divide
+by per-cell size factors, and it is not Scanpy's `normalize_total` followed by
+`log1p`.
+
+That workflow is deliberately out of scope rather than merely unimplemented.
+Dividing by a row total and taking `log1p` maps zero to zero, so the normalized
+matrix stays sparse and only PCA centering makes it dense. Existing sparse PCA
+implementations already handle that rank-one correction, so the transform gains
+nothing from this package's representation. The transforms here are the ones
+whose normalized matrix is dense *before* centering.
+
+For a mapping from the Scanpy functions you may be replacing, see
+[coming from Scanpy](reference/compatibility.md#coming-from-scanpy).
 
 ## Notation
 
@@ -39,6 +75,12 @@ p_j = \frac{\sum_i X_{ij}}{N},
 \qquad
 \mu_{ij} = n_i p_j.
 ```
+
+These are plug-in quantities computed from the observed margins, not latent
+parameters, so \(\mu_{ij}\) is a fitted null mean and \(p_j\) a fitted
+proportion. The derivation below distinguishes the parameter \(\lambda_j\) from
+its estimate \(\widehat\lambda_j\), because there the difference is the point;
+elsewhere this page follows the residual literature and drops the hats.
 
 For log-ratio transforms, \(G\) is the number of variables and
 
@@ -57,13 +99,34 @@ Pearson residuals are
 R_{ij} = \frac{X_{ij}-\mu_{ij}}{\sqrt{V_{ij}}}.
 ```
 
-The supported variance models are:
+The supported null models are:
 
-| `model` | Variance \(V_{ij}\) |
-| --- | --- |
-| `"poisson"` | \(\mu_{ij}\) |
-| `"binomial"` | \(\mu_{ij}(1-p_j)\) |
-| `"scaled_nb"` | \(\mu_{ij}(1+\alpha_j\bar n p_j)\), where \(\bar n\) is mean observation depth |
+| `model` | Null model for \(X_{ij}\) | Variance \(V_{ij}\) |
+| --- | --- | --- |
+| `"poisson"` | \(\operatorname{Poisson}(\mu_{ij})\) | \(\mu_{ij}\) |
+| `"binomial"` | \(\operatorname{Binomial}(n_i,p_j)\) | \(\mu_{ij}(1-p_j)\) |
+| `"scaled_nb"` | negative binomial with mean \(\mu_{ij}\) and dispersion \(\widetilde\alpha_{ij}\) below | \(\mu_{ij}(1+\alpha_j\bar n p_j)\), where \(\bar n\) is mean observation depth |
+
+All three models use the same null mean \(\mu_{ij}=n_i p_j\), which is the
+exact maximum-likelihood mean under `scaled_nb` as well as Poisson; see
+[the derivation below](#maximum-likelihood-null-mean-for-scaled_nb).
+
+In `scaled_nb`, \(\alpha_j\) is the supplied gene overdispersion: larger values
+mean more overdispersion. The overdispersion for \(X_{ij}\) is
+
+```math
+\widetilde\alpha_{ij}
+= \frac{\alpha_j}{s_i},
+\qquad
+s_i = \frac{n_i}{\bar n},
+```
+
+so a gene's overdispersion is scaled inversely with relative cell depth. This
+is the model's definition, not an approximation to a constant-overdispersion
+model: \(\widetilde\alpha_{ij}\) is the negative-binomial dispersion of
+\(X_{ij}\), equal to \(1/r_{ij}\) in the
+[parameterization below](#maximum-likelihood-null-mean-for-scaled_nb). The
+package does not estimate \(\alpha_j\).
 
 For deviance residuals,
 
@@ -73,42 +136,9 @@ R_{ij}
   \sqrt{d(X_{ij},\mu_{ij})},
 ```
 
-where \(d\) is the elementwise model deviance. In particular,
-
-```math
-d_{\mathrm{Pois}}(x,\mu)
-= 2\left[x\log\frac{x}{\mu}-(x-\mu)\right]
-```
-
-and
-
-```math
-d_{\mathrm{Bin}}(x,n,\mu)
-= 2\left[
-  x\log\frac{x}{\mu}
-  +(n-x)\log\frac{n-x}{n-\mu}
-  \right].
-```
-
-For `scaled_nb`, let
-
-```math
-\widetilde\alpha_{ij}
-= \frac{\alpha_j}{n_i/\bar n}.
-```
-
-Then
-
-```math
-d_{\mathrm{sNB}}(x,\mu,\widetilde\alpha)
-= 2\left[
-  x\log\frac{x}{\mu}
-  - \frac{1+\widetilde\alpha x}{\widetilde\alpha}
-    \log\frac{1+\widetilde\alpha x}{1+\widetilde\alpha\mu}
-  \right],
-```
-
-with the Poisson limit used when \(\alpha_j\) is numerically zero.
+where \(d\) is the elementwise deviance for the selected count distribution.
+The [normative specification](development/specification.md#deviance-residuals)
+gives the model-specific formulas and numerical limits.
 
 ### Interfaces and parameters
 
@@ -117,29 +147,40 @@ Use `residual_pca`, `residual_pca_matrix`, or
 
 - `model`: `"poisson"`, `"binomial"`, or `"scaled_nb"`;
 - `residual`: `"pearson"` or `"deviance"`;
-- `alpha`: nonnegative scalar or per-variable values required by `scaled_nb`;
-- optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`.
-
-The package does not estimate `alpha`.
+- `alpha`: nonnegative scalar or per-variable values required by `scaled_nb`; not currently estimated in this package
+- optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`; see
+  [clipping and precision](concepts/clipping-and-precision.md).
 
 ### Origin and validation
 
-Residual PCA under the multinomial count model follows the work of
-[Townes et al. (2019)](https://doi.org/10.1186/s13059-019-1861-6), including
-the use of Pearson or deviance residuals as a fast approximation to GLM-PCA.
-[Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7)
-develop the analytic Pearson-residual formulation for single-cell UMI counts.
-Negative-binomial Pearson-residual normalization is also related to
-[Hafemeister and Satija (2019)](https://doi.org/10.1186/s13059-019-1874-1),
-but this package's `scaled_nb` model is its own exposure-scaled
-parameterization, not an implementation of SCTransform.
+Related work includes residual PCA under the multinomial count model in
+[Townes et al. (2019)](https://doi.org/10.1186/s13059-019-1861-6), the
+comparison of that model with an offset version of negative-binomial
+regression in
+[Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7),
+and negative-binomial Pearson-residual normalization in
+[Hafemeister and Satija (2019)](https://doi.org/10.1186/s13059-019-1874-1).
 
-Tests compare the matrix-free result with independent dense oracles for every
-model/residual combination and with pinned external values from the
-[Townes `null_residuals()` implementation](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/townes_reference).
+The `binomial` model is the per-variable marginal of that multinomial, as used by Townes et al.:
+variable \(j\) has \(n_i\) trials and success probability \(p_j\), giving variance \(\mu_{ij}(1-p_j)\).
+
+This package's `scaled_nb` model is its own depth-scaled overdispersion
+parameterization, sharing the inverse-size-factor dispersion scaling of sSeq
+as described with
+[the derivation below](#maximum-likelihood-null-mean-for-scaled_nb). It is not
+an implementation of SCTransform.
+Its Pearson residuals are identical to those used by SCTransform
+only when every cell has the same total count, with
+additional model-fitting and post-processing choices matched. See the controlled conditions in the
+[residual-PCA comparison](guides/residual-pca.md#relationship-to-sctransform).
+
+Pinned external values from the
+[Townes `null_residuals()` implementation](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/townes_reference)
+cover the four Poisson and binomial combinations, Pearson and deviance for
+each; `scaled_nb` has no counterpart there.
 A separate
 [controlled SCTransform equality oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/real_data_reference)
-tests only the conditions under which the two parameterizations coincide.
+tests only the conditions under which the two NB parameterizations coincide.
 
 ### Caveats
 
@@ -148,6 +189,111 @@ Clipping is optional, occurs before PCA centering, and can increase sparse
 support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
+
+### Maximum-likelihood null mean for `scaled_nb`
+
+Conditional on the size factors and fixed overdispersion, `scaled_nb` has
+the same maximum-likelihood mean as the Poisson model. Let
+
+```math
+s_i=\frac{n_i}{\bar n},
+\qquad
+\bar n=\frac{N}{m},
+\qquad
+S=\sum_i s_i=m,
+```
+
+where \(m\) is the number of observations. For variable \(j\), write its
+normalized mean as \(\lambda_j\). For \(\alpha_j>0\), parameterize the model as
+
+```math
+X_{ij}\sim
+\operatorname{NB}\left(
+    r_{ij}=\frac{s_i}{\alpha_j},
+    q_j=\frac{1}{1+\alpha_j\lambda_j}
+\right).
+```
+
+where \(\operatorname{NB}(r,q)\) has probability mass proportional to
+\(q^{r}(1-q)^{x}\). Then
+
+```math
+\operatorname{E}(X_{ij})=s_i\lambda_j,
+\qquad
+\operatorname{Var}(X_{ij})
+=s_i\lambda_j(1+\alpha_j\lambda_j).
+```
+
+All observations share the same NB probability parameter \(q_j\)
+(distinct from the gene proportion \(p_j\) used elsewhere on this page).
+Because independent negative-binomial variables with common \(q_j\) are
+closed under addition,
+
+```math
+T_j=\sum_i X_{ij}
+\sim
+\operatorname{NB}\left(\frac{S}{\alpha_j},q_j\right).
+```
+
+For fixed \(\alpha_j\), the joint likelihood over \(i\) is a one-parameter
+exponential family in the natural parameter \(\log(1-q_j)\), with sufficient
+statistic \(T_j\):
+
+```math
+\prod_i\Pr(X_{ij}=x_{ij})
+= h(x)
+  \exp\left\{
+    T_j\log(1-q_j)+\frac{S}{\alpha_j}\log q_j
+  \right\},
+```
+
+where \(h\) collects the terms free of \(\lambda_j\). For \(T_j>0\) the
+maximum-likelihood estimate therefore matches the sufficient statistic to its
+expectation, and \(\operatorname{E}(T_j)=S\lambda_j\), so
+
+```math
+\widehat{\lambda}_j=\frac{T_j}{S}.
+```
+
+At \(T_j=0\) the log-likelihood is strictly decreasing in \(\lambda_j\), so the
+maximum is the boundary estimate \(\widehat{\lambda}_j=0\), which the same
+formula gives. The package rejects selected variables with zero total count in
+any case.
+
+Since \(S=m\),
+
+```math
+\widehat{\lambda}_j
+=\frac{\sum_i X_{ij}}{m}
+=\bar n p_j,
+```
+
+and therefore
+
+```math
+\widehat{\mu}_{ij}
+=s_i\widehat{\lambda}_j
+=n_i p_j
+=\mu_{ij}.
+```
+
+Thus Poisson and `scaled_nb` have the same exact fitted null mean \(n_i p_j\),
+but different variances, likelihoods, deviances, and residuals. The result
+extends to \(\alpha_j=0\) by the Poisson limit.
+
+This inverse-size-factor dispersion form matches the scaling used by
+[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143),
+whose normalization lets the size factor affect the dispersion as well as the
+expected value, so that mean and variance scale linearly with it. That paper
+obtains its size factors by the DESeq median-of-ratios method rather than the
+depth ratio \(s_i=n_i/\bar n\) used here.
+
+This differs from the standard NB2 model considered by
+[Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7)
+in the context of Pearson residuals,
+where the overdispersion does not scale inversely with \(s_i\). Its NB
+probability parameter therefore varies across observations, the closure
+argument does not apply, and the Poisson fitted mean is only approximate.
 
 ## Count-scale shifted log
 
@@ -159,8 +305,9 @@ For a positive raw-count shift \(a\),
 Z_{ij}=\log\left(1+\frac{X_{ij}}{a}\right).
 ```
 
-This is `log(X + a)` with the constant `log(a)` removed. Ordinary PCA column
-centering makes those two gauges equivalent for PCA.
+This is `log(X + a)` with the constant `log(a)` removed. Because PCA operates on
+the column-centered transformed matrix, omitting that constant does not change
+the PCA result.
 
 ### Interfaces and parameters
 
@@ -171,15 +318,18 @@ default.
 ### Origin and validation
 
 This is the package's explicit raw-count parameterization of an elementary
-shifted-log transform; no unique upstream method is claimed. Tests compare all
-operator products, materialized values, and PCA outputs with a direct dense
-implementation.
+shifted-log transform; no unique upstream method is claimed, and there is no
+external reference implementation to pin.
 
 ### Caveats
 
 This transform does **not** divide by observation totals and is not the usual
-Scanpy `normalize_total` followed by `log1p` workflow. See
-[Shifted log and CLR](guides/shifted-log-and-clr.md#count-scale-shifted-log).
+Scanpy `normalize_total` followed by `log1p` workflow, which the package does
+not offer at all. See
+[what this package does not do](#what-this-package-does-not-do).
+
+Its column-centered PCA is identical to PCA of \(\log(X_{ij}+a)\), since the
+two matrices differ only by the constant \(\log a\).
 
 ## Count-scale shifted CLR
 
@@ -191,12 +341,13 @@ For a positive raw-count shift \(a\),
 Z_{ij}
 = \log(X_{ij}+a)
   - \frac{1}{G}\sum_k\log(X_{ik}+a)
-= \operatorname{clr}(X_i+a\mathbf 1)_j.
+= \operatorname{clr}(X_i+a\mathbf 1)_j
 ```
 
-The PFlog normalization in Booeshaghi et al. preprint v4 is obtained with
-\(a=1/(4\alpha)\), or equivalently by row-centering
-`log1p(4 * alpha * X)`.
+The PFlog normalization in the June 22, 2026
+[Booeshaghi et al. preprint](https://doi.org/10.1101/2022.05.06.490859) is
+exactly this transform with \(a=1/(4\alpha)\), equivalently evaluated by
+row-centering `log1p(4 * alpha * X)`.
 
 ### Interfaces and parameters
 
@@ -207,13 +358,12 @@ Use `shifted_clr_pca`, `shifted_clr_pca_matrix`, or
 
 The centered log-ratio transformation comes from compositional data analysis;
 see [Aitchison (1982)](https://doi.org/10.1111/j.2517-6161.1982.tb01195.x).
-The current PFlog parameterization is documented by
-[Booeshaghi et al., preprint version 4 (June 22, 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4)
-and the follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr)
+The PFlog parameterization is documented by Booeshaghi et al. and the
+follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr)
 implementation.
 
-Tests compare transformed values with an independently written dense
-[count-scale shifted PFlog oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).
+Its dense oracle follows the
+[pinned upstream count-scale PFlog formula](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).
 
 ### Caveats
 
@@ -244,23 +394,35 @@ and positive.
 
 ### Origin and validation
 
-This historical PFlog formula is retained for reproducibility with an earlier
-manuscript revision. Tests use an independent dense oracle tied to the pinned
-[upstream revision](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference).
+This composition-scale formula matches the June 10, 2026 revision of the same
+Booeshaghi et al. preprint; the current
+revision instead uses the count-scale formula above. Its dense oracle is tied
+to that
+[pinned earlier upstream revision](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference).
 
 ### Caveats
 
 This transform is invariant to deterministic rescaling of each observation,
 unlike count-scale shifted CLR. It should not be described as the current
-PFlog v4 formula.
+PFlog formula / count-scale shifted CLR, which is recommended by the original authors.
 
 ## Dirichlet log and Dirichlet CLR
 
 ### Formula
 
 Let \(A>0\) be the total prior concentration, let \(q_j>0\) be prior
-proportions with \(\sum_j q_j=1\), and set prior counts \(a_j=Aq_j\). The
-posterior-mean composition is
+proportions with \(\sum_j q_j=1\), and set prior counts \(a_j=Aq_j\). Each
+observation's composition has a conjugate Dirichlet prior, and its counts are
+multinomial given that composition:
+
+```math
+\pi_i\sim\operatorname{Dirichlet}(a_1,\dots,a_G),
+\qquad
+X_i\mid\pi_i\sim\operatorname{Multinomial}(n_i,\pi_i).
+```
+
+The posterior is \(\operatorname{Dirichlet}(X_{i1}+a_1,\dots,X_{iG}+a_G)\), so
+the posterior-mean composition is
 
 ```math
 \widehat\pi_{ij}=\frac{X_{ij}+a_j}{n_i+A}.
@@ -272,14 +434,20 @@ Dirichlet log analyzes
 Z_{ij}=\log\widehat\pi_{ij},
 ```
 
-while Dirichlet CLR analyzes
+while Dirichlet CLR analyzes the same posterior mean in log-ratio coordinates,
 
 ```math
-Z_i=\operatorname{clr}(X_i+a).
+Z_i=\operatorname{clr}(\widehat\pi_i)=\operatorname{clr}(X_i+a).
 ```
 
-Count-scale shifted CLR is the uniform-prior special case with
-\(A=G\,\mathtt{count\_shift}\).
+The two expressions agree because the posterior denominator \(n_i+A\) does not
+depend on \(j\), so it contributes a constant to every log that the CLR row
+mean subtracts away.
+
+Count-scale shifted CLR is the uniform-prior special case: with
+\(q_j=1/G\) the prior counts are \(a_j=A/G\), so
+\(A=G\cdot\mathtt{count\_shift}\) gives \(a_j=\mathtt{count\_shift}\) and
+\(\operatorname{clr}(X_i+a)=\operatorname{clr}(X_i+\mathtt{count\_shift}\,\mathbf 1)\).
 
 ### Interfaces and parameters
 
@@ -290,24 +458,20 @@ prior. AnnData interfaces also accept an `adata.var` key.
 
 ### Origin and validation
 
-These are package-defined prior-count generalizations. The CLR coordinate
-system follows [Aitchison (1982)](https://doi.org/10.1111/j.2517-6161.1982.tb01195.x),
-but no parity with a named external Dirichlet-normalization package is claimed.
-Tests compare transformed values, operator products, and PCA outputs with
-independent dense calculations.
+These are package-defined prior-count generalizations, with no external
+reference implementation to pin.
 
 ### Caveats
 
 Both APIs are experimental. The prior is fitted on the full variable universe
-before `mask_var` selects PCA columns. Different concentrations and prior
-compositions encode scientific assumptions, not merely numerical settings.
+before `mask_var` selects PCA columns.
 
 ## Correspondence analysis
 
 ### Formula
 
-Classical correspondence analysis decomposes the standardized independence
-residual matrix
+Classical correspondence analysis applies a singular value decomposition to the
+standardized independence residual matrix
 
 ```math
 Z_{ij}
@@ -317,12 +481,25 @@ Z_{ij}
 It does not apply ordinary PCA column centering. Row and column coordinates are
 then scaled by their corresponding masses.
 
-The experimental `scaled_nb` mode replaces the Poisson variance in this
-standardization with
+The standardization uses the Poisson variance \(V_{ij}=\mu_{ij}\), so
+\(Z_{ij}\) is exactly the Poisson Pearson residual of the
+[residual section above](#pearson-and-deviance-residuals) divided by
+\(\sqrt N\). The two analyses differ in what they do with that matrix, not in
+the matrix itself: CA omits column centering, and rescales the singular vectors
+by the row and column masses.
+
+The experimental `scaled_nb` mode substitutes the same depth-scaled
+negative-binomial variance used there,
 
 ```math
 V_{ij}=\mu_{ij}(1+\alpha_j\bar n p_j).
 ```
+
+Both row and column outputs are principal coordinates: each singular vector is
+divided by the square root of its row or column mass, giving the standard
+coordinates, and then scaled by the singular values. Standard coordinates are
+not stored; divide the principal coordinates by the singular values to recover
+them.
 
 ### Interfaces and parameters
 
@@ -338,16 +515,18 @@ single-cell count matrices and its relationship to PCA pipelines are described
 by [Hsu and Culhane (2023)](https://doi.org/10.1038/s41598-022-26434-1).
 Package outputs are checked against the pinned Bioconductor
 [`corral` reference fixture](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/corral_reference),
-including singular values and row and column coordinates.
+including singular values, total inertia, and both principal and standard
+coordinates for rows and columns.
 
 ### Caveats
 
 A CA variable mask defines a new contingency table, so margins and masses are
-recomputed after masking. This deliberately differs from the PCA transform
-APIs. The `scaled_nb` extension is a package-specific residual ordination: its
-inertia has no classical chi-square or barycentric interpretation. See the
+recomputed after masking. This deliberately differs from the other transform
+APIs. The `scaled_nb` extension is, as far as we know, specific to this package. See the
 [correspondence-analysis guide](guides/correspondence-analysis.md) and
 [compatibility reference](reference/compatibility.md#classical-correspondence-analysis).
+
+
 
 ## What validation means here
 

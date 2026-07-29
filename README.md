@@ -15,9 +15,9 @@ products to compute PCA of the column-centered transform through SciPy's
 
 The implementation is pure Python and is tested against independent
 dense-matrix implementations and pinned external reference outputs. It covers
-PCA of model residuals, count-scale shifted logs, shifted centered log-ratio
-(CLR) coordinates, composition-scale shifted CLR coordinates, and classical
-correspondence analysis.
+PCA of GLM model residuals, shifted centered log-ratio
+(CLR) coordinates, classical correspondence analysis, and several more
+experimental options.
 
 ## Installation
 
@@ -43,7 +43,7 @@ scp.residual_pca(
 )
 ```
 
-Scores are written to `adata.obsm["X_pca"]`, component vectors to
+Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors to
 `adata.varm["PCs"]`, and variance statistics and parameters to
 `adata.uns["pca"]`.
 
@@ -51,63 +51,70 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 
 ## Supported transforms
 
-| Transform | Public specification | Main use |
+| Transform | AnnData function | Main use |
 | --- | --- | --- |
-| Residual | `Residual(model=..., residual=...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB models |
-| Count-scale shifted log | `ShiftedLog(count_shift=...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
-| Count-scale shifted CLR | `ShiftedCLR(count_shift=...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
-| Composition-scale shifted CLR | `ProportionShiftedCLR(composition_shift=...)` | Historical composition-scale shifted CLR formula |
-| Correspondence analysis | separate one-step API | Classical contingency-table ordination |
+| Residual PCA | `residual_pca(...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB (see note below) |
+| Count-scale shifted log | `shifted_log_pca(...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
+| Count-scale shifted CLR | `shifted_clr_pca(...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
+| Composition-scale shifted CLR | `proportion_shifted_clr_pca(...)` | CLR after a fixed shift on the composition scale |
+| Correspondence analysis | `correspondence_analysis(...)` | Classical contingency-table ordination |
 
-`scaled_nb` is a package-specific name for a residual model whose expected
-counts scale with each cell's total count and whose supplied per-gene `alpha`
-values add negative-binomial overdispersion. The package does not estimate
-`alpha`. The scaled-NB correspondence-analysis extension is experimental; see
-the [residual PCA](docs/guides/residual-pca.md) and
-[correspondence-analysis](docs/guides/correspondence-analysis.md) guides.
+[Compare transform assumptions, formulas, provenance, and API maturity](docs/transforms.md)
 
-[Compare formulas, provenance, and API maturity](docs/transforms.md), or
-[compare the assumptions behind the available transforms](docs/choosing-a-transform.md).
+Already using Scanpy's Pearson-residual preprocessing? See
+[coming from Scanpy](docs/reference/compatibility.md#coming-from-scanpy) for
+what each call maps to, and
+[what this package does not do](docs/transforms.md#what-this-package-does-not-do)
+for the transforms it deliberately omits.
+
+`scaled_nb` is a package-specific name for a negative-binomial model that
+scales overdispersion inversely with cell depth, as in the sSeq model from
+[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143). If
+`s_i = cell_total_i / mean_cell_total`, the overdispersion for gene
+`j` in cell `i` is `alpha_j / s_i`. Pearson residuals from this model correspond with
+[SCTransform](https://doi.org/10.1186/s13059-019-1874-1) only when every cell has the
+same total count, with additional model-fitting and post-processing choices
+matched. See the [residual-PCA model definition](docs/guides/residual-pca.md#choose-the-count-model)
+and its [SCTransform comparison](docs/guides/residual-pca.md#relationship-to-sctransform).
+
+There is also an experimental scaled-NB extension to correspondence analysis; see the
+[correspondence-analysis guide](docs/guides/correspondence-analysis.md).
+
 
 ## How it works
 
-Supported dense transforms have an exact representation
+Supported dense transforms have an exact representation,
 
 ```text
-transformed matrix = sparse matrix + low-rank baseline.
+transformed matrix = sparse matrix + low-rank baseline,
 ```
 
-The factorization combines sparse multiplication with small dense low-rank
-products. Selecting PCA variables preserves this form, and column centering
-adds one rank-one term. A `scipy.sparse.linalg.LinearOperator` exposes forward
-and transpose matrix-vector and matrix-matrix products to
-`scipy.sparse.linalg.svds`, currently using the ARPACK solver.
+which allows efficient factored matrix multiplication without materializing the
+actual matrix. Selecting PCA variables preserves this form, and column centering
+adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator` to
+expose matrix-vector and matrix-matrix products to
+`scipy.sparse.linalg.svds`, currently using the ARPACK solver. See
+[sparse plus low rank](docs/concepts/sparse-plus-low-rank.md) for more details.
 
-Optional Pearson or deviance residual clipping is also represented exactly;
-symmetric clipping may add sparse corrections for zero-count entries.
-"Exact" refers to the represented transform at the chosen floating-point
-dtype. Truncated SVD is still a numerical iterative calculation. The current
-backend owns an in-memory CSR correction; backed inputs are not yet processed
-out of core.
+Pearson or deviance residual matrices are often clipped to exclude extreme
+outliers. The package also represents this clipping exactly, although clipping
+large negative residuals at observed zeros can increase the stored sparse
+support. See [clipping and precision](docs/concepts/clipping-and-precision.md).
 
-[Read the mathematical explanation](docs/concepts/sparse-plus-low-rank.md)
+## API structure
 
-## Choose an interface
+- **One-step AnnData API.** Functions such as `residual_pca`,
+  `shifted_clr_pca`, and `correspondence_analysis` write results directly into
+  an `AnnData` object, as in the quick start above. Counts may come from `.X`,
+  a layer, or `.raw.X`. See [AnnData workflows](docs/guides/anndata-workflows.md).
+- **One-step matrix API.** The corresponding `_matrix` functions take dense or
+  sparse matrices outside AnnData and return a result object.
+- **Two-step transform API.** `transform` fits a normalization once, so
+  transformed values can be inspected in bounded slices, or several PCA masks
+  can share one fitted state. See
+  [transform once and reuse](docs/guides/transform-reuse.md).
 
-### One-step AnnData API
-
-Use functions such as `residual_pca`, `shifted_clr_pca`, and
-`correspondence_analysis` to write results directly into an `AnnData` object.
-Counts may come from `.X`, a layer, or `.raw.X`.
-
-### One-step matrix API
-
-Use the corresponding `_matrix` functions on dense or sparse matrices outside
-AnnData. Non-CSR sparse inputs are converted to CSR. CSR inputs with duplicate
-or unsorted indices, or with explicitly stored zeros, are copied before
-canonicalization; already
-[canonical CSR](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.has_canonical_format.html)
-input can be borrowed without mutation.
+The matrix functions return their results instead of writing them:
 
 ```python
 result = scp.residual_pca_matrix(
@@ -122,24 +129,11 @@ result.components   # components by variables
 result.loadings     # variables by components
 ```
 
-### Two-step transform API
-
-Fit once when transformed values must be inspected or several PCA masks should
-share one normalization:
-
-```python
-transformed = scp.transform(
-    adata,
-    scp.Residual(model="poisson", residual="pearson"),
-    layer="counts",
-)
-
-cell = transformed.materialize(obs=10)
-subset = transformed.materialize(obs=[10, 3], var=[25, 2, 8])
-result = transformed.pca(n_comps=50, mask_var="highly_variable")
-```
-
-[Transform once and reuse](docs/guides/transform-reuse.md)
+All three paths canonicalize counts identically. Non-CSR sparse input is
+converted to CSR, and CSR input with duplicate or unsorted indices, or with
+explicitly stored zeros, is copied before canonicalization. Already
+[canonical CSR](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.has_canonical_format.html)
+input is borrowed without mutation.
 
 ## Important distinctions
 
@@ -157,7 +151,8 @@ result = transformed.pca(n_comps=50, mask_var="highly_variable")
   library-size division are different CLR transforms. The PFlog normalization
   proposed by [Booeshaghi et al. in preprint version 4 (June 22,
   2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4)
-  uses the count-scale form.
+  uses the count-scale form, recommended by the authors over the previous
+  proportion-scale shift.
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.
@@ -173,24 +168,12 @@ See [normalization, masking, and centering](docs/concepts/normalization-masking-
 ## Related work
 
 The [`cleartools`](https://github.com/cleartools) projects provide dedicated
-Rust-backed tooling for shifted CLR / PFlog workflows, including the Python
+Rust-backed tooling for shifted CLR (PFlog) workflows, including the Python
 [`scclr`](https://github.com/cleartools/scclr) package.
 
 [`10XGenomics/scan-rs`](https://github.com/10XGenomics/scan-rs) is a Rust
 library used by Cell Ranger and contains similar matrix-representation and
 normalization machinery.
-
-## Documentation
-
-- [Getting started](docs/getting-started.md)
-- [Transform catalogue](docs/transforms.md)
-- [Comparing transforms](docs/choosing-a-transform.md)
-- [User guides](docs/guides/residual-pca.md)
-- [Concepts](docs/concepts/sparse-plus-low-rank.md)
-- [Compatibility](docs/reference/compatibility.md)
-- [API reference](docs/reference/api/anndata.md)
-- [Architecture](docs/development/architecture.md)
-- [Normative specification](docs/development/specification.md)
 
 ## Development
 

@@ -154,7 +154,7 @@ Create the following initial pages when the content justifies them:
 docs/
     index.md
     getting-started.md
-    choosing-a-transform.md
+    transforms.md
 
     guides/
         residual-pca.md
@@ -230,19 +230,23 @@ Add small generated-data scripts for canonical workflows:
 
 ```text
 examples/
-    residual_pca_anndata.py
-    shifted_clr_anndata.py
+    residual_pca.py
+    shifted_log_and_clr.py
     transform_reuse.py
     correspondence_analysis.py
+    anndata_workflows.py
 ```
+
+Each file is named after the guide it accompanies.
 
 Each Python file must have a module docstring. Any tests added to execute these
 examples must give every test function a behavior-focused docstring.
 
-The scripts use Jupytext percent cells without changing their substantive
-content. Pytest executes every script discovered under `examples/`; the MkDocs
-build converts and executes the same files as notebooks, then exports their
-cells and captured outputs to ignored Markdown build artifacts.
+The scripts use Jupytext percent cells, including `[markdown]` cells for short
+orienting notes. Pytest executes every script discovered under `examples/`; the
+MkDocs build converts and executes the same files as notebooks, then exports
+their cells and captured outputs to ignored Markdown fragments that each guide
+includes as its complete example.
 
 ## Deliberately deferred work
 
@@ -346,6 +350,15 @@ exists. Their absence must not leave broken links or placeholder sections.
 - [x] Add a canonical transform catalogue with formulas, provenance, validation,
   API mappings, and maturity labels.
 - [x] Pass strict documentation build, lint, and the full test suite.
+- [x] Give every guide a companion percent notebook and render it inline as the
+  guide's complete example.
+- [x] Make user-reachable error messages state their cause and remedy.
+- [x] Document the Scanpy mapping and the package's deliberate omissions.
+- [x] Resolve the author's review comments across the transform catalogue,
+  guides, and examples.
+- [x] Narrow the log-family guide to log-ratio coordinates.
+- [x] Record deferred code, packaging, and test follow-ups in the wishlist
+  rather than leaving them as comments in published pages.
 - [ ] Complete the author's editorial review of the README opening.
 - [ ] Perform visual browser QA when a browser session is available.
 - [ ] Move this work brief to the private workbench or remove it before release.
@@ -373,8 +386,38 @@ exists. Their absence must not leave broken links or placeholder sections.
 | 2026-07-22 | Treat fenced `math` blocks as first-class Arithmatex input and exclude hooks, history, and wishlist sources from the built site. | The specification uses fenced formulas extensively; configuring the documented SuperFences formatter renders them consistently, while build-only and internal files should not become public pages. |
 | 2026-07-22 | Add a canonical transform catalogue without restoring experimental methods to the recommended workflow. | Scientists need one user-facing place for formulas, provenance, validation, and API mappings. Dirichlet methods remain visible as experimental reference material rather than suggested starting points. |
 | 2026-07-27 | Frame the transform overview as comparison rather than selection by scientific goal. | The package can state formulas, assumptions, and implementation differences, but it cannot reduce method choice to a package-authored decision rule. Broader context belongs in comparative methods literature. |
+| 2026-07-27 | Merge the separate comparison page into the transform catalogue. | Once prescriptive selection advice was removed, the two pages duplicated the same overview. One page now owns distinctions, literature context, formulas, provenance, validation, and API mappings. |
+| 2026-07-28 | Replace the standalone Examples navigation section with one companion notebook per guide, included inline. | The generated example pages were orphaned, prose-free, and duplicated guide code. Pairing each guide with a percent script keeps the shipped notebooks, makes each guide's complete example CI-executed, and removes a navigation section. |
+| 2026-07-28 | Make error messages self-explanatory rather than adding a troubleshooting page. | Most user-reachable messages already state their remedy. The six that did not now name the cause and the fix, which reaches users at the moment of failure instead of in a page they must find. |
+| 2026-07-28 | Do not export `.ipynb` files. | Jupytext percent scripts already open as notebooks in Jupyter and VS Code. Committing generated notebooks would add output churn to the repository, and build-time exports never reach the GitHub source view. |
+| 2026-07-28 | State the absent library-size-normalized log transform as deliberate scope, with its reason. | It is the most likely false expectation a Scanpy user forms. Library-size normalization plus `log1p` maps zero to zero, so it stays sparse before centering and gains nothing from this representation. |
+| 2026-07-28 | Document that Scanpy's shared-`theta` Pearson-residual model is not offered. | Scanpy's default uses one `theta` across all cells and genes, while `scaled_nb` scales overdispersion with cell depth. The two coincide only at equal depth, the same condition as the SCTransform oracle, and both limits are already tested in `tests/test_residual_scanpy.py`. |
+| 2026-07-29 | Derive the `scaled_nb` maximum-likelihood null mean in the transform catalogue, and make it the single home for the sSeq relationship. | The shared fitted mean `n_i p_j` is exactly why Poisson and `scaled_nb` differ only in variance, deviance, and residuals rather than in expectation. The derivation is also the natural place to state the inverse-size-factor dispersion scaling this package shares with sSeq, instead of citing it from several sections. |
+| 2026-07-29 | State the fitted-versus-parameter notation convention once rather than propagating hats. | `p_j` and `mu_ij` are plug-in quantities, but the distinction is load-bearing only in the maximum-likelihood derivation. Hats on every residual and variance formula would diverge from how Townes, Lause, and Scanpy write them. |
+| 2026-07-29 | Describe `scaled_nb`'s cell-by-gene overdispersion as the model's definition, not an "effective" quantity. | `alpha_j / s_i` is the negative-binomial dispersion of the model, equal to `1 / r_ij` in its own parameterization. Calling it effective implied an approximation to a constant-dispersion model. |
+| 2026-07-29 | Narrow the shifted-log-and-CLR guide to shifted CLR alone. | The guide explains log-ratio coordinates, which the count-scale shifted log does not use. The catalogue already carries its formula, interfaces, and provenance, so guide-level treatment only duplicated them. |
+| 2026-07-29 | Hoist the shared dense-oracle statement above the transform sections. | Six per-transform sections opened with near-identical validation sentences. Stating the common guarantee once leaves each transform describing only its specific external fixture, and makes "no external reference to pin" an informative statement rather than boilerplate. |
+| 2026-07-29 | Keep the `principal_inertias` and `inertia_ratio` names and document the distinction. | Verified against Wikipedia's correspondence-analysis article and R's `ca` package: principal inertias are amounts of inertia, conventionally the eigenvalues, while the proportion of total inertia is a separate reported quantity. The names are standard; only the guide's presentation needed fixing. |
+| 2026-07-29 | Record the coordinate-scaling difference from R's `ca` in the compatibility page. | `ca::ca` returns standard coordinates where this package returns principal coordinates, so a direct comparison shows a per-axis scale difference that is not a disagreement about the analysis. |
 
 ## Verification record
+
+Verified on 2026-07-29 after the second author-comment review:
+
+```text
+mkdocs build --strict: passed, no link or anchor warnings
+ruff check .: passed
+pytest: 372 passed, 1 skipped
+companion notebooks: 5 executed and included in their guides
+authoring comments remaining in user-facing pages: none
+```
+
+Citations checked against primary sources rather than recall: the Booeshaghi
+preprint version dates via the bioRxiv API, the Hsu and Culhane title and DOI
+via Crossref, the sSeq dispersion scaling and the correspondence-analysis
+inertia terminology via verbatim quotation. Summarized fetches proved
+unreliable for parameterization details twice; verbatim quotation resolved
+both.
 
 Verified on 2026-07-22 after the author-comment review:
 

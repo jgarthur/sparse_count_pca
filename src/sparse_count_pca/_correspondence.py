@@ -151,9 +151,15 @@ def _compute_correspondence_analysis(
     if not (np.isfinite(row_totals).all() and np.isfinite(column_totals).all()):
         raise ValueError("Count margins overflow float64")
     if (row_totals == 0).any():
-        raise ValueError("Rows with zero mass are not supported")
+        raise ValueError(
+            "Rows with zero mass are not supported; filter empty rows out of "
+            "the count table first"
+        )
     if (column_totals == 0).any():
-        raise ValueError("Columns with zero mass are not supported")
+        raise ValueError(
+            "Columns with zero mass are not supported; filter empty columns out "
+            "of the count table first, or exclude them with mask_var"
+        )
     if model == "scaled_nb":
         warnings.warn(
             "model='scaled_nb' correspondence analysis is experimental; its "
@@ -185,8 +191,9 @@ def _compute_correspondence_analysis(
         dtype=dtype,
     ):
         raise ValueError(
-            "Contingency table has numerically zero inertia; "
-            "correspondence axes are undefined"
+            "Contingency table has numerically zero inertia, so correspondence "
+            "axes are undefined. Every row has the same profile across the "
+            "selected columns, leaving no departure from independence."
         )
     decomposition = compute_truncated_svd(
         operator,

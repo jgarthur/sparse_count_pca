@@ -85,8 +85,9 @@ def compute_pca_from_representation(
     centered_squared = operator.frobenius_squared_centered()
     if operator.centered_variance_is_numerically_zero():
         raise ValueError(
-            f"{transform_label} matrix has numerically zero centered variance; "
-            "PCA directions are undefined"
+            f"{transform_label} matrix has numerically zero centered variance, "
+            "so PCA directions are undefined. Every observation has the same "
+            "transformed values across the selected variables."
         )
 
     decomposition = compute_truncated_svd(

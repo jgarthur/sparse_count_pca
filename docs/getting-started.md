@@ -53,6 +53,17 @@ print(adata.varm["PCs"].shape)    # (4, 2)
 The default call mutates `adata` and returns `None`. Pass `copy=True` to return
 a modified copy instead.
 
+## Choosing `n_comps`
+
+`n_comps` defaults to 50, the usual starting point for single-cell PCA. There
+is no automatic selection: inspect `adata.uns["pca"]["variance_ratio"]` and
+raise or lower the count if the retained components look insufficient or
+wasteful for the downstream analysis.
+
+The ARPACK solver requires `n_comps` to be strictly less than both the number
+of observations and the number of variables selected for PCA, which is why the
+example above uses 2 for a four-by-four matrix.
+
 ## What was written
 
 By default, PCA outputs follow Scanpy's key layout:
@@ -65,9 +76,21 @@ By default, PCA outputs follow Scanpy's key layout:
 
 Passing `key_added="my_pca"` uses that exact key in all three mappings.
 
+## Continue in Scanpy
+
+Because the scores land at Scanpy's own keys, the rest of a standard workflow
+runs unchanged:
+
+```python
+import scanpy as sc
+
+sc.pp.neighbors(adata)
+sc.tl.umap(adata)
+```
+
 ## Next steps
 
-- Read [choosing a transform](choosing-a-transform.md) before switching
+- Read the [transform catalogue](transforms.md) before switching
   normalization families.
 - Use the [residual PCA guide](guides/residual-pca.md) for model, residual,
   clipping, and masking options.

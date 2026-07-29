@@ -1,8 +1,11 @@
 # Transform once, reuse several times
 
-The one-step APIs are the simplest route to PCA. Use `transform` when you need
+The one-step APIs are the simplest route to PCA, but the two-step API via `transform` allows you
 to inspect transformed values, materialize bounded slices, or reuse one fitted
 normalization with several PCA masks.
+
+This guide's [complete example](#complete-example) is
+[`examples/transform_reuse.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/transform_reuse.py).
 
 ## Fit a transform
 
@@ -75,10 +78,18 @@ described in [normalization, masking, and centering](../concepts/normalization-m
 ## Lifetime and ownership
 
 The fitted object owns the sparse support needed to isolate it from later
-mutation of the caller's matrix. It is process-local and is not serialized by
-`AnnData.write_h5ad`.
+mutation of the caller's matrix. It lives only in the current Python process:
+fitting a transform adds nothing to the AnnData object, so `write_h5ad` does
+not store it, and it has to be refitted after reloading the file or restarting
+Python. Only PCA results written to `.obsm`, `.varm`, and `.uns` persist.
 
-Passing `return_operator=True` to `pca` retains the centered operator used by
-ARPACK. An operator returned from a still-live `TransformedMatrix` is isolated
-with a support-sized copy; one-step APIs can instead transfer their private
-representation without that extra copy.
+Passing `return_operator=True` to `pca` retains the centered operator ARPACK
+used. When that operator comes from a `TransformedMatrix` that is still alive,
+the two objects would otherwise share the same arrays, so the operator gets a
+support-sized copy and mutating either one cannot affect the other. A one-step
+call such as `residual_pca_matrix` builds a representation that nothing else
+holds, so it hands those arrays to the operator directly and skips the copy.
+
+## Complete example
+
+--8<-- "examples/transform_reuse.md"

@@ -219,7 +219,9 @@ def apply_clipping(
     if locations is None:
         raise RuntimeError(
             "Exact symmetric clipping would increase sparse support by a factor "
-            f"meeting or exceeding clip_max_nnz_ratio={clip_max_nnz_ratio}"
+            f"meeting or exceeding clip_max_nnz_ratio={clip_max_nnz_ratio}. "
+            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
+            "leaves zero-count residuals unchanged and cannot expand support."
         )
     correction_rows, correction_cols = locations
     count = correction_rows.size
@@ -232,7 +234,9 @@ def apply_clipping(
         raise RuntimeError(
             "Exact symmetric clipping would increase sparse support by a factor of "
             f"{growth_ratio:.3g}, meeting or exceeding "
-            f"clip_max_nnz_ratio={clip_max_nnz_ratio}"
+            f"clip_max_nnz_ratio={clip_max_nnz_ratio}. "
+            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
+            "leaves zero-count residuals unchanged and cannot expand support."
         )
 
     # At clipped zeros the residual is u_i v_j < -clip, so the clipped value

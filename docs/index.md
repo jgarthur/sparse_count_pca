@@ -1,14 +1,15 @@
-# PCA and related analyses of sparse counts without dense matrices
+# PCA and correspondence analysis of sparse counts without dense matrices
 
-`sparse-count-pca` computes PCA and related spectral analyses directly from
+`sparse-count-pca` computes PCA and correspondence analysis directly from
 sparse count matrices, avoiding the dense normalized or residual matrices these
 analyses would ordinarily require. For supported methods, the matrix being
 analyzed is represented exactly as a sparse matrix plus a small low-rank term,
 then decomposed through a SciPy linear operator without materializing every
 entry.
 
-The package is designed for sparse single-cell and spatial-transcriptomics
-counts, while its matrix interfaces also apply to general tables of counts.
+The package is designed primarily for sparse single-cell and
+spatial transcriptomics counts stored in AnnData, but also provides a matrix
+interface for general tables of counts.
 
 ## Minimal example
 
@@ -35,37 +36,33 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 
 ## Choose your path
 
+- **I already use Scanpy's Pearson-residual preprocessing.** See
+  [coming from Scanpy](reference/compatibility.md#coming-from-scanpy) for what
+  each call maps to and where the models differ.
 - **I want PCA on Pearson or deviance residuals.** Start with the
   [residual PCA guide](guides/residual-pca.md).
-- **I want PCA on shifted logs or centered log-ratio (CLR) coordinates.** See
-  [shifted log and CLR](guides/shifted-log-and-clr.md).
+- **I want PCA on centered log-ratio (CLR) coordinates.** See
+  [shifted CLR](guides/shifted-clr.md).
 - **I want correspondence analysis.** See the
-  [correspondence-analysis guide](guides/correspondence-analysis.md).
+  [correspondence analysis guide](guides/correspondence-analysis.md).
 - **I want to inspect normalized values or reuse one normalization with several
   PCA masks.** Use the
   [two-step transform workflow](guides/transform-reuse.md).
 - **I need to choose a count source, select variables, or control output keys.**
   See [AnnData workflows](guides/anndata-workflows.md).
 - **I want to compare the supported analyses.** Read
-  [comparing transforms](choosing-a-transform.md), then use the
-  [transform catalogue](transforms.md) for formulas, provenance, and exact
-  interface names.
+  the [transform catalogue](transforms.md) for important distinctions,
+  formulas, provenance, and exact interface names.
 
 ## Core idea
 
 Many count transformations assign nonzero values to entries that were zero in
-the observed matrix. The transformed matrix is therefore dense even when the
-input is sparse. For the supported methods, those zero baselines factor into a
-small number of row and column vectors:
-
-```text
-transformed matrix = sparse correction + low-rank baseline
-```
-
-Ordinary PCA centering adds one more rank-one term. Matrix-vector products with
-that representation are exact, so SciPy's truncated SVD can operate on it
-without allocating every transformed entry. Runtime and memory benefits depend
-on input density, dtype, transform, and clipping behavior.
+the observed matrix, so the transformed matrix is dense even when the input is
+sparse. For the supported methods, those normalized zero entries factor into a
+small low-rank term — rank one for most transforms, never more than two —
+leaving a sparse correction plus a low-rank baseline. Column centering adds one
+more rank-one term, and SciPy's truncated SVD decomposes the result without
+allocating every entry.
 
 [Read the sparse-plus-low-rank explanation](concepts/sparse-plus-low-rank.md)
 

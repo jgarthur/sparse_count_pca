@@ -132,7 +132,10 @@ class Residual(Transform):
         if not (np.isfinite(n).all() and np.isfinite(column_totals).all()):
             raise ValueError("Count margins overflow float64")
         if (n == 0).any():
-            raise ValueError("Cells with zero total counts are not supported")
+            raise ValueError(
+                "Cells with zero total counts are not supported; filter empty "
+                "rows out of the count matrix first"
+            )
         with np.errstate(over="ignore"):
             total = float(np.sum(n, dtype=np.float64))
         if not np.isfinite(total):
@@ -142,7 +145,11 @@ class Residual(Transform):
         all_columns = columns is None or columns.all()
         p = p_full if all_columns else p_full[columns]
         if (p == 0).any():
-            raise ValueError("Selected genes with zero total counts are not supported")
+            raise ValueError(
+                "Selected genes with zero total counts are not supported; "
+                "filter empty columns out of the count matrix first, or exclude "
+                "them with mask_var"
+            )
         if self.model == "binomial" and (p >= 1).any():
             raise ValueError("Binomial residuals require 0 < p_j < 1")
         alpha_used = (

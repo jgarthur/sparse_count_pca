@@ -4,6 +4,9 @@ Residual PCA compares observed counts with an expected count model, represents
 the resulting Pearson or deviance residual matrix implicitly, centers its
 selected columns, and computes a truncated SVD.
 
+This guide's [complete example](#complete-example) is
+[`examples/residual_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/residual_pca.py).
+
 ## AnnData workflow
 
 ```python
@@ -27,27 +30,12 @@ layer, or `adata.raw.X`; see [AnnData workflows](anndata-workflows.md).
 | --- | --- | --- |
 | `"poisson"` | Count variance equals the expected count. | None |
 | `"binomial"` | Counts are draws from each cell total with gene probability `p_j`. | None |
-| `"scaled_nb"` | Negative-binomial variance with per-gene overdispersion and exposure-scaled means. | Nonnegative `alpha` |
+| `"scaled_nb"` | Negative-binomial variance whose per-gene overdispersion scales inversely with cell depth. | Nonnegative `alpha` |
 
-`scaled_nb` is a package-specific label, not a standard method name. If `n_i`
-is cell total, `p_j` is gene proportion, and `bar(n)` is the mean cell total,
-the model uses
-
-$$
-\mu_{ij}=n_i p_j,
-\qquad
-\widetilde\alpha_{ij}=\alpha_j\frac{\bar n}{n_i},
-\qquad
-\operatorname{Var}(X_{ij})
-=\mu_{ij}+\widetilde\alpha_{ij}\mu_{ij}^2
-=\mu_{ij}\left(1+\alpha_j\bar n p_j\right).
-$$
-
-Thus expected counts follow cell depth, while the effective negative-binomial
-dispersion scales inversely with depth. Negative-binomial mean/dispersion
-models with library scaling have a long history in bulk RNA-seq, including
-[sSeq](https://doi.org/10.1093/bioinformatics/btt143), but this package does
-not claim to implement sSeq.
+`scaled_nb` is a package-specific label, not a standard method name. The
+[transform catalogue](../transforms.md#pearson-and-deviance-residuals) gives
+each model's null distribution, variance, and provenance, and derives the
+fitted mean that all three share.
 
 The fitted cell totals and gene proportions use every gene in the chosen count
 matrix before the PCA variable mask is applied. A selected gene with zero total
@@ -69,16 +57,22 @@ scp.residual_pca(
 Values of `alpha` below `1e-8` use the Poisson limit. The package consumes
 overdispersion estimates but does not fit them.
 
+To estimate `alpha` under this model,
+[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143)
+take per-gene method-of-moments estimates and then shrink them toward a common
+value. That procedure targets the same inverse-size-factor dispersion
+parameterization used here, though it derives its size factors differently.
+
+Do not reuse an SCTransform `theta` as `1 / alpha`. Those are dispersions of a
+different negative-binomial model, and the two parameterizations coincide only
+when every cell has the same total count.
+
 ## Pearson or deviance residuals
 
 Pearson residuals divide the observed-minus-expected difference by the model
 standard deviation. Deviance residuals use the signed square root of each
 entry's contribution to model deviance. Both are supported for all residual
 models.
-
-Choose the residual definition based on the scientific analysis rather than
-computational convenience: both have exact sparse-plus-low-rank
-representations in this package.
 
 ## Variable selection
 
@@ -92,7 +86,9 @@ scp.residual_pca(adata, mask_var="my_gene_mask")
 scp.residual_pca(adata, mask_var=my_boolean_array)
 ```
 
-Masking affects the PCA variables, not the fitted normalization universe.
+The mask chooses which genes enter PCA. It does not change which genes the
+normalization was fitted on: cell totals and gene proportions still come from
+every gene in the count matrix.
 Masked variables receive `NaN` component values in `adata.varm`, making them
 distinguishable from valid zero values. See
 [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
@@ -131,14 +127,27 @@ result.components   # components by variables
 result.loadings     # variables by components
 ```
 
+`loadings` is exactly `components.T`, kept for convenience when writing
+variable-oriented output. It is not a variance-weighted statistical loading.
+
 The matrix path does not apply a variable mask. Slice the count matrix first,
 or use the two-step [`transform`](transform-reuse.md) workflow when the
 normalization universe and PCA variables must differ.
 
 ## Relationship to SCTransform
 
-The scaled-NB residual transform is related to, but is not generally identical
-to, default SCTransform v2 output. Agreement requires controlled model and
-post-processing conditions. See the
-[compatibility reference](../reference/compatibility.md) before making parity
-claims.
+The scaled-NB residual transform is related to the Pearson-residual
+normalization introduced with
+[SCTransform by Hafemeister and Satija (2019)](https://doi.org/10.1186/s13059-019-1874-1),
+but is not an implementation of it. Its Pearson residuals are identical to
+SCTransform's only when every cell has the same total count, with additional
+model-fitting and post-processing choices matched. Equal cell depth is not
+expected in ordinary real data and is believed to be required for SCTransform
+residuals to retain this package's efficient sparse-plus-low-rank
+representation. See the
+[compatibility reference](../reference/compatibility.md) for the full
+conditions before making parity claims.
+
+## Complete example
+
+--8<-- "examples/residual_pca.md"

@@ -31,6 +31,16 @@ Serve the site locally while editing:
 uv run mkdocs serve
 ```
 
+Executed example output is cached from one live-reload build to the next.
+Markdown-only edits therefore do not rerun the guide notebooks. Changes to an
+example, package source, documentation dependencies, or the rendering hook
+invalidate the relevant cache entries. To execute every notebook regardless of
+the cache, run:
+
+```bash
+DOCS_FORCE_EXAMPLES=1 uv run mkdocs build --strict
+```
+
 User guides should explain complete tasks. Concept pages should explain the
 mathematics and scientific interpretation. Exact defaults, validation rules,
 and edge-case behavior belong in the specification or generated API reference.

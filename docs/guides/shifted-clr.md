@@ -1,32 +1,17 @@
-# Shifted log and shifted CLR
+# Shifted CLR
 
-The log-family APIs make the shift domain explicit. Centered log-ratio (CLR)
-coordinates subtract each observation's mean log abundance, representing
-within-observation log ratios. A count-scale shift and a composition-scale
-shift imply different transforms, especially when cell totals vary.
+Centered log-ratio (CLR) coordinates subtract each observation's mean log
+abundance, representing within-observation log ratios. The shift applied before
+taking logs can be fixed on the count scale or on the composition scale, and
+those imply different transforms.
 
-## Count-scale shifted log
+This guide's [complete example](#complete-example) is
+[`examples/shifted_clr.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/shifted_clr.py).
 
-`ShiftedLog` uses
-
-```text
-log1p(x_ij / count_shift).
-```
-
-Its column-centered PCA is identical to PCA of `log(x_ij + count_shift)`, since
-the two matrices differ only by the constant `log(count_shift)`.
-
-```python
-result = scp.shifted_log_pca_matrix(
-    counts,
-    n_comps=20,
-    count_shift=1.0,
-)
-```
-
-This is a count-scale transform. It does not divide rows by library size
-before taking logs and should not be described as Scanpy's usual
-`normalize_total` plus `log1p` workflow.
+Each function below has a `_matrix` counterpart that takes a dense or sparse
+matrix and returns a result object instead of working with AnnData. For the
+count-scale shifted log transform, which applies no log-ratio centering, see
+the [transform catalogue](../transforms.md#count-scale-shifted-log).
 
 ## Count-scale shifted CLR
 
@@ -75,10 +60,11 @@ clr(x_ij / cell_total_i + composition_shift).
 ```
 
 ```python
-result = scp.proportion_shifted_clr_pca_matrix(
-    counts,
+scp.proportion_shifted_clr_pca(
+    adata,
+    layer="counts",
     n_comps=20,
-    composition_shift=1.0,
+    composition_shift=0.1,
 )
 ```
 
@@ -91,8 +77,11 @@ parameter.
 
 CLR row means use all genes in the chosen count matrix before `mask_var`
 selects PCA variables. Consequently, removing a gene from the input and masking
-that gene out of PCA are not equivalent. Even an all-zero gene changes the CLR
-row-mean denominator if it remains in the normalization universe.
+that gene out of PCA are not equivalent.
 
 See [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md)
 for the package-wide ordering rule.
+
+## Complete example
+
+--8<-- "examples/shifted_clr.md"

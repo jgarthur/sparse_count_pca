@@ -1,7 +1,12 @@
 # AnnData workflows
 
-The AnnData APIs select counts, resolve PCA variables, run an implicit
-analysis, and write results using Scanpy-compatible locations.
+The AnnData functions are meant to drop into a Scanpy workflow in place of a
+normalization-plus-PCA step. They read counts from the same places Scanpy
+does, resolve the same `highly_variable` mask, and write scores and components
+to the same keys, so everything downstream continues unchanged.
+
+This guide's [complete example](#complete-example) is
+[`examples/anndata_workflows.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/anndata_workflows.py).
 
 ## Select the count matrix
 
@@ -30,12 +35,48 @@ scp.residual_pca(adata, mask_var=boolean_array)
 ```
 
 Masks must have genuinely boolean dtype and the correct length. Numeric,
-string, and nullable masks are rejected instead of being coerced.
+string, and object columns are rejected rather than coerced.
+
+A pandas nullable `boolean` column is accepted when it holds no missing values,
+because it converts to a plain boolean array. One containing `pd.NA` does not
+convert, and is rejected: `pd.NA` has no defined meaning for variable
+selection. Decide what missing should mean for your analysis, then convert with
+`.astype(bool)`.
+
+In practice this rarely comes up. Scanpy's `highly_variable_genes` writes a
+plain boolean column, and it stays boolean across an `h5ad` round trip.
+
+Scanpy's older `use_highly_variable` argument is accepted but deprecated, and
+emits a warning. `use_highly_variable=True` means `mask_var="highly_variable"`;
+`use_highly_variable=False` means `mask_var=None`.
 
 For residual, log, and CLR PCA, the mask changes the PCA variables but not the
 normalization universe. For correspondence analysis, it defines a new table
 and new margins. See
 [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
+
+## Produce a highly-variable-gene mask
+
+This package consumes `adata.var["highly_variable"]` but does not compute it.
+Scanpy provides the selection step, and its flavor should match the analysis:
+
+```python
+import scanpy as sc
+
+# Pairs with residual PCA; selects on Pearson-residual variance from raw counts.
+sc.experimental.pp.highly_variable_genes(
+    adata,
+    flavor="pearson_residuals",
+    layer="counts",
+    n_top_genes=2000,
+)
+
+scp.residual_pca(adata, layer="counts", n_comps=50)
+```
+
+Scanpy's other flavors (`"seurat"`, `"cell_ranger"`, `"seurat_v3"`) expect
+log-normalized or raw counts depending on the flavor; consult the Scanpy
+documentation for the input each one requires. Any boolean `var` column works.
 
 ## Output keys
 
@@ -73,13 +114,33 @@ unchanged:
 result_adata = scp.residual_pca(adata, layer="counts", copy=True)
 ```
 
-For backed AnnData, `copy=True` returns a fully in-memory object. With
-`copy=False`, the AnnData object remains backed, but the current backend loads
-a backed sparse count matrix into memory for canonicalization and fitting.
+Backed AnnData keeps only `.X` on disk. `.obsm`, `.varm`, and `.uns` are
+ordinary in-memory mappings, so results are written to the object exactly as
+usual and `copy=False` works on a `backed="r"` object. Nothing is written back
+to the file; save the results yourself if you want them persisted.
+
+The object also stays backed afterwards, but that does not avoid loading the
+counts: the current backend reads a backed sparse count matrix into memory for
+canonicalization and fitting. With `copy=True`, the returned object is fully in
+memory.
 
 ## Downstream Scanpy use
 
 The default PCA score and component keys are compatible with downstream Scanpy
-workflows such as neighbors and UMAP. The metadata also records the count
-source, mask resolution, transform parameters, calculation dtype, solver, and
-package version for reproducibility.
+workflows, so an analysis continues without an intermediate conversion step:
+
+```python
+scp.residual_pca(adata, layer="counts", n_comps=50)
+
+sc.pp.neighbors(adata)
+sc.tl.leiden(adata)
+sc.tl.umap(adata)
+sc.pl.umap(adata, color="leiden")
+```
+
+The metadata also records the count source, mask resolution, transform
+parameters, calculation dtype, solver, and package version for reproducibility.
+
+## Complete example
+
+--8<-- "examples/anndata_workflows.md"
