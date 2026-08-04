@@ -66,6 +66,11 @@ side effects, important exceptions, and semantic caveats.
   `float32` is an approximate lower-memory computation mode.
 - Dense-oracle values, operator products, singular values, and subspaces must
   agree within tolerances appropriate to the calculation dtype.
+- Public functions name complete, reproducible transforms. Do not expose a
+  normalization-construction API of composable shift, divisor, and coordinate
+  objects: it would multiply the combinations the package must define,
+  validate, and test, and this is a spectral-analysis tool rather than a
+  general normalization framework.
 
 Do not change a documented invariant without updating the specification,
 tests, and affected user documentation in the same contribution.

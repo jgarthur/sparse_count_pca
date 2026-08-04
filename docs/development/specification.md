@@ -184,6 +184,18 @@ Shift parameters are keyword-only, required, finite, and positive. The API
 does not use a bare `pseudocount` parameter because its scale would be
 ambiguous.
 
+For the same reason, every log-family result records `shift_domain` in its
+`params` metadata, naming the scale on which the shift is fixed:
+
+| Transform | `shift_domain` |
+| --- | --- |
+| `shifted_log`, `shifted_clr` | `"count"` |
+| `proportion_shifted_clr` | `"composition"` |
+| `dirichlet_log`, `dirichlet_clr` | `"dirichlet_prior_counts"` |
+
+A stored result therefore identifies its own shift scale without a reader
+inferring it from the parameter name.
+
 ### Count-scale shifted log
 
 For `count_shift=a`, `shifted_log` analyzes

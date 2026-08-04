@@ -267,6 +267,38 @@ repurposing the review guide. Put numerical contracts and oracle policy in
 focused `numerics.md` and `verification.md` documents, while preserving one
 clearly identified normative API/specification entry point.
 
+## Exact negative-binomial Anscombe PCA
+
+The exact NB variance-stabilizing transform can be written stably as
+
+```math
+g_\alpha(x)
+=
+\frac{2}{\sqrt\alpha}\operatorname{asinh}(\sqrt{\alpha x})
+=
+\frac{1}{\sqrt\alpha}\operatorname{acosh}(1+2\alpha x),
+\qquad \alpha>0,
+```
+
+with Poisson limit \(g_0(x)=2\sqrt{x}\).
+
+Representation is not the obstacle. Because \(g_\alpha(0)=0\), applying it to
+`X.data` alone gives an exact CSR matrix with unchanged support — a rank-zero
+sparse-plus-low-rank representation.
+
+The open questions are semantic, and should be settled before it gets a public
+API:
+
+- whether `alpha` is scalar or per gene;
+- whether the package estimates `alpha` or only consumes supplied values;
+- how AnnData-aligned dispersion arrays and masks behave;
+- whether this raw-count VST is useful without a separate depth model;
+- how its purpose differs from scaled-NB residual PCA.
+
+If added, call it `nb_anscombe_pca` and keep it distinct from
+`shifted_log(count_shift=1/(4*alpha))`, which is only a large-count log
+approximation to it rather than the exact transform.
+
 ## Other candidates
 
 - Decide whether `transform(X, Residual(...))` should permit all-zero genes so
@@ -278,5 +310,4 @@ clearly identified normative API/specification entry point.
 - Highly variable gene selection based on residual variance.
 - Supplied arbitrary size factors, including scran-derived factors.
 - Dask-backed inputs and block-aware transformations.
-- Exact negative-binomial Anscombe PCA after dispersion semantics are settled.
 - Additional SVD solvers if they preserve deterministic and dtype contracts.
