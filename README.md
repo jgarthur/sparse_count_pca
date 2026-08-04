@@ -43,11 +43,11 @@ scp.residual_pca(
 )
 ```
 
-Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors to
-`adata.varm["PCs"]`, and variance statistics and parameters to
+Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
+to `adata.varm["PCs"]`, and variance statistics and parameters to
 `adata.uns["pca"]`.
 
-[Run a complete generated-data example](docs/getting-started.md)
+[Run a complete example with simulated data](docs/getting-started.md)
 
 ## Supported transforms
 
@@ -75,7 +75,8 @@ is not an implementation of
 agree with SCTransform's only under conditions that ordinary data does not meet.
 See the [scaled-NB null model](docs/reference/scaled-nb-model.md).
 
-There is also an experimental scaled-NB extension to correspondence analysis; see the
+There is also an experimental scaled-NB extension to correspondence analysis;
+see the
 [correspondence-analysis guide](docs/guides/correspondence-analysis.md).
 
 ## How it works
@@ -88,8 +89,8 @@ transformed matrix = sparse matrix + low-rank baseline,
 
 which allows efficient factored matrix multiplication without materializing the
 actual matrix. Selecting PCA variables preserves this form, and column centering
-adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator` to
-expose matrix-vector and matrix-matrix products to
+adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator`
+to expose matrix-vector and matrix-matrix products to
 `scipy.sparse.linalg.svds`, currently using the ARPACK solver. See
 [sparse plus low rank](docs/concepts/sparse-plus-low-rank.md) for more details.
 
@@ -100,26 +101,20 @@ expose matrix-vector and matrix-matrix products to
   an `AnnData` object, as in the quick start above. Counts may come from `.X`,
   a layer, or `.raw.X`. See [AnnData workflows](docs/guides/anndata-workflows.md).
 - **One-step matrix API.** The corresponding `_matrix` functions take dense or
-  sparse matrices outside AnnData and return a result object.
+  sparse matrices outside AnnData and return a result object:
+
+  ```python
+  result = scp.residual_pca_matrix(counts, ...)
+
+  result.scores       # observations by components
+  result.components   # components by variables
+  result.loadings     # variables by components
+  ```
+
 - **Two-step transform API.** `transform` fits a normalization once, so
   transformed values can be inspected in bounded slices, or several PCA masks
   can share one fitted state. See
   [transform once and reuse](docs/guides/transform-reuse.md).
-
-The matrix functions return their results instead of writing them:
-
-```python
-result = scp.residual_pca_matrix(
-    counts,
-    n_comps=20,
-    model="poisson",
-    residual="deviance",
-)
-
-result.scores       # observations by components
-result.components   # components by variables
-result.loadings     # variables by components
-```
 
 ## Important distinctions
 
@@ -142,7 +137,7 @@ result.loadings     # variables by components
 
 ## Related work
 
-The [`cleartools`](https://github.com/cleartools) projects provide dedicated
+The [`cleartools`](https://github.com/cleartools) projects provide sparse
 Rust-backed tooling for shifted CLR (PFlog) workflows, including the Python
 [`scclr`](https://github.com/cleartools/scclr) package.
 
