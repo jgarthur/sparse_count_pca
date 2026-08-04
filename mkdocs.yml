@@ -82,6 +82,7 @@ nav:
       - Clipping and precision: concepts/clipping-and-precision.md
   - Reference:
       - Compatibility: reference/compatibility.md
+      - Scaled-NB null model: reference/scaled-nb-model.md
       - API:
           - AnnData functions: reference/api/anndata.md
           - Matrix functions: reference/api/matrix.md

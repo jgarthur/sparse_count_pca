@@ -1,23 +1,11 @@
 # Transform catalogue
 
-This page defines the transformations currently exposed by
-`sparse-count-pca`, shows how each one is called, and records citations
-and validation. It compares differences that affect interpretation but
-is not a scientific method-selection guide. For exact
-input validation, masking, dtype, and output contracts, use the
+This page defines the transformations `sparse-count-pca` exposes, shows how
+each one is called, and records citations and validation. It notes differences
+that affect interpretation, but it is not a method-selection guide. For exact
+input validation, masking, dtype, and output contracts, see the
 [API reference](reference/api/anndata.md) and
 [normative specification](development/specification.md).
-
-For broader comparisons, see
-[Ahlmann-Eltze and Huber (2023), *Comparison of transformations for single-cell
-RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1), and
-[Booeshaghi et al., *Normalization for sampled count data*](https://doi.org/10.1101/2022.05.06.490859).
-The former provides benchmarks and commentary on the rationale of different
-methods; the latter proposes the shifted-CLR/PFlog approach and provides strong
-theoretical and empirical evidence in its favor. It is also worth noting
-correspondence analysis, discussed in the context of omics data by
-[Hsu and Culhane (2023), *Correspondence analysis for dimension reduction, batch
-integration, and visualization of single-cell RNA-seq data*](https://doi.org/10.1038/s41598-022-26434-1).
 
 ## At a glance
 
@@ -38,10 +26,11 @@ than once from one fitted normalization.
 
 Every transform is tested against an independently written dense implementation
 of its formula, covering materialized values, operator products, and PCA or CA
-outputs. The sections below name only the additional pinned external references
-for each transform;
-[what validation means here](#what-validation-means-here) explains what those
-tests do and do not establish.
+outputs; the sections below name only the additional pinned external fixtures.
+Those fixtures test selected relationships to prior implementations. Neither
+kind of test makes methods scientifically interchangeable outside the stated
+conditions. The [testing guide](development/testing.md) describes the oracle
+hierarchy and tolerances.
 
 ## What this package does not do
 
@@ -78,9 +67,7 @@ p_j = \frac{\sum_i X_{ij}}{N},
 
 These are plug-in quantities computed from the observed margins, not latent
 parameters, so \(\mu_{ij}\) is a fitted null mean and \(p_j\) a fitted
-proportion. The derivation below distinguishes the parameter \(\lambda_j\) from
-its estimate \(\widehat\lambda_j\), because there the difference is the point;
-elsewhere this page follows the residual literature and drops the hats.
+proportion. Following the residual literature, this page drops the hats.
 
 For log-ratio transforms, \(G\) is the number of variables and
 
@@ -108,8 +95,7 @@ The supported null models are:
 | `"scaled_nb"` | negative binomial with mean \(\mu_{ij}\) and dispersion \(\widetilde\alpha_{ij}\) below | \(\mu_{ij}(1+\alpha_j\bar n p_j)\), where \(\bar n\) is mean observation depth |
 
 All three models use the same null mean \(\mu_{ij}=n_i p_j\), which is the
-exact maximum-likelihood mean under `scaled_nb` as well as Poisson; see
-[the derivation below](#maximum-likelihood-null-mean-for-scaled_nb).
+exact maximum-likelihood mean under `scaled_nb` as well as Poisson.
 
 In `scaled_nb`, \(\alpha_j\) is the supplied gene overdispersion: larger values
 mean more overdispersion. The overdispersion for \(X_{ij}\) is
@@ -123,10 +109,9 @@ s_i = \frac{n_i}{\bar n},
 
 so a gene's overdispersion is scaled inversely with relative cell depth. This
 is the model's definition, not an approximation to a constant-overdispersion
-model: \(\widetilde\alpha_{ij}\) is the negative-binomial dispersion of
-\(X_{ij}\), equal to \(1/r_{ij}\) in the
-[parameterization below](#maximum-likelihood-null-mean-for-scaled_nb). The
-package does not estimate \(\alpha_j\).
+model. The package does not estimate \(\alpha_j\). See
+[the scaled-NB null model](reference/scaled-nb-model.md) for the full
+parameterization and the maximum-likelihood derivation.
 
 For deviance residuals,
 
@@ -165,13 +150,10 @@ The `binomial` model is the per-variable marginal of that multinomial, as used b
 variable \(j\) has \(n_i\) trials and success probability \(p_j\), giving variance \(\mu_{ij}(1-p_j)\).
 
 This package's `scaled_nb` model is its own depth-scaled overdispersion
-parameterization, sharing the inverse-size-factor dispersion scaling of sSeq
-as described with
-[the derivation below](#maximum-likelihood-null-mean-for-scaled_nb). It is not
-an implementation of SCTransform.
-Its Pearson residuals are identical to those used by SCTransform
-only when every cell has the same total count, with
-additional model-fitting and post-processing choices matched. See the controlled conditions in the
+parameterization, sharing the inverse-size-factor dispersion scaling of sSeq;
+see [the scaled-NB null model](reference/scaled-nb-model.md). It is not an
+implementation of SCTransform, and matches its Pearson residuals only under the
+controlled conditions given in the
 [residual-PCA comparison](guides/residual-pca.md#relationship-to-sctransform).
 
 Pinned external values from the
@@ -190,111 +172,6 @@ support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
 
-### Maximum-likelihood null mean for `scaled_nb`
-
-Conditional on the size factors and fixed overdispersion, `scaled_nb` has
-the same maximum-likelihood mean as the Poisson model. Let
-
-```math
-s_i=\frac{n_i}{\bar n},
-\qquad
-\bar n=\frac{N}{m},
-\qquad
-S=\sum_i s_i=m,
-```
-
-where \(m\) is the number of observations. For variable \(j\), write its
-normalized mean as \(\lambda_j\). For \(\alpha_j>0\), parameterize the model as
-
-```math
-X_{ij}\sim
-\operatorname{NB}\left(
-    r_{ij}=\frac{s_i}{\alpha_j},
-    q_j=\frac{1}{1+\alpha_j\lambda_j}
-\right).
-```
-
-where \(\operatorname{NB}(r,q)\) has probability mass proportional to
-\(q^{r}(1-q)^{x}\). Then
-
-```math
-\operatorname{E}(X_{ij})=s_i\lambda_j,
-\qquad
-\operatorname{Var}(X_{ij})
-=s_i\lambda_j(1+\alpha_j\lambda_j).
-```
-
-All observations share the same NB probability parameter \(q_j\)
-(distinct from the gene proportion \(p_j\) used elsewhere on this page).
-Because independent negative-binomial variables with common \(q_j\) are
-closed under addition,
-
-```math
-T_j=\sum_i X_{ij}
-\sim
-\operatorname{NB}\left(\frac{S}{\alpha_j},q_j\right).
-```
-
-For fixed \(\alpha_j\), the joint likelihood over \(i\) is a one-parameter
-exponential family in the natural parameter \(\log(1-q_j)\), with sufficient
-statistic \(T_j\):
-
-```math
-\prod_i\Pr(X_{ij}=x_{ij})
-= h(x)
-  \exp\left\{
-    T_j\log(1-q_j)+\frac{S}{\alpha_j}\log q_j
-  \right\},
-```
-
-where \(h\) collects the terms free of \(\lambda_j\). For \(T_j>0\) the
-maximum-likelihood estimate therefore matches the sufficient statistic to its
-expectation, and \(\operatorname{E}(T_j)=S\lambda_j\), so
-
-```math
-\widehat{\lambda}_j=\frac{T_j}{S}.
-```
-
-At \(T_j=0\) the log-likelihood is strictly decreasing in \(\lambda_j\), so the
-maximum is the boundary estimate \(\widehat{\lambda}_j=0\), which the same
-formula gives. The package rejects selected variables with zero total count in
-any case.
-
-Since \(S=m\),
-
-```math
-\widehat{\lambda}_j
-=\frac{\sum_i X_{ij}}{m}
-=\bar n p_j,
-```
-
-and therefore
-
-```math
-\widehat{\mu}_{ij}
-=s_i\widehat{\lambda}_j
-=n_i p_j
-=\mu_{ij}.
-```
-
-Thus Poisson and `scaled_nb` have the same exact fitted null mean \(n_i p_j\),
-but different variances, likelihoods, deviances, and residuals. The result
-extends to \(\alpha_j=0\) by the Poisson limit.
-
-This inverse-size-factor dispersion form matches the scaling used by
-[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143),
-whose normalization lets the size factor affect the dispersion as well as the
-expected value, so that mean and variance scale linearly with it. That paper
-obtains its size factors by the DESeq median-of-ratios method rather than the
-depth ratio \(s_i=n_i/\bar n\) used here.
-
-This differs from the standard NB2 model considered by
-[Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7)
-in the context of Pearson residuals,
-where the overdispersion does not scale inversely with \(s_i\). Its NB
-probability parameter therefore varies across observations, the closure
-argument does not apply, and the Poisson fitted mean is only approximate.
-
 ## Count-scale shifted log
 
 ### Formula
@@ -307,7 +184,10 @@ Z_{ij}=\log\left(1+\frac{X_{ij}}{a}\right).
 
 This is `log(X + a)` with the constant `log(a)` removed. Because PCA operates on
 the column-centered transformed matrix, omitting that constant does not change
-the PCA result.
+the PCA result: the column-centered PCA is identical to PCA of
+\(\log(X_{ij}+a)\). This is the package's explicit raw-count parameterization of
+an elementary shifted-log transform; there is no external reference
+implementation to pin.
 
 ### Interfaces and parameters
 
@@ -315,21 +195,10 @@ Use `shifted_log_pca`, `shifted_log_pca_matrix`, or
 `ShiftedLog(count_shift=a)`. `count_shift` is required and has no implicit
 default.
 
-### Origin and validation
-
-This is the package's explicit raw-count parameterization of an elementary
-shifted-log transform; no unique upstream method is claimed, and there is no
-external reference implementation to pin.
-
 ### Caveats
 
-This transform does **not** divide by observation totals and is not the usual
-Scanpy `normalize_total` followed by `log1p` workflow, which the package does
-not offer at all. See
+This transform does **not** divide by observation totals; see
 [what this package does not do](#what-this-package-does-not-do).
-
-Its column-centered PCA is identical to PCA of \(\log(X_{ij}+a)\), since the
-two matrices differ only by the constant \(\log a\).
 
 ## Count-scale shifted CLR
 
@@ -456,15 +325,11 @@ Use `dirichlet_log_pca`, `dirichlet_log_pca_matrix`, or `DirichletLog`; and
 `concentration` defaults to `1.0`; `prior_proportions=None` uses a uniform
 prior. AnnData interfaces also accept an `adata.var` key.
 
-### Origin and validation
-
-These are package-defined prior-count generalizations, with no external
-reference implementation to pin.
-
 ### Caveats
 
-Both APIs are experimental. The prior is fitted on the full variable universe
-before `mask_var` selects PCA columns.
+These are package-defined prior-count generalizations, with no external
+reference implementation to pin. Both APIs are experimental, and the prior is
+fitted on the full variable universe before `mask_var` selects PCA columns.
 
 ## Correspondence analysis
 
@@ -522,18 +387,24 @@ coordinates for rows and columns.
 
 A CA variable mask defines a new contingency table, so margins and masses are
 recomputed after masking. This deliberately differs from the other transform
-APIs. The `scaled_nb` extension is, as far as we know, specific to this package. See the
+APIs. The `scaled_nb` extension is experimental. See the
 [correspondence-analysis guide](guides/correspondence-analysis.md) and
 [compatibility reference](reference/compatibility.md#classical-correspondence-analysis).
 
 
 
-## What validation means here
+## Further reading
 
-Independent dense oracles establish that the sparse-plus-low-rank operators
-represent the documented formulas and that their PCA or CA results agree with
-dense calculations on test matrices. Pinned external fixtures test selected
-relationships to prior implementations. Neither kind of test makes methods
-scientifically interchangeable outside the stated conditions. The
-[testing guide](development/testing.md) describes the oracle hierarchy and
-tolerances.
+[Ahlmann-Eltze and Huber (2023), *Comparison of transformations for single-cell
+RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1) benchmarks
+transformations and comments on the rationale of different methods.
+
+[Booeshaghi et al., *Normalization for sampled count
+data*](https://doi.org/10.1101/2022.05.06.490859) proposes the
+shifted-CLR/PFlog approach, with strong theoretical and empirical evidence in
+its favor.
+
+[Hsu and Culhane (2023), *Correspondence analysis for dimension reduction, batch
+integration, and visualization of single-cell RNA-seq
+data*](https://doi.org/10.1038/s41598-022-26434-1) discusses correspondence
+analysis in the context of omics data.
