@@ -22,7 +22,6 @@ from ._log_transforms import (
     build_dirichlet_log_representation,
     build_proportion_shifted_clr_representation,
     build_shifted_clr_representation,
-    build_shifted_log_representation,
     validate_dirichlet_prior,
     validate_positive_scalar,
 )
@@ -136,6 +135,11 @@ class Residual(Transform):
                 "Cells with zero total counts are not supported; filter empty "
                 "rows out of the count matrix first"
             )
+        if (column_totals == 0).any():
+            raise ValueError(
+                "Genes with zero total counts are not supported; filter empty "
+                "columns out of the count matrix first"
+            )
         with np.errstate(over="ignore"):
             total = float(np.sum(n, dtype=np.float64))
         if not np.isfinite(total):
@@ -144,12 +148,6 @@ class Residual(Transform):
 
         all_columns = columns is None or columns.all()
         p = p_full if all_columns else p_full[columns]
-        if (p == 0).any():
-            raise ValueError(
-                "Selected genes with zero total counts are not supported; "
-                "filter empty columns out of the count matrix first, or exclude "
-                "them with mask_var"
-            )
         if self.model == "binomial" and (p >= 1).any():
             raise ValueError("Binomial residuals require 0 < p_j < 1")
         alpha_used = (
@@ -181,38 +179,6 @@ class Residual(Transform):
                 "use_highly_variable": False,
                 "mask_var": None,
                 "layer": None,
-            },
-        )
-
-
-@dataclass(frozen=True)
-class ShiftedLog(Transform):
-    """Specify the count-scale transform ``log1p(X / count_shift)``.
-
-    Attributes:
-        count_shift: Positive shift on the raw-count scale.
-
-    Examples:
-        >>> transformed = transform(counts, ShiftedLog(count_shift=1.0))
-    """
-
-    count_shift: float
-
-    def _build(self, counts, *, var, columns):
-        count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
-        representation = build_shifted_log_representation(
-            counts, count_shift=count_shift
-        )
-        if columns is not None:
-            representation = representation.select_columns(columns)
-        return (
-            representation,
-            "Shifted log",
-            {
-                "transform": "shifted_log",
-                "shift_domain": "count",
-                "count_shift": count_shift,
-                "normalization_n_vars": counts.shape[1],
             },
         )
 
@@ -677,7 +643,6 @@ def _transform(
     method: Transform,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
     _columns: BoolArray | None = None,
@@ -687,13 +652,13 @@ def _transform(
     if not isinstance(method, Transform):
         raise TypeError("method must be a Transform instance")
     if isinstance(data, AnnData):
-        X = _get_count_matrix(data, layer=layer, use_raw=use_raw)
+        X = _get_count_matrix(data, layer=layer)
         var = data.var
         obs_names = data.obs_names
         var_names = data.var_names
     else:
-        if layer is not None or use_raw:
-            raise TypeError("layer and use_raw are only valid for AnnData input")
+        if layer is not None:
+            raise TypeError("layer is only valid for AnnData input")
         X = data
         var = None
         obs_names = None
@@ -729,7 +694,6 @@ def transform(
     method: Transform,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
 ) -> TransformedMatrix:
@@ -742,11 +706,9 @@ def transform(
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
             object. Observations are rows and variables are columns.
-        method: Residual, shifted-log/CLR, or experimental Dirichlet transform
+        method: Residual, shifted-CLR, or package-defined Dirichlet transform
             specification.
         layer: AnnData count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``. Valid only for AnnData and
-            mutually exclusive with ``layer``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and operator dtype, either ``"float64"`` or
             ``"float32"``.
@@ -774,7 +736,6 @@ def transform(
         data,
         method,
         layer=layer,
-        use_raw=use_raw,
         check_values=check_values,
         dtype=dtype,
     )

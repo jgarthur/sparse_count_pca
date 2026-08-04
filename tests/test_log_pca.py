@@ -1,4 +1,4 @@
-"""Tests for shifted-log and shifted-CLR representations and PCA."""
+"""Tests for shifted-CLR representations and PCA."""
 
 import numpy as np
 import pytest
@@ -9,21 +9,17 @@ from sparse_count_pca import (
     proportion_shifted_clr_pca_matrix,
     shifted_clr_pca,
     shifted_clr_pca_matrix,
-    shifted_log_pca,
-    shifted_log_pca_matrix,
 )
 from sparse_count_pca._log_transforms import (
     build_dirichlet_clr_representation,
     build_proportion_shifted_clr_representation,
     build_shifted_clr_representation,
-    build_shifted_log_representation,
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from tests._oracles import (
     _compare_subspaces,
     _dense_count_shifted_clr,
     _dense_proportion_shifted_clr,
-    _dense_shifted_log,
 )
 from tests.shifted_clr_reference.oracle import pflog
 
@@ -33,27 +29,6 @@ def _materialize(representation, *, center=False):
         representation, center=center, dtype="float64"
     )
     return operator @ np.eye(representation.shape[1])
-
-
-@pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
-def test_shifted_log_representation_is_exactly_sparse(counts, count_shift):
-    """The count-scale shifted-log representation is exactly sparse."""
-    representation = build_shifted_log_representation(counts, count_shift=count_shift)
-    actual = _materialize(representation)
-    expected = _dense_shifted_log(counts, count_shift)
-    np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
-    assert representation.sparse.nnz == counts.nnz
-    assert representation.rank == 0
-
-
-def test_shifted_log_gauge_has_same_centered_pca_matrix_as_log_counts(counts):
-    """The sparse shifted-log gauge preserves the centered log-count matrix."""
-    count_shift = 0.6
-    zero_baseline = _dense_shifted_log(counts, count_shift)
-    shifted_counts = np.log(counts.toarray() + count_shift)
-    zero_baseline -= zero_baseline.mean(axis=0)
-    shifted_counts -= shifted_counts.mean(axis=0)
-    np.testing.assert_allclose(zero_baseline, shifted_counts, rtol=0.0, atol=1e-15)
 
 
 @pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
@@ -117,11 +92,6 @@ def test_scalar_shifted_clr_equals_uniform_dirichlet_clr(counts):
     ("pca", "kwargs", "dense_transform"),
     [
         (
-            shifted_log_pca_matrix,
-            {"count_shift": 0.7},
-            lambda X: _dense_shifted_log(X, 0.7),
-        ),
-        (
             shifted_clr_pca_matrix,
             {"count_shift": 0.7},
             lambda X: _dense_count_shifted_clr(X, 0.7),
@@ -160,11 +130,6 @@ def test_log_pca_matches_dense_svd(counts, pca, kwargs, dense_transform):
 @pytest.mark.parametrize(
     ("pca", "kwargs", "dense_transform"),
     [
-        (
-            shifted_log_pca,
-            {"count_shift": 0.7},
-            lambda X: _dense_shifted_log(X, 0.7),
-        ),
         (
             shifted_clr_pca,
             {"count_shift": 0.7},
@@ -205,14 +170,13 @@ def test_log_pca_mask_is_applied_after_full_transform(
     assert np.isnan(result.varm["log_pca"][~mask]).all()
 
 
-def test_count_shifted_transforms_reject_empty_cells(counts):
-    """Count-scale shifted transforms reject cells with no counts."""
+def test_count_shifted_clr_rejects_empty_cells(counts):
+    """Count-scale shifted CLR rejects cells with no counts."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
-    for pca in (shifted_log_pca_matrix, shifted_clr_pca_matrix):
-        with pytest.raises(ValueError, match="zero total counts"):
-            pca(with_empty, n_comps=2, count_shift=1.0)
+    with pytest.raises(ValueError, match="zero total counts"):
+        shifted_clr_pca_matrix(with_empty, n_comps=2, count_shift=1.0)
 
 
 def test_proportion_shifted_clr_rejects_empty_cells(counts):
@@ -242,16 +206,10 @@ def test_proportion_shifted_clr_is_row_scale_invariant(counts):
     )
 
 
-@pytest.mark.parametrize(
-    "builder",
-    [build_shifted_log_representation, build_shifted_clr_representation],
-)
-def test_count_shifted_transforms_are_invariant_to_joint_global_scaling(
-    counts, builder
-):
-    """Scaling counts and the raw-count shift together preserves values."""
-    original = builder(counts, count_shift=0.3)
-    rescaled = builder(counts * 7, count_shift=2.1)
+def test_count_shifted_clr_is_invariant_to_joint_global_scaling(counts):
+    """Scaling counts and the raw-count shift together preserves CLR values."""
+    original = build_shifted_clr_representation(counts, count_shift=0.3)
+    rescaled = build_shifted_clr_representation(counts * 7, count_shift=2.1)
 
     np.testing.assert_allclose(
         _materialize(original),
@@ -264,13 +222,6 @@ def test_count_shifted_transforms_are_invariant_to_joint_global_scaling(
 @pytest.mark.parametrize(
     ("pca", "kwargs", "transform", "domain", "parameter"),
     [
-        (
-            shifted_log_pca_matrix,
-            {"count_shift": 0.4},
-            "shifted_log",
-            "count",
-            "count_shift",
-        ),
         (
             shifted_clr_pca_matrix,
             {"count_shift": 0.4},
@@ -299,7 +250,6 @@ def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
 @pytest.mark.parametrize(
     ("pca", "parameter"),
     [
-        (shifted_log_pca_matrix, "count_shift"),
         (shifted_clr_pca_matrix, "count_shift"),
         (proportion_shifted_clr_pca_matrix, "composition_shift"),
     ],
@@ -317,7 +267,7 @@ def test_log_transforms_reject_float64_ratio_overflow():
     tiny = np.nextafter(0.0, 1.0)
 
     with pytest.raises(ValueError, match="Count-to-prior ratios overflow"):
-        build_shifted_log_representation(counts, count_shift=tiny)
+        build_shifted_clr_representation(counts, count_shift=tiny)
     with pytest.raises(ValueError, match="Count-to-composition ratios overflow"):
         build_proportion_shifted_clr_representation(counts, composition_shift=tiny)
 
@@ -325,18 +275,17 @@ def test_log_transforms_reject_float64_ratio_overflow():
 @pytest.mark.parametrize(
     "pca",
     [
-        shifted_log_pca_matrix,
         shifted_clr_pca_matrix,
         proportion_shifted_clr_pca_matrix,
     ],
 )
 def test_log_pca_requires_explicit_shift(counts, pca):
-    """Shifted-log APIs require an explicit domain-specific shift."""
+    """Shifted-CLR APIs require an explicit domain-specific shift."""
     with pytest.raises(TypeError):
         pca(counts, n_comps=2)
 
 
 def test_old_ambiguous_pseudocount_keyword_is_rejected(counts):
-    """Shifted-log APIs reject the obsolete ambiguous pseudocount keyword."""
+    """Shifted-CLR APIs reject the obsolete ambiguous pseudocount keyword."""
     with pytest.raises(TypeError):
         shifted_clr_pca_matrix(counts, n_comps=2, pseudocount=1.0)

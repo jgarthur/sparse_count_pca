@@ -78,26 +78,6 @@ def log1p_count_correction(
     )
 
 
-def _rank_zero(
-    sparse_part: sparse.csr_matrix,
-) -> SparseLowRankMatrix:
-    return SparseLowRankMatrix(
-        sparse_part,
-        np.empty((sparse_part.shape[0], 0), dtype=np.float64),
-        np.empty((sparse_part.shape[1], 0), dtype=np.float64),
-    )
-
-
-def build_shifted_log_representation(
-    X: sparse.csr_matrix,
-    *,
-    count_shift: float,
-) -> SparseLowRankMatrix:
-    """Represent ``log1p(X / count_shift)`` as an exactly sparse matrix."""
-    count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    return _rank_zero(log1p_count_correction(X, count_shift))
-
-
 def build_shifted_clr_representation(
     X: sparse.csr_matrix,
     *,

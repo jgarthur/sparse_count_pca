@@ -30,23 +30,8 @@ def _get_count_matrix(
     adata: AnnData,
     *,
     layer: str | None,
-    use_raw: bool,
 ) -> Any:
-    """Select an AnnData count matrix with current-variable alignment."""
-    if use_raw and layer is not None:
-        raise ValueError("Specify only one of use_raw=True or layer=...")
-    if use_raw:
-        if adata.raw is None:
-            raise ValueError("use_raw=True, but adata.raw is None")
-        missing = adata.var_names.difference(adata.raw.var_names)
-        if len(missing) > 0:
-            raise ValueError(
-                "use_raw=True requires all current adata.var_names to be present "
-                "in adata.raw.var_names"
-            )
-        if adata.raw.var_names.equals(adata.var_names):
-            return adata.raw.X
-        return adata.raw[:, adata.var_names].X
+    """Select an AnnData count matrix from ``.X`` or a layer."""
     return adata.layers[layer] if layer is not None else adata.X
 
 
@@ -57,7 +42,6 @@ def _write_pca_result(
     mask: _ResolvedMask,
     key_added: str | None,
     layer: str | None,
-    use_raw: bool,
 ) -> None:
     """Write a PCA result using the package's Scanpy-compatible layout."""
     if key_added is None:
@@ -67,18 +51,17 @@ def _write_pca_result(
     loadings = np.full(
         (adata.n_vars, result.components.shape[0]),
         np.nan,
-        dtype=result.loadings.dtype,
+        dtype=result.components.dtype,
     )
     # Scanpy calls these loadings, but they are component coefficients
     # (components.T), not variance-weighted statistical loadings.
-    loadings[mask.values] = result.loadings
+    loadings[mask.values] = result.components.T
     adata.obsm[obsm_key] = result.scores
     adata.varm[varm_key] = loadings
     params = dict(result.params)
     params.update(
         {
             "layer": layer,
-            "use_raw": use_raw,
             "mask_var": mask.mask_var,
             "use_highly_variable": mask.use_highly_variable,
             "mask_var_details": mask.details,

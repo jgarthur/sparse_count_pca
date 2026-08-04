@@ -14,7 +14,6 @@ from tests._oracles import (
     _dense_count_shifted_clr,
     _dense_dirichlet,
     _dense_proportion_shifted_clr,
-    _dense_shifted_log,
 )
 
 
@@ -35,75 +34,69 @@ def _with_zero_gene(counts: sparse.csr_matrix) -> sparse.csr_matrix:
         ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
     ],
 )
-def test_residual_pca_rejects_selected_zero_gene_and_accepts_masked_zero_gene(
+def test_residual_entry_points_reject_zero_gene_before_pca_mask(
     counts: sparse.csr_matrix,
     model: str,
     residual: str,
     alpha: np.ndarray | None,
 ) -> None:
-    """Every residual family accepts an empty gene only when it is masked out."""
+    """Every residual family rejects an empty gene before PCA masking."""
     with_zero = _with_zero_gene(counts)
     adata = AnnData(with_zero)
     mask = np.ones(with_zero.shape[1], dtype=bool)
     mask[-1] = False
     full_alpha = None if alpha is None else np.append(alpha, 0.2)
+    method = scp.Residual(model=model, residual=residual, alpha=full_alpha)
 
-    with pytest.raises(ValueError, match="Selected genes with zero total counts"):
+    with pytest.raises(ValueError, match="Genes with zero total counts"):
         scp.residual_pca(
             adata,
             n_comps=2,
-            mask_var=None,
+            mask_var=mask,
             model=model,
             residual=residual,
             alpha=full_alpha,
         )
 
-    expected = scp.residual_pca_matrix(
-        counts,
-        n_comps=2,
-        model=model,
-        residual=residual,
-        alpha=alpha,
-        dtype="float64",
-    )
-    actual = scp.residual_pca(
-        adata,
-        n_comps=2,
-        mask_var=mask,
-        model=model,
-        residual=residual,
-        alpha=full_alpha,
-        copy=True,
-        dtype="float64",
+    with pytest.raises(ValueError, match="Genes with zero total counts"):
+        scp.residual_pca_matrix(
+            with_zero,
+            n_comps=2,
+            model=model,
+            residual=residual,
+            alpha=full_alpha,
+        )
+
+    with pytest.raises(ValueError, match="Genes with zero total counts"):
+        scp.transform(with_zero, method)
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    [
+        lambda values: scp.residual_pca_matrix(values, n_comps=2),
+        lambda values: scp.residual_pca(AnnData(values), n_comps=2, copy=True),
+        lambda values: scp.transform(values, scp.Residual()),
+    ],
+    ids=["matrix-pca", "anndata-pca", "two-step-transform"],
+)
+def test_residual_entry_points_reject_zero_cell(
+    counts: sparse.csr_matrix,
+    entry_point: Callable[[sparse.csr_matrix], object],
+) -> None:
+    """Every residual entry point rejects an observation with no counts."""
+    with_zero_cell = sparse.vstack(
+        (counts, sparse.csr_matrix((1, counts.shape[1]), dtype=counts.dtype)),
+        format="csr",
     )
 
-    np.testing.assert_allclose(
-        actual.uns["pca"]["singular_values"],
-        expected.singular_values,
-        rtol=0.0,
-        atol=1e-12,
-    )
-    np.testing.assert_allclose(
-        actual.obsm["X_pca"], expected.scores, rtol=0.0, atol=1e-12
-    )
-    np.testing.assert_allclose(
-        actual.varm["PCs"][mask],
-        expected.components.T,
-        rtol=0.0,
-        atol=1e-12,
-    )
-    assert np.isnan(actual.varm["PCs"][~mask]).all()
-    assert actual.uns["pca"]["params"]["normalization_n_vars"] == with_zero.shape[1]
-    assert actual.uns["pca"]["params"]["pca_n_vars"] == counts.shape[1]
+    with pytest.raises(ValueError, match="Cells with zero total counts"):
+        entry_point(with_zero_cell)
 
 
 @pytest.mark.parametrize(
     ("method_factory", "dense_transform"),
     [
-        (
-            lambda prior: scp.ShiftedLog(count_shift=0.7),
-            lambda values, prior: _dense_shifted_log(values, 0.7),
-        ),
         (
             lambda prior: scp.ShiftedCLR(count_shift=0.7),
             lambda values, prior: _dense_count_shifted_clr(values, 0.7),
@@ -122,7 +115,6 @@ def test_residual_pca_rejects_selected_zero_gene_and_accepts_masked_zero_gene(
         ),
     ],
     ids=[
-        "shifted-log",
         "shifted-clr",
         "proportion-shifted-clr",
         "dirichlet-log",
@@ -134,7 +126,7 @@ def test_log_and_dirichlet_transforms_accept_zero_genes(
     method_factory: Callable[[np.ndarray], scp.Transform],
     dense_transform: Callable[[np.ndarray, np.ndarray], np.ndarray],
 ) -> None:
-    """Every shifted-log and Dirichlet transform matches its zero-gene formula."""
+    """Every shifted-CLR and Dirichlet transform matches its zero-gene formula."""
     with_zero = _with_zero_gene(counts)
     dense = with_zero.toarray().astype(np.float64)
     prior_weights = np.arange(1, with_zero.shape[1] + 1, dtype=np.float64)

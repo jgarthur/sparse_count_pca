@@ -480,6 +480,7 @@ def test_dtype_contract(counts):
     )
     assert result.scores.dtype == np.float32
     assert result.components.dtype == np.float32
+    assert not hasattr(result, "loadings")
     assert result.operator.dtype == np.dtype("float32")
     assert (result.operator @ np.ones(counts.shape[1])).dtype == np.float32
     assert result.singular_values.dtype == np.float64

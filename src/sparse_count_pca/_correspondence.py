@@ -314,7 +314,6 @@ def correspondence_analysis(
     n_comps: int = 2,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
@@ -338,8 +337,6 @@ def correspondence_analysis(
             columns.
         n_comps: Number of correspondence axes.
         layer: Count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``. Mutually exclusive with
-            ``layer``.
         mask_var: Boolean array or ``adata.var`` key defining table columns.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -373,7 +370,7 @@ def correspondence_analysis(
     """
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
-    X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
+    X = _get_count_matrix(adata, layer=layer)
     resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_correspondence_analysis(
@@ -402,7 +399,6 @@ def correspondence_analysis(
     params.update(
         {
             "layer": layer,
-            "use_raw": use_raw,
             "mask_var": resolved_mask.mask_var,
             "use_highly_variable": resolved_mask.use_highly_variable,
             "mask_var_details": resolved_mask.details,

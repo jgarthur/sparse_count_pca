@@ -24,9 +24,6 @@ class PCAResult:
         scores: Observation coordinates with shape ``(n_obs, n_comps)``.
         components: Right singular vectors with shape
             ``(n_comps, n_vars_used)``.
-        loadings: Transposed component array with shape
-            ``(n_vars_used, n_comps)``. This is a convenience alias for
-            ``components.T``, not a variance-weighted statistical loading.
         singular_values: Singular values in descending order.
         explained_variance: Per-component sample variance, calculated as the
             squared singular values divided by ``n_obs - 1``.
@@ -41,7 +38,6 @@ class PCAResult:
 
     scores: FloatArray
     components: FloatArray
-    loadings: FloatArray
     singular_values: NDArray[np.float64]
     explained_variance: NDArray[np.float64]
     explained_variance_ratio: NDArray[np.float64]
@@ -120,7 +116,6 @@ def compute_pca_from_representation(
     return PCAResult(
         scores=scores,
         components=components,
-        loadings=components.T,
         singular_values=singular_values,
         explained_variance=explained_variance,
         explained_variance_ratio=explained_variance / total_variance,
