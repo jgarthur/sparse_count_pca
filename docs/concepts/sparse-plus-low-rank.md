@@ -60,9 +60,7 @@ stores how observed nonzero counts differ from the factored zero baseline.
 The details vary by transform:
 
 - residual expectations factor through cell totals and gene parameters;
-- the package's count-scale log transform computes
-  `log1p(x / count_shift)` without library-size normalization; zeros remain
-  zero, so only PCA centering adds a dense rank-one term;
+- the count-scale log transform has a zero low-rank baseline before centering;
 - CLR subtracts a row-specific mean, adding a rank-one term.
 
 The [package specification](../development/specification.md#sparse-plus-low-rank-representation)
@@ -98,14 +96,10 @@ other ARPACK-based workflows.
 ## What remains in memory
 
 Avoiding the dense transform does not mean using no additional memory. During
-fitting, the count matrix is converted to canonical in-memory CSR. The fitted
-representation then retains:
-
-- one sparse correction matrix;
-- the low-rank factors;
-
-PCA additionally allocates temporary arrays during the calculation and the
-returned score, component, and variance arrays.
+fitting, the count matrix is converted to canonical in-memory CSR, and the
+fitted representation retains one sparse correction matrix and the low-rank
+factors. PCA additionally allocates temporary arrays during the calculation and
+the returned score, component, and variance arrays.
 
 Backed sparse inputs are currently loaded into memory during canonicalization.
 The two-step API can bound the output memory used for later materialization,

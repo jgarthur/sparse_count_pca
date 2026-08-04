@@ -49,7 +49,7 @@ counts.
 ARPACK also requires `n_comps` to be strictly smaller than both the number of
 observations and the number of selected variables.
 
-Readers who need exact validation boundaries can consult the
+For exact validation boundaries, see the
 [clipping contract](../development/specification.md#clipping) and
 [numerical implementation](../development/specification.md#numerical-implementation)
 in the package specification.

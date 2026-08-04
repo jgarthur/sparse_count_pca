@@ -39,21 +39,9 @@ scp.residual_pca(adata, mask_var=mask)
 ```
 
 Use the second form when the omitted variables should still contribute to the
-normalization state.
-
-If genes should be removed as a preprocessing step, subset the `AnnData` object
-before calling the package:
-
-```python
-adata_for_pca = adata[:, keep_genes].copy()
-scp.residual_pca(adata_for_pca, layer="counts", mask_var=None)
-```
-
-Subsetting this way removes the genes from `.X` and every layer used for the
-analysis. The example creates a filtered copy and leaves the original `adata`
-unchanged. If the full-gene data are already stored appropriately in `.raw`, the
-filtered copy can instead replace the working object. Keeping `.copy()` is still
-recommended because slicing an `AnnData` object produces a view.
+normalization state. Use the first to remove genes as a preprocessing step:
+subsetting drops them from `.X` and every layer used for the analysis, so they
+no longer reach the normalization at all.
 
 ## Centering follows variable selection
 
@@ -102,8 +90,7 @@ Masked component rows in `adata.varm` contain `NaN`. This makes exclusion
 visible and prevents a masked variable from being mistaken for a valid zero
 component value.
 
-Readers who need the exact default-mask resolution and metadata schema can
-consult the
+For the exact default-mask resolution and metadata schema, see
 [variable masking](../development/specification.md#variable-masking) and
-[output keys](../development/specification.md#output-keys) sections of the
-package specification.
+[output keys](../development/specification.md#output-keys) in the package
+specification.
