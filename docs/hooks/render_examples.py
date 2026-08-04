@@ -17,10 +17,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-import jupytext
-from nbconvert import MarkdownExporter
-from nbconvert.preprocessors import ExecutePreprocessor
-
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_DIRECTORY = REPOSITORY_ROOT / "examples"
 OUTPUT_DIRECTORY = REPOSITORY_ROOT / "docs" / "examples"
@@ -101,8 +97,42 @@ def _write_if_changed(path: Path, content: str | bytes) -> None:
     path.write_bytes(encoded)
 
 
+def _prune_stale_outputs(cache: dict[str, dict[str, Any]]) -> int:
+    """Delete generated files that no current cache entry accounts for."""
+    accounted_for = {
+        Path(relative_path)
+        for entry in cache.values()
+        for relative_path in entry["outputs"]
+    }
+    stale_paths = [
+        path
+        for path in OUTPUT_DIRECTORY.rglob("*")
+        if path.is_file()
+        and path != CACHE_PATH
+        and path.relative_to(OUTPUT_DIRECTORY) not in accounted_for
+    ]
+    for path in stale_paths:
+        path.unlink()
+
+    directories = sorted(
+        (path for path in OUTPUT_DIRECTORY.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for path in directories:
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+    return len(stale_paths)
+
+
 def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
     """Execute one percent notebook and export its cells and outputs to Markdown."""
+    import jupytext
+    from nbconvert import MarkdownExporter
+    from nbconvert.preprocessors import ExecutePreprocessor
+
     notebook = jupytext.read(source, fmt="py:percent")
     notebook.metadata.kernelspec = {
         "display_name": "Python 3",
@@ -166,9 +196,11 @@ def on_config(config: Any) -> Any:
         "examples": next_cache,
     }
     _write_if_changed(CACHE_PATH, f"{json.dumps(cache, indent=2, sort_keys=True)}\n")
+    pruned = _prune_stale_outputs(next_cache)
     LOGGER.info(
-        "Notebook examples: rendered %d, reused %d",
+        "Notebook examples: rendered %d, reused %d, pruned %d",
         rendered,
         len(next_cache) - rendered,
+        pruned,
     )
     return config
