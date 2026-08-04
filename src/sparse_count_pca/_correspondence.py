@@ -48,6 +48,23 @@ class CorrespondenceAnalysisResult:
 
     Standard coordinates are derivable by dividing principal coordinates by
     singular values and are intentionally not stored.
+
+    Attributes:
+        row_principal_coordinates: Row principal coordinates with shape
+            ``(n_rows, n_comps)``.
+        column_principal_coordinates: Column principal coordinates with shape
+            ``(n_columns_used, n_comps)``.
+        singular_values: Singular values in descending order.
+        principal_inertias: Squared singular values for the returned axes.
+        inertia_ratio: Fraction of total inertia represented by each returned
+            axis.
+        total_inertia: Pearson chi-squared divided by the grand total for
+            classical CA, or scaled-NB residual inertia in experimental mode.
+        row_masses: Normalized row totals of the analyzed table.
+        column_masses: Normalized column totals of the analyzed table.
+        params: Model, solver, dtype, and reproducibility metadata.
+        operator: Uncentered operator passed to ARPACK when
+            ``return_operator=True``; otherwise ``None``.
     """
 
     row_principal_coordinates: Float64Array
@@ -134,9 +151,15 @@ def _compute_correspondence_analysis(
     if not (np.isfinite(row_totals).all() and np.isfinite(column_totals).all()):
         raise ValueError("Count margins overflow float64")
     if (row_totals == 0).any():
-        raise ValueError("Rows with zero mass are not supported")
+        raise ValueError(
+            "Rows with zero mass are not supported; filter empty rows out of "
+            "the count table first"
+        )
     if (column_totals == 0).any():
-        raise ValueError("Columns with zero mass are not supported")
+        raise ValueError(
+            "Columns with zero mass are not supported; filter empty columns out "
+            "of the count table first, or exclude them with mask_var"
+        )
     if model == "scaled_nb":
         warnings.warn(
             "model='scaled_nb' correspondence analysis is experimental; its "
@@ -168,8 +191,9 @@ def _compute_correspondence_analysis(
         dtype=dtype,
     ):
         raise ValueError(
-            "Contingency table has numerically zero inertia; "
-            "correspondence axes are undefined"
+            "Contingency table has numerically zero inertia, so correspondence "
+            "axes are undefined. Every row has the same profile across the "
+            "selected columns, leaving no departure from independence."
         )
     decomposition = compute_truncated_svd(
         operator,
@@ -232,7 +256,44 @@ def correspondence_analysis_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> CorrespondenceAnalysisResult:
-    """Compute classical or experimental scaled-NB correspondence analysis."""
+    """Compute correspondence analysis from a nonnegative count matrix.
+
+    Classical mode decomposes the standardized Pearson-residual matrix without
+    ordinary PCA column centering. The experimental scaled-NB mode substitutes
+    an exposure-scaled negative-binomial variance and emits ``UserWarning``.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of correspondence axes. Must be smaller than both
+            matrix dimensions.
+        model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
+            experimental residual ordination.
+        alpha: Scalar or per-variable nonnegative overdispersion. Required only
+            when ``model="scaled_nb"``.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the uncentered operator in the
+            result.
+
+    Returns:
+        Row and column principal coordinates, inertias, masses, metadata, and
+        optionally the fitted operator.
+
+    Raises:
+        ValueError: If counts, dimensions, masses, model parameters, or dtype
+            are invalid.
+        NotImplementedError: If a solver other than ARPACK is requested.
+
+    Examples:
+        >>> result = correspondence_analysis_matrix(counts, n_comps=2)
+        >>> result.row_principal_coordinates.shape
+        (counts.shape[0], 2)
+    """
     return _compute_correspondence_analysis(
         X,
         n_comps,
@@ -266,7 +327,50 @@ def correspondence_analysis(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute classical or experimental scaled-NB correspondence analysis."""
+    """Compute correspondence analysis and write results to AnnData.
+
+    The default output keys are ``adata.obsm["X_ca"]``,
+    ``adata.varm["CA"]``, and ``adata.uns["ca"]``. A variable mask defines the
+    contingency table before row and column margins are fitted.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of correspondence axes.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``. Mutually exclusive with
+            ``layer``.
+        mask_var: Boolean array or ``adata.var`` key defining table columns.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional CA keys.
+        model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
+            experimental residual ordination.
+        alpha: Scalar, per-variable array, or ``adata.var`` key containing
+            scaled-NB overdispersion.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy. Otherwise mutate ``adata``
+            and return ``None``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, masses, or model parameters
+            are invalid.
+        KeyError: If a requested layer, mask, or overdispersion key is absent.
+
+    Examples:
+        >>> correspondence_analysis(adata, layer="counts", n_comps=2)
+        >>> adata.obsm["X_ca"].shape
+        (adata.n_obs, 2)
+    """
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
     X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)

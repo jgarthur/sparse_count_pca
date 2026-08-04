@@ -1,4 +1,4 @@
-# Proportion-shifted CLR reference
+# Composition-scale shifted CLR reference
 
 The dense oracle in `oracle.py` implements
 `clr(X / row_sum(X) + composition_shift)`.

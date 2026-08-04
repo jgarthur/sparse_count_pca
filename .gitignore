@@ -7,7 +7,11 @@ __pycache__/
 *.py[cod]
 build/
 dist/
+site/
 *.egg-info/
+
+# Generated from the Jupytext percent notebooks in examples/.
+docs/examples/
 
 # files for agents
 AGENTS.md

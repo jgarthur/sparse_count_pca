@@ -65,12 +65,19 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
             X = X.tocsr()
         elif not X.has_canonical_format or (X.data == 0).any():
             reasons = []
+            remedies = []
             if not X.has_canonical_format:
                 reasons.append("duplicate or unsorted column indices")
+                remedies.append("sum_duplicates() and sort_indices()")
             if (X.data == 0).any():
                 reasons.append("explicitly stored zeros")
+                remedies.append("eliminate_zeros()")
             warnings.warn(
-                "CSR input was copied for canonicalization: " + " and ".join(reasons),
+                "CSR input was copied for canonicalization ("
+                + " and ".join(reasons)
+                + "), leading to increased memory usage. Run "
+                + " and ".join(remedies)
+                + " on the input to avoid this.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -126,5 +133,8 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
     # is exactly a cell with zero total counts. Inspecting indptr avoids another
     # O(nnz) floating-point margin pass for transforms that do not need totals.
     if (np.diff(X.indptr) == 0).any():
-        raise ValueError("Cells with zero total counts are not supported")
+        raise ValueError(
+            "Cells with zero total counts are not supported; filter empty rows "
+            "out of the count matrix first"
+        )
     return X

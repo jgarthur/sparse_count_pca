@@ -1,4 +1,4 @@
-"""Independent dense oracle for historical proportion-shifted CLR."""
+"""Independent dense oracle for historical composition-scale shifted CLR."""
 
 import numpy as np
 

@@ -1,9 +1,12 @@
 # sparse-count-pca package specification
 
+> **Audience:** maintainers, reviewers, and coding agents. This document is
+> normative. User-facing explanations are in the guides and concept pages.
+
 ## Scope
 
-The package computes spectral analyses of implicitly transformed sparse count
-data without materializing dense transformed matrices.
+The package computes PCA and correspondence analysis of implicitly transformed
+sparse count data without materializing dense transformed matrices.
 
 The package is AnnData-first. The one-step public API operates on `AnnData` and
 writes Scanpy-compatible PCA outputs. A public two-step transform API supports
@@ -18,9 +21,9 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
-* fixed-count shifted-log PCA
-* fixed-count shifted-CLR PCA
-* fixed-composition shifted-CLR PCA
+* count-scale shifted-log PCA
+* count-scale shifted-CLR PCA
+* composition-scale shifted-CLR PCA
 * Dirichlet-log PCA
 * Dirichlet-CLR PCA
 * classical correspondence analysis with principal coordinates
@@ -181,7 +184,19 @@ Shift parameters are keyword-only, required, finite, and positive. The API
 does not use a bare `pseudocount` parameter because its scale would be
 ambiguous.
 
-### Fixed-count shifted log
+For the same reason, every log-family result records `shift_domain` in its
+`params` metadata, naming the scale on which the shift is fixed:
+
+| Transform | `shift_domain` |
+| --- | --- |
+| `shifted_log`, `shifted_clr` | `"count"` |
+| `proportion_shifted_clr` | `"composition"` |
+| `dirichlet_log`, `dirichlet_clr` | `"dirichlet_prior_counts"` |
+
+A stored result therefore identifies its own shift scale without a reader
+inferring it from the parameter name.
+
+### Count-scale shifted log
 
 For `count_shift=a`, `shifted_log` analyzes
 
@@ -192,7 +207,7 @@ Z_{ij} = \log(1 + X_{ij}/a).
 This is an exactly sparse, zero-at-zero gauge of `log(X + a)`. Ordinary PCA
 column centering removes the omitted constant `log(a)`.
 
-### Fixed-count shifted CLR
+### Count-scale shifted CLR
 
 For `count_shift=a`, `shifted_clr` analyzes
 
@@ -207,7 +222,7 @@ as row-centered `log1p(4 * alpha * X)`. Although that formula is finite on a
 zero-total row, the package-wide input policy rejects empty cells before any
 transform is fitted.
 
-### Fixed-composition shifted CLR
+### Composition-scale shifted CLR
 
 For `composition_shift=tau`, `proportion_shifted_clr` analyzes
 
@@ -228,7 +243,7 @@ For total concentration `A` and prior composition `p`, the prior counts are
 \log\frac{X_{ij}+a_j}{s_i+A},
 ```
 
-and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar fixed-count shifted CLR is
+and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar count-scale shifted CLR is
 the uniform-prior special case `A = G * count_shift`.
 
 All normalization quantities and CLR row means use the full selected input
@@ -284,6 +299,7 @@ tests/
     generate_fixture.py
     generate_sctransform_reference.R
     test_fixture.py
+    test_gene_masks.py
     test_log_transform_dense_oracles.py
     test_residual_dense_oracle.py
     test_correspondence_reference.py
@@ -309,10 +325,11 @@ package has been installed into the active environment.
 The wheel contains only `src/sparse_count_pca`.
 
 The source distribution contains package sources, ordinary tests, committed
-real-data fixtures, transform reference formulas and provenance, `README.md`,
-the `docs/` tree, and `pyproject.toml`. It excludes editor configuration, lock
-files, and local development scripts. The Townes reference test runs offline;
-its adjacent R script is only needed to regenerate the pinned reference values.
+real-data fixtures, transform reference formulas and provenance, executable
+examples, `README.md`, `CONTRIBUTING.md`, `mkdocs.yml`, the `docs/` tree, and
+`pyproject.toml`. It excludes editor configuration, lock files, and local
+development scripts. The Townes reference test runs offline; its adjacent R
+script is only needed to regenerate the pinned reference values.
 
 ## Dependencies
 
@@ -768,10 +785,17 @@ Edge cases on the chosen count matrix:
 
 ```python
 if (n == 0).any():
-    raise ValueError("Cells with zero total counts are not supported")
+    raise ValueError(
+        "Cells with zero total counts are not supported; filter empty rows "
+        "out of the count matrix first"
+    )
 
 if (p_j[mask] == 0).any():
-    raise ValueError("Selected genes with zero total counts are not supported")
+    raise ValueError(
+        "Selected genes with zero total counts are not supported; filter "
+        "empty columns out of the count matrix first, or exclude them with "
+        "mask_var"
+    )
 ```
 
 For `model="binomial"`:

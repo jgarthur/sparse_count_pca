@@ -1,6 +1,7 @@
-# Architecture review guide
+# Architecture
 
-This is a guided code-reading path for `sparse-count-pca`. It emphasizes
+This is a guided code-reading path for contributors and reviewers of
+`sparse-count-pca`. It emphasizes
 the contracts that make the package exact and memory-efficient, then links to
 the implementation and the tests that enforce each contract.
 
@@ -15,11 +16,9 @@ the implementation and the tests that enforce each contract.
 7. [Correspondence analysis](#7-correspondence-analysis)
 8. [Test and oracle strategy](#8-test-and-oracle-strategy)
 9. [Review checklist](#9-review-checklist)
-10. [Wishlist](#10-wishlist)
 
 The normative mathematical contract is the
-[package specification](specification.md). The narrower normalization decision
-record is [log-transform design](design/log-transforms.md).
+[package specification](specification.md).
 
 The name describes the public contract rather than the implementation:
 "count" covers single-cell, spatial, and general contingency-table inputs;
@@ -52,12 +51,12 @@ center, measure, and decompose `S + U @ V.T`.
 
 ## 1. Public surface
 
-Start with [`src/sparse_count_pca/__init__.py`](../src/sparse_count_pca/__init__.py).
+Start with [`src/sparse_count_pca/__init__.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/__init__.py).
 It exports complete one-step analyses plus an explicit two-step transform API:
 
 - residual PCA: `residual_pca`, `residual_pca_matrix`;
-- fixed-count logs: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
-- fixed-composition CLR: `proportion_shifted_clr_pca` and matrix variant;
+- count-scale log and CLR: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
+- composition-scale CLR: `proportion_shifted_clr_pca` and matrix variant;
 - prior-count transforms: `dirichlet_log_pca`, `dirichlet_clr_pca` and matrix
   variants;
 - correspondence analysis;
@@ -81,13 +80,13 @@ Questions to ask during review:
 
 Read these files together:
 
-- [`_counts.py`](../src/sparse_count_pca/_counts.py): count canonicalization and
+- [`_counts.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_counts.py): count canonicalization and
   boolean-mask validation shared by every analysis;
-- [`_anndata.py`](../src/sparse_count_pca/_anndata.py): count-source selection,
+- [`_anndata.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_anndata.py): count-source selection,
   mask resolution, and generic PCA result writing;
-- [`_transform.py`](../src/sparse_count_pca/_transform.py): public transform
+- [`_transform.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_transform.py): public transform
   specifications, implicit matrix products, materialization, and two-step PCA;
-- [`_residual_pca.py`](../src/sparse_count_pca/_residual_pca.py): residual-specific
+- [`_residual_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_residual_pca.py): residual-specific
   parameter alignment and both residual PCA entry points.
 
 The important ordering is:
@@ -116,10 +115,10 @@ second full dense allocation when users explicitly materialize the matrix.
 
 Useful tests:
 
-- [`tests/test_residual_anndata.py`](../tests/test_residual_anndata.py)
-- [`tests/test_residual_scanpy.py`](../tests/test_residual_scanpy.py)
-- mask-order tests in [`tests/test_log_pca.py`](../tests/test_log_pca.py) and
-  [`tests/test_dirichlet.py`](../tests/test_dirichlet.py)
+- [`tests/test_residual_anndata.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_residual_anndata.py)
+- [`tests/test_residual_scanpy.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_residual_scanpy.py)
+- mask-order tests in [`tests/test_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log_pca.py) and
+  [`tests/test_dirichlet.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_dirichlet.py)
 
 ## 3. Transform construction
 
@@ -127,18 +126,18 @@ Transform builders return an exact `SparseLowRankMatrix`. They do not run PCA.
 
 ### Residual family
 
-[`_residuals.py`](../src/sparse_count_pca/_residuals.py) contains Poisson,
+[`_residuals.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_residuals.py) contains Poisson,
 binomial, and size-factor-scaled negative-binomial Pearson and deviance
 residual builders. For structural zeros, the residual baseline factorizes;
 nonzero-count corrections are stored sparsely.
 
-[`_clip.py`](../src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
+[`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the
 lower threshold, so it has an explicit support-growth guard.
 
 ### Log and CLR family
 
-[`_log_transforms.py`](../src/sparse_count_pca/_log_transforms.py) contains the
+[`_log_transforms.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_transforms.py) contains the
 shared algebra. Its primitive sparse correction is
 
 ```text
@@ -147,16 +146,16 @@ S_ij = log1p(X_ij / prior_count_j),
 
 which is zero on structural zeros and therefore preserves sparse support.
 
-[`_log_pca.py`](../src/sparse_count_pca/_log_pca.py) provides the fixed-count and
-fixed-composition PCA APIs.
-[`_dirichlet_pca.py`](../src/sparse_count_pca/_dirichlet_pca.py) provides the
+[`_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_pca.py) provides the count-scale and
+composition-scale PCA APIs.
+[`_dirichlet_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_dirichlet_pca.py) provides the
 prior-count parameterization and AnnData prior alignment.
 
 | Transform | Shift domain | Representation rank | Empty cells |
 | --- | --- | ---: | --- |
 | shifted log | fixed raw count | 0 | rejected by input policy |
 | shifted CLR | fixed raw count | 1 | rejected by input policy |
-| proportion-shifted CLR | fixed composition | 1 | rejected |
+| composition-scale shifted CLR | composition scale | 1 | rejected |
 | Dirichlet log closure | prior counts | at most 2 | rejected by input policy |
 | Dirichlet CLR | prior counts | at most 2 | rejected by input policy |
 
@@ -175,7 +174,7 @@ enum. This separation is intentional.
 
 ## 4. Sparse-plus-low-rank representation
 
-Read [`_representation.py`](../src/sparse_count_pca/_representation.py).
+Read [`_representation.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_representation.py).
 
 The sole representation is
 
@@ -200,16 +199,16 @@ to detect here and expensive to diagnose after ARPACK.
 
 Useful tests:
 
-- [`tests/test_operator.py`](../tests/test_operator.py), especially ranks 0, 1,
+- [`tests/test_operator.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_operator.py), especially ranks 0, 1,
   and 3;
 - transform materialization tests in
-  [`tests/test_log_pca.py`](../tests/test_log_pca.py),
-  [`tests/test_dirichlet.py`](../tests/test_dirichlet.py), and
-  [`tests/test_deviance.py`](../tests/test_deviance.py).
+  [`tests/test_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log_pca.py),
+  [`tests/test_dirichlet.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_dirichlet.py), and
+  [`tests/test_deviance.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_deviance.py).
 
 ## 5. Linear operator and numerical statistics
 
-[`_operator.py`](../src/sparse_count_pca/_operator.py) turns the representation
+[`_operator.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_operator.py) turns the representation
 into a SciPy `LinearOperator`:
 
 ```text
@@ -232,16 +231,23 @@ Pay particular attention to:
 - transpose multiplication and multi-vector paths.
 
 The adversarial variance cases live in
-[`tests/test_residual_pca.py`](../tests/test_residual_pca.py).
+[`tests/test_residual_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_residual_pca.py).
 
 ## 6. Shared PCA execution
 
-[`_pca.py`](../src/sparse_count_pca/_pca.py) is the transform-independent PCA
+[`_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_pca.py) is the transform-independent PCA
 engine. It validates dimensions and dtype, creates the centered operator,
 checks variance, calls the SVD layer, calculates variance summaries, and
 returns `PCAResult`.
 
-[`_svd.py`](../src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
+When `return_operator=True` hands the centered operator back to the caller,
+ownership decides whether its arrays are copied. An operator derived from a
+live `TransformedMatrix` would otherwise share that object's arrays, so it
+takes a support-sized copy. A one-step call such as `residual_pca_matrix`
+builds a representation nothing else holds, so it passes those arrays directly
+and skips the copy.
+
+[`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 
 - deterministic starting vector from `random_state`;
 - descending singular-value order;
@@ -267,7 +273,7 @@ statistics and reproducibility metadata.
 
 ## 7. Correspondence analysis
 
-[`_correspondence.py`](../src/sparse_count_pca/_correspondence.py) uses the same
+[`_correspondence.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_correspondence.py) uses the same
 representation and operator machinery but is not ordinary column-centered
 PCA. Classical CA reuses the stable Poisson Pearson representation with a
 `1 / sqrt(grand_total)` scale. The explicitly experimental `model="scaled_nb"`
@@ -284,8 +290,8 @@ Keep it out of generic PCA helpers unless an abstraction preserves its
 different centering, scaling, result type, and coordinate semantics.
 
 Reference coverage is in
-[`tests/corral_reference/`](../tests/corral_reference/) and
-[`tests/test_correspondence.py`](../tests/test_correspondence.py).
+[`tests/corral_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/corral_reference) and
+[`tests/test_correspondence.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_correspondence.py).
 
 ## 8. Test and oracle strategy
 
@@ -299,16 +305,17 @@ The suite has four complementary layers:
 
 Reference directories:
 
-- [`tests/townes_reference/`](../tests/townes_reference/): residual PCA;
-- [`tests/corral_reference/`](../tests/corral_reference/): correspondence
+- [`tests/townes_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/townes_reference): residual PCA;
+- [`tests/corral_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/corral_reference): correspondence
   analysis;
-- [`tests/shifted_clr_reference/`](../tests/shifted_clr_reference/): current
-  count-shift PFlog;
-- [`tests/proportion_shifted_clr_reference/`](../tests/proportion_shifted_clr_reference/):
-  historical composition-shifted CLR;
-- [`tests/real_data_reference/`](../tests/real_data_reference/): deterministic
-  observed-depth and equal-depth PBMC3k-derived fixtures, full-matrix coverage
-  for every transform family, and a pinned SCTransform v2 equality oracle.
+- [`tests/shifted_clr_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference): current
+  count-scale PFlog;
+- [`tests/proportion_shifted_clr_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/proportion_shifted_clr_reference):
+  historical composition-scale shifted CLR;
+- [`tests/real_data_reference/`](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/real_data_reference):
+  deterministic observed-depth and equal-depth PBMC3k-derived fixtures,
+  full-matrix coverage for every transform family, and a pinned SCTransform v2
+  equality oracle.
 
 Normal tests are offline. Regeneration tooling is provenance, not a runtime
 dependency.
@@ -344,19 +351,3 @@ dependency.
 - Are support-sized temporaries duplicated?
 - Can clipping or conversion unexpectedly densify?
 - Can a downstream operation stream rows or columns instead of materializing?
-
-## 10. Wishlist
-
-The detailed wishlist is in [wishlist.md](wishlist.md). The highest-priority
-architectural addition is block-wise reconstruction through retained PCs and,
-where mathematically identifiable, back to approximate count space.
-
-That feature should reconstruct transformed blocks as
-
-```text
-scores_block @ components + mean
-```
-
-then apply a transform-specific inverse using stored or supplied normalization
-state. Truncation can produce negative reconstructed counts; the package should
-preserve them and leave clipping policy to consumers.

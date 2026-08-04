@@ -81,7 +81,34 @@ def shifted_log_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of sparse ``log1p(X / count_shift)`` values."""
+    """Compute PCA of ``log1p(X / count_shift)`` without densifying.
+
+    This count-scale transform does not perform library-size normalization.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of principal components.
+        count_shift: Positive raw-count shift.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the centered operator in the result.
+
+    Returns:
+        PCA scores, components, variance statistics, metadata, and optionally
+        the centered operator.
+
+    Raises:
+        ValueError: If counts, dimensions, shift, or dtype are invalid.
+
+    Examples:
+        >>> result = shifted_log_pca_matrix(
+        ...     counts, n_comps=20, count_shift=1.0
+        ... )
+    """
     return _compute_log_pca(
         X,
         n_comps,
@@ -109,7 +136,36 @@ def shifted_clr_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of CLR coordinates after a fixed raw-count shift."""
+    """Compute PCA of count-scale shifted CLR coordinates.
+
+    The transform is ``clr(X + count_shift)``. The PFlog formulation in
+    Booeshaghi et al. preprint v4 is obtained with
+    ``count_shift = 1 / (4 * alpha)``.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of principal components.
+        count_shift: Positive raw-count shift.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the centered operator in the result.
+
+    Returns:
+        PCA scores, components, variance statistics, metadata, and optionally
+        the centered operator.
+
+    Raises:
+        ValueError: If counts, dimensions, shift, or dtype are invalid.
+
+    Examples:
+        >>> result = shifted_clr_pca_matrix(
+        ...     counts, n_comps=20, count_shift=1.0
+        ... )
+    """
     return _compute_log_pca(
         X,
         n_comps,
@@ -137,7 +193,36 @@ def proportion_shifted_clr_pca_matrix(
     tol: float = 0.0,
     return_operator: bool = False,
 ) -> PCAResult:
-    """Compute PCA of CLR coordinates after a fixed composition shift."""
+    """Compute PCA of composition-scale shifted CLR coordinates.
+
+    The transform is ``clr(X / row_total + composition_shift)``. Its effective
+    raw-count shift varies with row depth and it is distinct from current
+    count-scale PFlog.
+
+    Args:
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations
+            in rows and variables in columns.
+        n_comps: Number of principal components.
+        composition_shift: Positive shift on the row-composition scale.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        return_operator: Whether to retain the centered operator in the result.
+
+    Returns:
+        PCA scores, components, variance statistics, metadata, and optionally
+        the centered operator.
+
+    Raises:
+        ValueError: If counts, dimensions, shift, or dtype are invalid.
+
+    Examples:
+        >>> result = proportion_shifted_clr_pca_matrix(
+        ...     counts, n_comps=20, composition_shift=1.0
+        ... )
+    """
     return _compute_log_pca(
         X,
         n_comps,
@@ -216,7 +301,43 @@ def shifted_log_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-count shifted-log PCA and write AnnData outputs."""
+    """Compute count-scale shifted-log PCA and write AnnData outputs.
+
+    The transform is ``log1p(X / count_shift)`` and does not perform
+    library-size normalization. Normalization uses the full variable universe
+    before ``mask_var`` selects and centers PCA columns.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components.
+        count_shift: Positive raw-count shift.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, shift, or dtype are invalid.
+        KeyError: If a requested layer or mask key is absent.
+
+    Examples:
+        >>> shifted_log_pca(
+        ...     adata, layer="counts", n_comps=20, count_shift=1.0
+        ... )
+    """
     return _log_pca_anndata(
         adata,
         n_comps,
@@ -253,7 +374,43 @@ def shifted_clr_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-count shifted-CLR PCA and write AnnData outputs."""
+    """Compute count-scale shifted-CLR PCA and write AnnData outputs.
+
+    CLR row means use the full variable universe before ``mask_var`` selects
+    and centers PCA columns.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components.
+        count_shift: Positive raw-count shift. Use ``1 / (4 * alpha)`` for the
+            PFlog formulation in Booeshaghi et al. preprint v4.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, shift, or dtype are invalid.
+        KeyError: If a requested layer or mask key is absent.
+
+    Examples:
+        >>> shifted_clr_pca(
+        ...     adata, layer="counts", n_comps=20, count_shift=1.0
+        ... )
+    """
     return _log_pca_anndata(
         adata,
         n_comps,
@@ -290,7 +447,42 @@ def proportion_shifted_clr_pca(
     tol: float = 0.0,
     copy: bool = False,
 ) -> AnnData | None:
-    """Compute fixed-composition shifted-CLR PCA and write AnnData outputs."""
+    """Compute composition-scale shifted-CLR PCA and write AnnData outputs.
+
+    The transform is ``clr(X / row_total + composition_shift)``. CLR row means
+    use the full variable universe before ``mask_var`` selects PCA columns.
+
+    Args:
+        adata: AnnData object with observations in rows and variables in
+            columns.
+        n_comps: Number of principal components.
+        composition_shift: Positive shift on the row-composition scale.
+        layer: Count layer to use. By default, use ``adata.X``.
+        use_raw: Whether to use ``adata.raw.X``.
+        mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
+            When omitted, use ``"highly_variable"`` if present; explicit
+            ``None`` selects every variable.
+        use_highly_variable: Deprecated Scanpy-compatible mask selector.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
+        check_values: Whether floating-point counts must be integer-like.
+        dtype: Representation and ARPACK calculation dtype.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed used to construct ARPACK's starting vector.
+        tol: Convergence tolerance passed to SciPy.
+        copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
+
+    Returns:
+        A modified AnnData object when ``copy=True``; otherwise ``None``.
+
+    Raises:
+        ValueError: If counts, dimensions, mask, shift, or dtype are invalid.
+        KeyError: If a requested layer or mask key is absent.
+
+    Examples:
+        >>> proportion_shifted_clr_pca(
+        ...     adata, layer="counts", n_comps=20, composition_shift=1.0
+        ... )
+    """
     return _log_pca_anndata(
         adata,
         n_comps,

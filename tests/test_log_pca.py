@@ -37,7 +37,7 @@ def _materialize(representation, *, center=False):
 
 @pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
 def test_shifted_log_representation_is_exactly_sparse(counts, count_shift):
-    """The fixed-count shifted-log representation is exactly sparse."""
+    """The count-scale shifted-log representation is exactly sparse."""
     representation = build_shifted_log_representation(counts, count_shift=count_shift)
     actual = _materialize(representation)
     expected = _dense_shifted_log(counts, count_shift)
@@ -58,7 +58,7 @@ def test_shifted_log_gauge_has_same_centered_pca_matrix_as_log_counts(counts):
 
 @pytest.mark.parametrize("count_shift", [0.25, 1.0, 2.0])
 def test_count_shifted_clr_representation_matches_reference(counts, count_shift):
-    """Count-shifted CLR values match the independent reference formula."""
+    """Count-scale shifted CLR values match the independent reference formula."""
     representation = build_shifted_clr_representation(counts, count_shift=count_shift)
     actual = _materialize(representation)
     expected = _dense_count_shifted_clr(counts, count_shift)
@@ -206,7 +206,7 @@ def test_log_pca_mask_is_applied_after_full_transform(
 
 
 def test_count_shifted_transforms_reject_empty_cells(counts):
-    """Fixed-count shifted transforms reject cells with no counts."""
+    """Count-scale shifted transforms reject cells with no counts."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
@@ -216,7 +216,7 @@ def test_count_shifted_transforms_reject_empty_cells(counts):
 
 
 def test_proportion_shifted_clr_rejects_empty_cells(counts):
-    """Proportion-shifted CLR rejects cells with zero totals."""
+    """Composition-scale shifted CLR rejects cells with zero totals."""
     with_empty = sparse.vstack(
         [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
     )
@@ -225,7 +225,7 @@ def test_proportion_shifted_clr_rejects_empty_cells(counts):
 
 
 def test_proportion_shifted_clr_is_row_scale_invariant(counts):
-    """Proportion-shifted CLR is invariant to row-wise count scaling."""
+    """Composition-scale shifted CLR is invariant to row-wise count scaling."""
     scales = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
     scaled = sparse.diags(scales) @ counts
     original = build_proportion_shifted_clr_representation(

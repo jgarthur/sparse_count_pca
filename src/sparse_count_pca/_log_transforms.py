@@ -103,7 +103,7 @@ def build_shifted_clr_representation(
     *,
     count_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent fixed-count shifted CLR as sparse plus rank one."""
+    """Represent count-scale shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
     sparse_part = log1p_count_correction(X, count_shift)
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
@@ -119,7 +119,7 @@ def build_proportion_shifted_clr_representation(
     *,
     composition_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent fixed-composition shifted CLR as sparse plus rank one."""
+    """Represent composition-scale shifted CLR as sparse plus rank one."""
     composition_shift = validate_positive_scalar(
         composition_shift, name="composition_shift"
     )
@@ -127,7 +127,10 @@ def build_proportion_shifted_clr_representation(
     if not np.isfinite(row_totals).all():
         raise ValueError("Cell totals overflow float64")
     if (row_totals == 0).any():
-        raise ValueError("Cells with zero total counts are not supported")
+        raise ValueError(
+            "Cells with zero total counts are not supported; filter empty rows "
+            "out of the count matrix first"
+        )
     rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
     data = X.data.astype(np.float64, copy=True)
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):

@@ -1,4 +1,4 @@
-# Count-shifted CLR reference
+# Count-scale shifted CLR reference
 
 The dense oracle in `oracle.py` follows the current PFlog count-scale formula:
 
