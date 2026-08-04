@@ -399,7 +399,7 @@ APIs. The `scaled_nb` extension is experimental. See the
 RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1) benchmarks
 transformations and comments on the rationale of different methods.
 
-[Booeshaghi et al., *Normalization for sampled count
+[Booeshaghi et al. (2026), *Normalization for sampled count
 data*](https://doi.org/10.1101/2022.05.06.490859) proposes the
 shifted-CLR/PFlog approach, with strong theoretical and empirical evidence in
 its favor.

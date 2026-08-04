@@ -55,7 +55,7 @@ Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors t
 | --- | --- | --- |
 | Residual PCA | `residual_pca(...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB (see note below) |
 | Count-scale shifted log | `shifted_log_pca(...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
-| Count-scale shifted CLR | `shifted_clr_pca(...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. |
+| Count-scale shifted CLR | `shifted_clr_pca(...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. (2026) |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca(...)` | CLR after a fixed shift on the composition scale |
 | Correspondence analysis | `correspondence_analysis(...)` | Classical contingency-table ordination |
 
