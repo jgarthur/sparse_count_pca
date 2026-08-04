@@ -48,8 +48,8 @@ implementations already handle that rank-one correction, so the transform gains
 nothing from this package's representation. The transforms here are the ones
 whose normalized matrix is dense *before* centering.
 
-Two further log-ratio recipes are deliberately absent. Seurat's "CLR" is not a
-CLR coordinate transform and adds a data-dependent shift rule. The
+Two further log-normalization recipes are deliberately absent. Seurat's "CLR"
+is not a CLR coordinate transform and adds a data-dependent shift rule. The
 Ahlmann-Eltze and Huber normalized Anscombe log divides by a size factor before
 adding \(1/(4\alpha)\), which is a cell-specific raw-count shift
 \(r_i/(4\alpha)\) rather than the count-scale shift used here.
@@ -84,8 +84,9 @@ For log-ratio transforms, \(G\) is the number of variables and
 
 Each transform below makes two independent choices: a **shift rule**, which
 makes zeros positive, and a **coordinate rule**, which decides whether PCA sees
-ordinary logs or log-ratio coordinates. Literature names sometimes cover more
-than one combination, which is why the interfaces here name both.
+ordinary logs or log-ratio coordinates. A single literature name need not fix
+both — PFlog named a composition-scale shift before it named a count-scale one
+— which is why the interfaces here name the shift domain explicitly.
 
 ## Pearson and deviance residuals
 
@@ -324,11 +325,9 @@ The two right-hand sides above agree because the posterior denominator
 \(n_i+A\) does not depend on \(j\), so it contributes a constant to every log
 that the CLR row mean subtracts away.
 
-Dirichlet log and Dirichlet CLR are not interchangeable, however. They differ
-by a term that varies across observations but not variables, and ordinary PCA
-is not invariant to adding a different multiple of the all-ones variable vector
-to each observation. They carry the same within-observation log ratios but give
-different decompositions, which is why both are offered.
+The two are not interchangeable, however: they carry the same
+within-observation log ratios but give different PCA decompositions, which is
+why both are offered.
 
 Count-scale shifted CLR is the uniform-prior special case: with
 \(q_j=1/G\) the prior counts are \(a_j=A/G\), so

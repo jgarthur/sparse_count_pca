@@ -69,8 +69,8 @@ side effects, important exceptions, and semantic caveats.
 - Public functions name complete, reproducible transforms. Do not expose a
   normalization-construction API of composable shift, divisor, and coordinate
   objects: it would multiply the combinations the package must define,
-  validate, and test, and this is a spectral-analysis tool rather than a
-  general normalization framework.
+  validate, and test, and this is a normalization-plus-PCA/SVD tool rather
+  than a general normalization framework.
 
 Do not change a documented invariant without updating the specification,
 tests, and affected user documentation in the same contribution.
