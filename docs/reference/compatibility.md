@@ -12,7 +12,7 @@ question is which call this package replaces.
 | If you currently call | Closest equivalent here | What differs |
 | --- | --- | --- |
 | `sc.experimental.pp.normalize_pearson_residuals_pca` | `scp.residual_pca(model="poisson")` | Scanpy uses a negative-binomial variance with one shared `theta`; `model="poisson"` is its `theta → ∞` limit. See below. |
-| `sc.experimental.pp.normalize_pearson_residuals`, to inspect residual values | `scp.transform(adata, scp.Residual(...))`, then `materialize` | Scanpy stores a dense residual table in `.uns`; the two-step API returns bounded slices on request. |
+| `sc.experimental.pp.normalize_pearson_residuals`, to inspect residual values | `scp.transform(adata, scp.Residual(...))`, then `materialize` | Scanpy materializes dense residuals into `.X` or the selected layer or `obsm` representation and stores only normalization settings in `.uns`; the two-step API keeps the transform implicit and returns bounded slices on request. |
 | `sc.experimental.pp.highly_variable_genes(flavor="pearson_residuals")` | keep using it | This package consumes `adata.var["highly_variable"]` and does not select variables. |
 | `sc.pp.normalize_total` + `sc.pp.log1p` + `sc.pp.pca` | none | Library-size-normalized log is deliberately out of scope; see [what this package does not do](../transforms.md#what-this-package-does-not-do). |
 
@@ -39,7 +39,9 @@ every cell at once, which is possible only when every cell has the same total
 count — the same condition as the
 [SCTransform equality oracle](#sctransform-v2) below. Supplying
 `alpha = 1 / theta` therefore reproduces Scanpy's residuals on equal-depth
-counts and approximates them otherwise.
+counts. The residuals generally differ at unequal depths; they approach
+agreement only when cell depths are nearly equal or the negative-binomial
+contribution to the variance is negligible.
 
 With `theta → ∞` the two models agree exactly: Scanpy's variance becomes `mu`,
 which is `model="poisson"` here.
@@ -52,43 +54,33 @@ and without clipping.
 
 ## Scanpy PCA conventions
 
-The AnnData PCA functions follow current Scanpy conventions for selecting `.X`,
-a layer, or `.raw.X`; resolving a default highly-variable mask; honoring
-`copy`; and writing scores, component vectors, and metadata.
+Where the APIs overlap, the AnnData PCA functions follow current Scanpy
+conventions for selecting `.X` or a layer, resolving a default highly-variable
+mask, honoring `copy`, and writing scores, component vectors, and metadata.
 
 There are intentional differences:
 
 - residual and clipping parameters are specific to this package;
 - masked variables receive `NaN` component values rather than zero;
-- normalization is fitted before the PCA-only variable mask;
+- normalization is computed before the PCA-only variable mask;
 - backed sparse count arrays are currently loaded into memory for fitting;
-- only ARPACK is supported.
+- only ARPACK is supported;
+- this package defaults to `float64`, whereas Scanpy PCA defaults to `float32`.
 
 These outputs are nevertheless placed at the default Scanpy keys so scores can
 feed downstream neighbors and embedding workflows.
 
 ## SCTransform v2
 
-The package's scaled-NB residual transform is related to, but not generally
-identical to, default SCTransform v2. Exact agreement has been demonstrated
-here only in a controlled equality oracle where every cell has the same total
-count, a condition not expected in ordinary real data. Equal cell depth is
-believed to be required for standard SCTransform residuals to retain the
-efficient sparse-plus-low-rank representation used by this package, but this
-is not presented as a general impossibility result. The complete oracle
-conditions are:
+The package's scaled-NB residual transform is related to SCTransform v2, but only
+demonstrated to be equivalent under very specific conditions:
 
-- every cell has equal depth, so this package's inverse-depth overdispersion
-  scaling reduces to the per-gene overdispersion used by SCTransform;
-- SCTransform's final intercept implies the same empirical per-gene mean;
-- this package receives `alpha = 1 / theta`, with infinite `theta` mapped to
-  `alpha = 0`;
-- SCTransform uses `min_variance=0` rather than its default variance floor;
-- clipping bounds and clipping-before-centering order agree.
-
-Default SCTransform v2 regularizes fitted intercepts and enables a variance
-floor, either of which can change residuals. The equality conditions therefore
-describe a test oracle, not default end-to-end equivalence.
+- the comparison is specifically between Pearson residuals
+- this package receives `alpha = 1 / theta`, where infinite `theta` uses the Poisson limit `alpha = 0`
+- every cell has equal depth, or all genes have `alpha = 0`
+- SCTransform's final intercept implies the same empirical per-gene mean
+- SCTransform uses `min_variance=0` rather than its default variance floor
+- clipping bounds agree
 
 The repository includes a pinned
 [real-data equality oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/real_data_reference)
@@ -155,8 +147,10 @@ inertia conventionally also called eigenvalues; `inertia_ratio` holds their
 proportions of `total_inertia`. Software that reports only percentages of
 inertia is reporting the latter.
 
-With `model="scaled_nb"`, the API is an experimental residual ordination. Its
-inertia does not have the classical chi-square or barycentric interpretation.
-The mode emits a warning and records its experimental status in result
-metadata. `scaled_nb` is a package-specific model name, not a claim of parity
-with an external named method.
+With `model="scaled_nb"` and at least one effective positive overdispersion, the
+API is an experimental residual ordination whose inertia does not have the
+classical chi-square or barycentric interpretation. If every supplied
+`alpha < 1e-8`, the implementation uses the exact Poisson/classical-CA limit,
+although the mode still emits a warning and records its experimental status in
+result metadata. `scaled_nb` is a package-specific model name, not a claim of
+parity with an external named method.

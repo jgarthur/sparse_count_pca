@@ -98,6 +98,21 @@ Keep ordinary tests offline and deterministic:
 4. Treat regeneration scripts as provenance; tests consume pinned artifacts and
    never silently refresh them.
 
+## Remove `use_raw` from the AnnData APIs
+
+Remove the `use_raw` option before the first stable release. Current Scanpy PCA
+does not offer `.raw.X` as an input convention, and this package must realign
+`.raw` to the current `adata.var_names` in any case, so genes retained only in
+`.raw` do not re-enter the transform universe. The option therefore adds a
+second count-source path and non-obvious alignment behavior without providing
+the full-gene semantics a caller might expect from `.raw`.
+
+Keep `.X` and `layer` as the explicit AnnData count sources. Users who need a
+different variable universe can construct or subset the working `AnnData`
+object before calling the package. Removing the option requires updating the
+AnnData wrappers, API reference, specification, guides, examples, and tests that
+currently cover `use_raw=True`.
+
 ## Deferred performance work
 
 These are worthwhile but not launch blockers:
