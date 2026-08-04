@@ -15,8 +15,8 @@ SciPy, and scikit-learn.
 ## A complete residual-PCA example
 
 The package expects observations in rows and variables in columns. In an
-`AnnData` object, counts can be read from `.X`, a named layer, or `.raw.X`.
-This example preserves counts in a layer and writes PCA results in place:
+`AnnData` object, counts can be read from `.X` or a named layer. This example
+preserves counts in a layer and writes PCA results in place:
 
 ```python
 import numpy as np
@@ -93,7 +93,7 @@ fewer variables and Scanpy would otherwise read `.X` directly.
 
 ## Next steps
 
-- Read the [transform catalogue](transforms.md) before switching
+- Read the [transform catalog](transforms.md) before switching
   normalization families.
 - Use the [residual PCA guide](guides/residual-pca.md) for model, residual,
   clipping, and masking options.

@@ -21,7 +21,6 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
-* count-scale shifted-log PCA
 * count-scale shifted-CLR PCA
 * composition-scale shifted-CLR PCA
 * Dirichlet-log PCA
@@ -80,8 +79,6 @@ import sparse_count_pca as scp
 
 scp.residual_pca(adata, ...)
 scp.residual_pca_matrix(X, ...)
-scp.shifted_log_pca(adata, count_shift=...)
-scp.shifted_log_pca_matrix(X, count_shift=...)
 scp.shifted_clr_pca(adata, count_shift=...)
 scp.shifted_clr_pca_matrix(X, count_shift=...)
 scp.proportion_shifted_clr_pca(adata, composition_shift=...)
@@ -93,7 +90,6 @@ scp.dirichlet_clr_pca_matrix(X, ...)
 scp.correspondence_analysis(adata, ...)
 scp.correspondence_analysis_matrix(X, ...)
 scp.transform(adata_or_X, scp.Residual(...))
-scp.transform(adata_or_X, scp.ShiftedLog(...))
 scp.transform(adata_or_X, scp.ShiftedCLR(...))
 scp.transform(adata_or_X, scp.ProportionShiftedCLR(...))
 scp.transform(adata_or_X, scp.DirichletLog(...))
@@ -114,7 +110,6 @@ transformed = scp.transform(
     adata_or_X,
     method,
     layer=None,
-    use_raw=False,
     check_values=True,
     dtype="float64",
 )
@@ -189,23 +184,12 @@ For the same reason, every log-family result records `shift_domain` in its
 
 | Transform | `shift_domain` |
 | --- | --- |
-| `shifted_log`, `shifted_clr` | `"count"` |
+| `shifted_clr` | `"count"` |
 | `proportion_shifted_clr` | `"composition"` |
 | `dirichlet_log`, `dirichlet_clr` | `"dirichlet_prior_counts"` |
 
 A stored result therefore identifies its own shift scale without a reader
 inferring it from the parameter name.
-
-### Count-scale shifted log
-
-For `count_shift=a`, `shifted_log` analyzes
-
-```math
-Z_{ij} = \log(1 + X_{ij}/a).
-```
-
-This is an exactly sparse, zero-at-zero gauge of `log(X + a)`. Ordinary PCA
-column centering removes the omitted constant `log(a)`.
 
 ### Count-scale shifted CLR
 
@@ -368,7 +352,6 @@ def residual_pca(
     n_comps=50,
     *,
     layer=None,
-    use_raw=False,
     mask_var=_empty,
     use_highly_variable=None,
     key_added=None,
@@ -418,7 +401,6 @@ Return type:
 class PCAResult:
     scores: np.ndarray
     components: np.ndarray
-    loadings: np.ndarray
     singular_values: np.ndarray
     explained_variance: np.ndarray
     explained_variance_ratio: np.ndarray
@@ -433,7 +415,6 @@ Where:
 ```python
 scores.shape == (n_obs, n_comps)
 components.shape == (n_comps, n_vars_used)
-loadings.shape == (n_vars_used, n_comps)
 ```
 
 ## Parameter reference
@@ -609,9 +590,9 @@ precision rather than merely downcasting returned arrays.
 `dtype` controls representation and operator output, not accumulation.
 
 Users who want float64 computation with more compact persisted scores or
-loadings may downcast those arrays after PCA. Such a post-computation cast does
-not change the completed decomposition or float64 variance statistics; it only
-reduces the precision of later operations on the cast arrays.
+components may downcast those arrays after PCA. Such a post-computation cast
+does not change the completed decomposition or float64 variance statistics; it
+only reduces the precision of later operations on the cast arrays.
 
 ### `solver`
 
@@ -685,44 +666,13 @@ operator products against an uncentered baseline, but users cannot set it.
 
 ## Count matrix selection
 
-Input matrix selection follows this priority:
+Input matrix selection is:
 
 ```python
-if use_raw and layer is not None:
-    raise ValueError("Specify only one of use_raw=True or layer=...")
-
-if use_raw:
-    if adata.raw is None:
-        raise ValueError("use_raw=True, but adata.raw is None")
-
-    # Use raw counts, but preserve the current adata.var_names feature space.
-    # adata.raw may have more genes than adata because AnnData.raw is not sliced
-    # along variables when adata is sliced.
-    missing = adata.var_names.difference(adata.raw.var_names)
-    if len(missing) > 0:
-        raise ValueError(
-            "use_raw=True requires all current adata.var_names to be present "
-            "in adata.raw.var_names"
-        )
-
-    X = adata.raw[:, adata.var_names].X
-    var = adata.var
-    var_names = adata.var_names
-else:
-    X = adata.layers[layer] if layer is not None else adata.X
-    var = adata.var
-    var_names = adata.var_names
+X = adata.layers[layer] if layer is not None else adata.X
+var = adata.var
+var_names = adata.var_names
 ```
-
-This means PCA loadings always align with `adata.var_names`, so `.varm[...]` can be written normally even when `use_raw=True`.
-
-Recommended user behavior:
-
-```python
-scp.residual_pca(adata, layer="counts", ...)
-```
-
-`use_raw=True` is supported for Scanpy compatibility, but `layer="counts"` is preferred because `.raw` is not guaranteed to contain raw integer counts.
 
 ## Input validation
 
@@ -790,11 +740,10 @@ if (n == 0).any():
         "out of the count matrix first"
     )
 
-if (p_j[mask] == 0).any():
+if (column_totals == 0).any():
     raise ValueError(
-        "Selected genes with zero total counts are not supported; filter "
-        "empty columns out of the count matrix first, or exclude them with "
-        "mask_var"
+        "Genes with zero total counts are not supported; filter empty "
+        "columns out of the count matrix first"
     )
 ```
 
@@ -812,8 +761,9 @@ if np.any(np.asarray(alpha) < 0):
     raise ValueError("alpha must be nonnegative")
 ```
 
-`mask_var` is the user's lever for excluding problematic genes; in v1 the
-package does not silently drop them.
+Residual transforms reject empty cells and genes before PCA masking;
+`mask_var` cannot bypass this validation. The package does not silently drop
+either axis.
 
 ## Parameter estimation
 
@@ -971,7 +921,6 @@ adata.uns[uns_key] = {
         "clip_max_nnz_ratio": clip_max_nnz_ratio,
         "zero_center": True,
         "layer": layer,
-        "use_raw": use_raw,
         "mask_var": resolved_mask.mask_var,
         "use_highly_variable": resolved_mask.use_highly_variable,
         "mask_var_details": resolved_mask.details,
@@ -1058,8 +1007,8 @@ where:
 * rank zero is permitted
 
 Residual transforms and both shifted CLR transforms produce rank-one
-representations. Shifted log produces a rank-zero representation. Dirichlet
-log and Dirichlet CLR produce representations of rank at most two.
+representations. Dirichlet log and Dirichlet CLR produce representations of
+rank at most two.
 The generic form supports transforms with multiple implicit components. Row
 scaling, column scaling, and column selection preserve the sparse-plus-low-rank
 form.
@@ -1541,7 +1490,6 @@ Then:
 ```python
 scores = U * s
 components = Vt
-loadings = Vt.T
 ```
 
 ## Explained variance and total variance
@@ -1719,8 +1667,6 @@ Test:
 ```text
 layer=None
 layer="counts"
-use_raw=True with raw containing all current var_names
-use_raw=True with raw missing at least one current var_name
 mask_var=_empty with highly_variable present
 mask_var=_empty without highly_variable present
 mask_var=None
@@ -1732,14 +1678,6 @@ key_added="resid_pca"
 copy=True
 copy=False
 ```
-
-For `use_raw=True`, verify that:
-
-```python
-X_used == adata.raw[:, adata.var_names].X
-```
-
-and that loadings are written to `adata.varm[...]` aligned to current `adata.var_names`.
 
 ### 6. Clipping tests
 

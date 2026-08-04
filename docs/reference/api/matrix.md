@@ -7,9 +7,7 @@ return result objects without mutating the input.
 
 ::: sparse_count_pca.residual_pca_matrix
 
-## Shifted-log and CLR PCA
-
-::: sparse_count_pca.shifted_log_pca_matrix
+## Shifted-CLR PCA
 
 ::: sparse_count_pca.shifted_clr_pca_matrix
 

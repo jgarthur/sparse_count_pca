@@ -60,7 +60,6 @@ stores how observed nonzero counts differ from the factored zero baseline.
 The details vary by transform:
 
 - residual expectations factor through cell totals and gene parameters;
-- the count-scale log transform has a zero low-rank baseline before centering;
 - CLR subtracts a row-specific mean, adding a rank-one term.
 
 The [package specification](../development/specification.md#sparse-plus-low-rank-representation)

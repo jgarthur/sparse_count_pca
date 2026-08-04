@@ -21,8 +21,8 @@ scp.residual_pca(
 )
 ```
 
-Observations are rows and genes are columns. Counts can come from `adata.X`, a
-layer, or `adata.raw.X`; see [AnnData workflows](anndata-workflows.md).
+Observations are rows and genes are columns. Counts can come from `adata.X` or
+a layer; see [AnnData workflows](anndata-workflows.md).
 
 ## Choose the count model
 
@@ -33,13 +33,13 @@ layer, or `adata.raw.X`; see [AnnData workflows](anndata-workflows.md).
 | `"scaled_nb"` | Negative-binomial variance whose per-gene overdispersion scales inversely with cell depth. | Nonnegative `alpha` |
 
 `scaled_nb` is a package-specific label, not a standard method name. The
-[transform catalogue](../transforms.md#pearson-and-deviance-residuals) gives
+[transform catalog](../transforms.md#pearson-and-deviance-residuals) gives
 each model's null distribution, variance, and provenance, and derives the
 fitted mean that all three share.
 
 The fitted cell totals and gene proportions use every gene in the chosen count
-matrix before the PCA variable mask is applied. A selected gene with zero total
-count is invalid because its residual scale is undefined.
+matrix before the PCA variable mask is applied. Residual methods reject empty
+cells and genes before masking; `mask_var` cannot hide an empty gene.
 
 For `model="scaled_nb"`, pass a scalar, a vector of length `n_vars`, or an
 `adata.var` column name:
@@ -114,11 +114,8 @@ result = scp.residual_pca_matrix(
 
 result.scores       # observations by components
 result.components   # components by variables
-result.loadings     # variables by components
+result.components.T # variables by components
 ```
-
-`loadings` is exactly `components.T`, kept for convenience when writing
-variable-oriented output. It is not a variance-weighted statistical loading.
 
 The matrix path does not apply a variable mask. Slice the count matrix first,
 or use the two-step [`transform`](transform-reuse.md) workflow when the

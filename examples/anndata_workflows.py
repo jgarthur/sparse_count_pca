@@ -27,20 +27,17 @@ counts = csr_matrix(
 )
 adata = AnnData(counts.copy())
 adata.layers["counts"] = counts
-adata.raw = adata
 
 # %% [markdown]
-# **Choose exactly one count source.** `layer` and `use_raw=True` are mutually
-# exclusive; omitting both reads `adata.X`.
+# **Choose `.X` or a named layer.** Omitting `layer` reads `adata.X`.
 
 # %%
 scp.residual_pca(adata, n_comps=2, key_added="from_x")
 scp.residual_pca(adata, layer="counts", n_comps=2, key_added="from_layer")
-scp.residual_pca(adata, use_raw=True, n_comps=2, key_added="from_raw")
 
-for key in ("from_x", "from_layer", "from_raw"):
+for key in ("from_x", "from_layer"):
     params = adata.uns[key]["params"]
-    print(key, "-> layer:", params["layer"], "use_raw:", params["use_raw"])
+    print(key, "-> layer:", params["layer"])
 
 # %% [markdown]
 # **Masks accept a `var` column name or a boolean array**, and must have

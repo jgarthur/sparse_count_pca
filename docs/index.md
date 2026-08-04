@@ -36,7 +36,7 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 - **I already use Scanpy's Pearson-residual preprocessing.** See
   [coming from Scanpy](reference/compatibility.md#coming-from-scanpy) for what
   each call maps to and where the models differ.
-- **I need to pick a transform.** The [transform catalogue](transforms.md)
+- **I need to pick a transform.** The [transform catalog](transforms.md)
   compares distinctions that affect interpretation, formulas, provenance, and
   exact interface names.
 - **I know which analysis I want.** Guides cover

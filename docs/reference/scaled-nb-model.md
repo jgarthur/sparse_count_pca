@@ -6,7 +6,7 @@ maximum-likelihood null mean is exactly the Poisson one, and relates it to
 prior work.
 
 To call it, see the
-[transform catalogue](../transforms.md#pearson-and-deviance-residuals) and the
+[transform catalog](../transforms.md#pearson-and-deviance-residuals) and the
 [residual-PCA guide](../guides/residual-pca.md#choose-the-count-model).
 
 ## Notation
@@ -66,6 +66,10 @@ where \(\operatorname{NB}(r,q)\) has probability mass proportional to
 ```
 
 The package does not estimate \(\alpha_j\).
+
+The model fits one dispersion-depth relationship over the whole matrix. For
+multiple batches or strongly different depth regimes, fit batch-wise or use a
+model that represents those differences.
 
 ## The maximum-likelihood null mean
 

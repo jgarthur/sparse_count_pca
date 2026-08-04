@@ -54,7 +54,6 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 | Transform | AnnData function | Main use |
 | --- | --- | --- |
 | Residual PCA | `residual_pca(...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB (see note below) |
-| Count-scale shifted log | `shifted_log_pca(...)` | PCA of `log1p(X / count_shift)` without library-size normalization |
 | Count-scale shifted CLR | `shifted_clr_pca(...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. (2026) |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca(...)` | CLR after a fixed shift on the composition scale |
 | Correspondence analysis | `correspondence_analysis(...)` | Classical contingency-table ordination |
@@ -98,8 +97,8 @@ to expose matrix-vector and matrix-matrix products to
 
 - **One-step AnnData API.** Functions such as `residual_pca`,
   `shifted_clr_pca`, and `correspondence_analysis` write results directly into
-  an `AnnData` object, as in the quick start above. Counts may come from `.X`,
-  a layer, or `.raw.X`. See [AnnData workflows](docs/guides/anndata-workflows.md).
+  an `AnnData` object, as in the quick start above. Counts may come from `.X`
+  or a layer. See [AnnData workflows](docs/guides/anndata-workflows.md).
 - **One-step matrix API.** The corresponding `_matrix` functions take dense or
   sparse matrices outside AnnData and return a result object:
 
@@ -108,7 +107,7 @@ to expose matrix-vector and matrix-matrix products to
 
   result.scores       # observations by components
   result.components   # components by variables
-  result.loadings     # variables by components
+  result.components.T # variables by components
   ```
 
 - **Two-step transform API.** `transform` fits a normalization once, so
