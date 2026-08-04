@@ -234,6 +234,8 @@ Fix both when the documentation site is published, in the same change that adds
 the Read the Docs configuration, so the absolute URLs exist when they are
 written:
 
+- add the Read the Docs project and its `.readthedocs.yaml` configuration, which
+  is what makes the absolute URLs exist;
 - rewrite the README's `docs/...` links to absolute published URLs, leaving
   repository-internal links such as `CONTRIBUTING.md` relative, since those are
   correct on GitHub and are not the PyPI reader's concern;
@@ -298,6 +300,29 @@ API:
 If added, call it `nb_anscombe_pca` and keep it distinct from
 `shifted_log(count_shift=1/(4*alpha))`, which is only a large-count log
 approximation to it rather than the exact transform.
+
+## Pre-1.0 API decisions
+
+These require code or API decisions rather than editorial changes, and should
+be settled before the first stable release because each would be a breaking
+change afterwards.
+
+- **Decide whether the raw-count `ShiftedLog` API remains as is**, is
+  deprecated, or is complemented by a library-size-normalized log transform.
+  Whatever the outcome, raw-count shifted log must not be presented as the
+  conventional Scanpy log-normalization workflow.
+- **Decide whether `scaled_nb` is sufficiently clear as a public model name**,
+  or should be renamed to expose its exposure-scaled dispersion
+  parameterization. See [the scaled-NB null model](reference/scaled-nb-model.md).
+- **Compare package-level outputs and defaults directly with
+  [`cleartools/scclr`](https://github.com/cleartools/scclr).** The current dense
+  PFlog oracle establishes formula-level parity only, not end-to-end package
+  equivalence, and the compatibility page says so.
+- **Revisit the masking API.** The current direction preserves `mask_var` and
+  its method-specific ordering, with the distinction stated in the README,
+  concept page, CA guide, and public docstrings. Confirm that this visibility is
+  sufficient; otherwise consider a more explicit correspondence-analysis
+  parameter name without changing the underlying mathematics.
 
 ## Other candidates
 

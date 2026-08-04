@@ -359,10 +359,12 @@ exists. Their absence must not leave broken links or placeholder sections.
 - [x] Narrow the log-family guide to log-ratio coordinates.
 - [x] Record deferred code, packaging, and test follow-ups in the wishlist
   rather than leaving them as comments in published pages.
-- [ ] Complete the author's editorial review of the README opening.
-- [ ] Perform visual browser QA when a browser session is available.
+- [x] Complete the author's editorial review of the README opening.
+- [x] Perform visual browser QA.
 - [ ] Move this work brief to the private workbench or remove it before release.
-- [ ] Configure and connect Read the Docs.
+
+Read the Docs setup is tracked in the wishlist under release and packaging,
+alongside the README link rewriting and `[project.urls]` work it enables.
 
 ## Decision log
 
@@ -450,20 +452,5 @@ development, testing, and compatibility pages.
 
 ## Deferred technical and API questions
 
-These questions were identified during the README review but require code or
-API decisions rather than editorial changes:
-
-- Decide whether the raw-count `ShiftedLog` API should remain, be deprecated,
-  or be complemented by a library-size-normalized log transform. Do not present
-  raw-count shifted log as the conventional Scanpy log-normalization workflow.
-- Decide before the first stable release whether `scaled_nb` is sufficiently
-  clear as a public model name or should be renamed to expose its
-  exposure-scaled dispersion parameterization.
-- Compare package-level outputs and defaults directly with `cleartools/scclr`.
-  The current dense PFlog oracle establishes formula-level parity only, not
-  end-to-end package equivalence.
-- Revisit the masking API before the first stable release. The current direction
-  is to preserve `mask_var` and its method-specific ordering, with the distinction
-  stated in the README, concept guide, CA guide, and public docstrings. Confirm
-  that this visibility is sufficient; otherwise consider a more explicit CA
-  parameter name without changing the underlying mathematics.
+Moved to `docs/wishlist.md` under pre-1.0 API decisions, so they survive the
+removal of this brief.
