@@ -56,9 +56,8 @@ a modified copy instead.
 ## Choosing `n_comps`
 
 `n_comps` defaults to 50, the usual starting point for single-cell PCA. There
-is no automatic selection: inspect `adata.uns["pca"]["variance_ratio"]` and
-raise or lower the count if the retained components look insufficient or
-wasteful for the downstream analysis.
+is no automatic selection; `adata.uns["pca"]["variance_ratio"]` reports the
+variance explained by each retained component.
 
 The ARPACK solver requires `n_comps` to be strictly less than both the number
 of observations and the number of variables selected for PCA, which is why the
