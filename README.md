@@ -69,18 +69,14 @@ for the transforms it deliberately omits.
 
 `scaled_nb` is a package-specific name for a negative-binomial model that
 scales overdispersion inversely with cell depth, as in the sSeq model from
-[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143). If
-`s_i = cell_total_i / mean_cell_total`, the overdispersion for gene
-`j` in cell `i` is `alpha_j / s_i`. At positive overdispersion, Pearson residuals
-from this model correspond with
-[SCTransform](https://doi.org/10.1186/s13059-019-1874-1) only when every cell has the
-same total count, with additional model-fitting and post-processing choices
-matched. See the [residual-PCA model definition](docs/guides/residual-pca.md#choose-the-count-model)
-and its [SCTransform comparison](docs/guides/residual-pca.md#relationship-to-sctransform).
+[Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143). It
+is not an implementation of
+[SCTransform](https://doi.org/10.1186/s13059-019-1874-1); its Pearson residuals
+agree with SCTransform's only under conditions that ordinary data does not meet.
+See the [scaled-NB null model](docs/reference/scaled-nb-model.md).
 
 There is also an experimental scaled-NB extension to correspondence analysis; see the
 [correspondence-analysis guide](docs/guides/correspondence-analysis.md).
-
 
 ## How it works
 
@@ -96,11 +92,6 @@ adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator` t
 expose matrix-vector and matrix-matrix products to
 `scipy.sparse.linalg.svds`, currently using the ARPACK solver. See
 [sparse plus low rank](docs/concepts/sparse-plus-low-rank.md) for more details.
-
-Pearson or deviance residual matrices are often clipped to exclude extreme
-outliers. The package also represents this clipping exactly, although clipping
-large negative residuals at observed zeros can increase the stored sparse
-support. See [clipping and precision](docs/concepts/clipping-and-precision.md).
 
 ## API structure
 
@@ -130,41 +121,24 @@ result.components   # components by variables
 result.loadings     # variables by components
 ```
 
-All three paths canonicalize counts identically. Non-CSR sparse input is
-converted to CSR, and CSR input with duplicate or unsorted indices, or with
-explicitly stored zeros, is copied before canonicalization. Already
-[canonical CSR](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.has_canonical_format.html)
-input is borrowed without mutation.
-
 ## Important distinctions
 
-- **A gene mask usually selects PCA columns, not normalization inputs.** For
-  residual, shifted-log, and shifted-CLR PCA, normalization is fitted on the
-  full chosen count matrix before `mask_var` selects variables for PCA. Slice
+- **A gene mask usually selects PCA columns, not normalization inputs.** Slice
   the count matrix first if excluded genes should not affect cell totals, gene
-  proportions, or CLR row means. In correspondence analysis, the mask instead
-  defines the contingency table itself; expected counts depend on that table's
-  margins, so the margins are recomputed after masking.
+  proportions, or CLR row means. Correspondence analysis is the exception: its
+  mask defines the contingency table, so margins are recomputed after masking.
+  See [normalization, masking, and centering](docs/concepts/normalization-masking-and-centering.md).
 - **Scaled-NB residuals are not a drop-in SCTransform v2 implementation.** Do
-  not expect default outputs to match. The compatibility guide describes the
-  controlled conditions under which equality can be tested.
-- **Shift domain matters.** A fixed raw-count shift and a fixed shift after
-  library-size division are different CLR transforms. The PFlog normalization
-  proposed by [Booeshaghi et al. in preprint version 4 (June 22,
-  2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4)
-  uses the count-scale form, recommended by the authors over the previous
-  proportion-scale shift.
+  not expect default outputs to match. See the
+  [compatibility reference](docs/reference/compatibility.md#sctransform-v2) for
+  the conditions under which equality can be tested.
+- **Symmetric residual clipping can expand sparse support**, because it alters
+  negative residuals at zero-count entries that the low-rank baseline would
+  otherwise carry. Upper-only clipping cannot. See
+  [clipping and precision](docs/concepts/clipping-and-precision.md).
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.
-- **Residual clipping is optional and exact.** Symmetric clipping of Pearson or
-  deviance residuals can alter negative residuals for zero-count entries. The
-  representation must then store those corrections, increasing sparse
-  support. Clipping only the positive tail does not expand sparse support.
-
-See [normalization, masking, and centering](docs/concepts/normalization-masking-and-centering.md),
-[clipping and precision](docs/concepts/clipping-and-precision.md), and the
-[compatibility reference](docs/reference/compatibility.md).
 
 ## Related work
 
