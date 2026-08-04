@@ -49,30 +49,20 @@ scp.residual_pca(
     adata,
     layer="counts",
     model="scaled_nb",
-    residual="deviance",
+    residual="pearson",
     alpha="overdispersion",
 )
 ```
 
 Values of `alpha` below `1e-8` use the Poisson limit. The package consumes
-overdispersion estimates but does not fit them.
-
-To estimate `alpha` under this model,
+overdispersion estimates but does not fit them;
 [Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143)
-take per-gene method-of-moments estimates and then shrink them toward a common
-value. That procedure targets the same inverse-size-factor dispersion
-parameterization used here, though it derives its size factors differently.
+estimate dispersions under the same inverse-size-factor parameterization.
 
-Do not reuse an SCTransform `theta` as `1 / alpha`. Those are dispersions of a
-different negative-binomial model, and the two parameterizations coincide only
-when every cell has the same total count.
-
-## Pearson or deviance residuals
-
-Pearson residuals divide the observed-minus-expected difference by the model
-standard deviation. Deviance residuals use the signed square root of each
-entry's contribution to model deviance. Both are supported for all residual
-models.
+Estimates fitted under a different negative-binomial model are not in general
+valid here. In particular, do not reuse an SCTransform `theta` as `1 / alpha`:
+the two parameterizations coincide only when every cell has the same total
+count.
 
 ## Variable selection
 
@@ -119,7 +109,7 @@ result = scp.residual_pca_matrix(
     counts,
     n_comps=20,
     model="poisson",
-    residual="deviance",
+    residual="pearson",
 )
 
 result.scores       # observations by components
@@ -139,15 +129,14 @@ normalization universe and PCA variables must differ.
 The scaled-NB residual transform is related to the Pearson-residual
 normalization introduced with
 [SCTransform by Hafemeister and Satija (2019)](https://doi.org/10.1186/s13059-019-1874-1),
-but is not an implementation of it. At positive overdispersion, its Pearson
-residuals are identical to SCTransform's only when every cell has the same
-total count, with additional model-fitting and post-processing choices matched.
-(At `alpha = 0` both models reduce to Poisson, where matching fitted means
-suffice and equal depth is not required.) Equal cell depth is not expected in
-ordinary real data and is believed to be required for SCTransform residuals to
-retain this package's efficient sparse-plus-low-rank representation. See the
-[compatibility reference](../reference/compatibility.md) for the full
-conditions before making parity claims.
+but is not an implementation of it. The two agree only under conditions that
+ordinary real data does not meet; see the
+[compatibility reference](../reference/compatibility.md#sctransform-v2) for the
+full list before making parity claims.
+
+The models also differ computationally: in SCTransform's standard
+parameterization there is no obvious sparse-plus-low-rank factorization of the
+residual matrix.
 
 ## Complete example
 

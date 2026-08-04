@@ -37,19 +37,13 @@ scp.residual_pca(adata, mask_var=boolean_array)
 Masks must have genuinely boolean dtype and the correct length. Numeric,
 string, and object columns are rejected rather than coerced.
 
-A pandas nullable `boolean` column is accepted when it holds no missing values,
-because it converts to a plain boolean array. One containing `pd.NA` does not
-convert, and is rejected: `pd.NA` has no defined meaning for variable
-selection. Decide what missing should mean for your analysis, then fill it in
-before converting; `.astype(bool)` on its own raises on a column that still
-holds `pd.NA`.
+A pandas nullable `boolean` column is accepted when it holds no missing values.
+One containing `pd.NA` is rejected, since `pd.NA` has no defined meaning for
+variable selection. Decide what missing should mean, then fill it in:
 
 ```python
 adata.var["my_mask"] = adata.var["my_mask"].fillna(False).astype(bool)
 ```
-
-In practice this rarely comes up. Scanpy's `highly_variable_genes` writes a
-plain boolean column, and it stays boolean across an `h5ad` round trip.
 
 Scanpy's older `use_highly_variable` argument is accepted but deprecated, and
 emits a warning. `use_highly_variable=True` means `mask_var="highly_variable"`;
@@ -85,9 +79,8 @@ with `theta=100` and clips residuals, while `residual_pca` defaults to Poisson
 without clipping. The pairing above is a match of residual family, not of
 parameters; selection only decides which genes enter the PCA.
 
-Scanpy's other flavors (`"seurat"`, `"cell_ranger"`, `"seurat_v3"`) expect
-log-normalized or raw counts depending on the flavor; consult the Scanpy
-documentation for the input each one requires. Any boolean `var` column works.
+Scanpy's other flavors (`"seurat"`, `"cell_ranger"`, `"seurat_v3"`) each expect
+a particular input scale; any boolean `var` column works here.
 
 ## Output keys
 
@@ -125,16 +118,13 @@ unchanged:
 result_adata = scp.residual_pca(adata, layer="counts", copy=True)
 ```
 
-Backed AnnData keeps `.X` on disk, along with `.raw.X` when a `.raw` is
-present. `.obsm`, `.varm`, and `.uns` are
-ordinary in-memory mappings, so results are written to the object exactly as
-usual and `copy=False` works on a `backed="r"` object. Nothing is written back
-to the file; save the results yourself if you want them persisted.
+`copy=False` works on a `backed="r"` object, because `.obsm`, `.varm`, and
+`.uns` are ordinary in-memory mappings. Nothing is written back to the file;
+save the results yourself if you want them persisted.
 
-The object also stays backed afterwards, but that does not avoid loading the
-counts: the current backend reads a backed sparse count matrix into memory for
-canonicalization and fitting. With `copy=True`, the returned object is fully in
-memory.
+Staying backed does not avoid loading the counts: the current backend reads a
+backed sparse count matrix into memory for canonicalization and fitting. With
+`copy=True`, the returned object is fully in memory.
 
 ## Downstream Scanpy use
 

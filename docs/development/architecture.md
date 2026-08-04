@@ -241,6 +241,13 @@ engine. It validates dimensions and dtype, creates the centered operator,
 checks variance, calls the SVD layer, calculates variance summaries, and
 returns `PCAResult`.
 
+When `return_operator=True` hands the centered operator back to the caller,
+ownership decides whether its arrays are copied. An operator derived from a
+live `TransformedMatrix` would otherwise share that object's arrays, so it
+takes a support-sized copy. A one-step call such as `residual_pca_matrix`
+builds a representation nothing else holds, so it passes those arrays directly
+and skips the copy.
+
 [`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 
 - deterministic starting vector from `random_state`;

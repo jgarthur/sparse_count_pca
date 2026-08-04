@@ -84,11 +84,8 @@ not store it, and it has to be refitted after reloading the file or restarting
 Python. Only PCA results written to `.obsm`, `.varm`, and `.uns` persist.
 
 Passing `return_operator=True` to `pca` retains the centered operator ARPACK
-used. When that operator comes from a `TransformedMatrix` that is still alive,
-the two objects would otherwise share the same arrays, so the operator gets a
-support-sized copy and mutating either one cannot affect the other. A one-step
-call such as `residual_pca_matrix` builds a representation that nothing else
-holds, so it hands those arrays to the operator directly and skips the copy.
+used. It is isolated from the `TransformedMatrix` it came from: mutating either
+one cannot affect the other.
 
 ## Complete example
 
