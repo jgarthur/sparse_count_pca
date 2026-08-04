@@ -92,4 +92,3 @@ nav:
       - Architecture: development/architecture.md
       - Specification: development/specification.md
       - Testing: development/testing.md
-      - Log-transform design: development/design/log-transforms.md

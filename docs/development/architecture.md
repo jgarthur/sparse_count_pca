@@ -18,8 +18,7 @@ the implementation and the tests that enforce each contract.
 9. [Review checklist](#9-review-checklist)
 
 The normative mathematical contract is the
-[package specification](specification.md). The narrower normalization decision
-record is [log-transform design](design/log-transforms.md).
+[package specification](specification.md).
 
 The name describes the public contract rather than the implementation:
 "count" covers single-cell, spatial, and general contingency-table inputs;
