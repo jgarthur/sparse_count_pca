@@ -6,12 +6,11 @@ those roles separate.
 
 ## The PCA transform order
 
-For residual, shifted-log, count-scale shifted-CLR, and composition-scale
-shifted-CLR transforms,
-the order is:
+For residual, count-scale shifted-CLR, and composition-scale shifted-CLR
+transforms, the order is:
 
 ```text
-select X, layer, or raw counts
+select the count matrix (`.X` or a layer)
         ↓
 fit normalization on the full variable universe
         ↓
@@ -67,7 +66,7 @@ table as the complete dataset, so removing a gene can change the totals,
 weights, and coordinates of every remaining cell and gene.
 
 ```text
-select X, layer, or raw counts
+select the count matrix (`.X` or a layer)
         ↓
 apply mask_var to define the table
         ↓
@@ -85,6 +84,11 @@ PCA result metadata distinguishes:
 - `normalization_n_vars`: variables in the count matrix used to fit
   normalization;
 - `pca_n_vars`: variables selected for PCA.
+
+Both live under the `params` entry, so read them as
+`adata.uns["pca"]["params"]["normalization_n_vars"]`, or
+`result.params["normalization_n_vars"]` from the matrix API. Variance
+statistics sit one level up, directly under `adata.uns["pca"]`.
 
 Masked component rows in `adata.varm` contain `NaN`. This makes exclusion
 visible and prevents a masked variable from being mistaken for a valid zero

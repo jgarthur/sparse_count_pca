@@ -29,11 +29,6 @@ def _dense_clr(logged: ArrayLike) -> Float64Array:
     return logged - logged.mean(axis=1, keepdims=True)
 
 
-def _dense_shifted_log(X: DenseOrSparse, count_shift: float) -> Float64Array:
-    """Evaluate the count-scale shifted-log definition densely."""
-    return np.log1p(_as_dense_float64(X) / count_shift)
-
-
 def _dense_count_shifted_clr(X: DenseOrSparse, count_shift: float) -> Float64Array:
     """Evaluate the count-scale shifted-CLR reference definition densely."""
     return count_shifted_clr(X, count_shift)

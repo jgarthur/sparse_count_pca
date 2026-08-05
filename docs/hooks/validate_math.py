@@ -14,9 +14,7 @@ def on_page_markdown(markdown: str, page: Any, **kwargs: Any) -> str:
     """Record how many display equations the rendered page must contain."""
     dollar_delimiters = len(DOLLAR_DELIMITER.findall(markdown))
     if dollar_delimiters % 2:
-        raise RuntimeError(
-            f"Unmatched display-math delimiter in {page.file.src_uri}."
-        )
+        raise RuntimeError(f"Unmatched display-math delimiter in {page.file.src_uri}.")
     EXPECTED_DISPLAY_MATH[page.file.src_uri] = (
         len(FENCED_MATH.findall(markdown)) + dollar_delimiters // 2
     )

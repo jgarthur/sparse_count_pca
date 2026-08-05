@@ -9,9 +9,7 @@ This guide's [complete example](#complete-example) is
 [`examples/shifted_clr.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/shifted_clr.py).
 
 Each function below has a `_matrix` counterpart that takes a dense or sparse
-matrix and returns a result object instead of working with AnnData. For the
-count-scale shifted log transform, which applies no log-ratio centering, see
-the [transform catalogue](../transforms.md#count-scale-shifted-log).
+matrix and returns a result object instead of working with AnnData.
 
 ## Count-scale shifted CLR
 

@@ -15,14 +15,19 @@ from scipy.sparse.linalg import LinearOperator
 
 from ._anndata import _empty, _get_count_matrix, _resolve_mask_var
 from ._clip import ClipMode, validate_clip
-from ._counts import BoolArray, CountMatrix, _canonicalize_counts, _sum_counts
+from ._counts import (
+    BoolArray,
+    CountMatrix,
+    _canonicalize_counts,
+    _empty_columns,
+    _sum_counts,
+)
 from ._log_transforms import (
     PriorProportions,
     build_dirichlet_clr_representation,
     build_dirichlet_log_representation,
     build_proportion_shifted_clr_representation,
     build_shifted_clr_representation,
-    build_shifted_log_representation,
     validate_dirichlet_prior,
     validate_positive_scalar,
 )
@@ -99,6 +104,9 @@ class Residual(Transform):
         residual: ``"pearson"`` or ``"deviance"``.
         alpha: Scalar, per-variable array, or AnnData variable key containing
             nonnegative scaled-NB overdispersion. Used only by ``scaled_nb``.
+            Values below ``1e-8`` use the Poisson limit. Values for variables
+            with no counts are replaced with zero instead of being validated,
+            since they cannot reach any output.
         clip: Positive clipping threshold, or ``None`` for no clipping.
         clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
         clip_max_nnz_ratio: Maximum support-growth ratio for exact symmetric
@@ -126,7 +134,6 @@ class Residual(Transform):
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
         n_vars = counts.shape[1]
         alpha_input = _resolve_vector_parameter(self.alpha, var=var, name="alpha")
-        alpha_full = _validate_model(self.model, self.residual, alpha_input, n_vars)
         n = _sum_counts(counts, axis=1)
         column_totals = _sum_counts(counts, axis=0)
         if not (np.isfinite(n).all() and np.isfinite(column_totals).all()):
@@ -136,6 +143,16 @@ class Residual(Transform):
                 "Cells with zero total counts are not supported; filter empty "
                 "rows out of the count matrix first"
             )
+        # A gene with no counts has a fitted mean of zero, so its residual is
+        # zero by continuity and the representation carries an exactly zero
+        # column. Its overdispersion is therefore irrelevant.
+        alpha_full = _validate_model(
+            self.model,
+            self.residual,
+            alpha_input,
+            n_vars,
+            ignore=column_totals == 0,
+        )
         with np.errstate(over="ignore"):
             total = float(np.sum(n, dtype=np.float64))
         if not np.isfinite(total):
@@ -144,12 +161,6 @@ class Residual(Transform):
 
         all_columns = columns is None or columns.all()
         p = p_full if all_columns else p_full[columns]
-        if (p == 0).any():
-            raise ValueError(
-                "Selected genes with zero total counts are not supported; "
-                "filter empty columns out of the count matrix first, or exclude "
-                "them with mask_var"
-            )
         if self.model == "binomial" and (p >= 1).any():
             raise ValueError("Binomial residuals require 0 < p_j < 1")
         alpha_used = (
@@ -181,38 +192,6 @@ class Residual(Transform):
                 "use_highly_variable": False,
                 "mask_var": None,
                 "layer": None,
-            },
-        )
-
-
-@dataclass(frozen=True)
-class ShiftedLog(Transform):
-    """Specify the count-scale transform ``log1p(X / count_shift)``.
-
-    Attributes:
-        count_shift: Positive shift on the raw-count scale.
-
-    Examples:
-        >>> transformed = transform(counts, ShiftedLog(count_shift=1.0))
-    """
-
-    count_shift: float
-
-    def _build(self, counts, *, var, columns):
-        count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
-        representation = build_shifted_log_representation(
-            counts, count_shift=count_shift
-        )
-        if columns is not None:
-            representation = representation.select_columns(columns)
-        return (
-            representation,
-            "Shifted log",
-            {
-                "transform": "shifted_log",
-                "shift_domain": "count",
-                "count_shift": count_shift,
-                "normalization_n_vars": counts.shape[1],
             },
         )
 
@@ -677,7 +656,6 @@ def _transform(
     method: Transform,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
     _columns: BoolArray | None = None,
@@ -687,13 +665,13 @@ def _transform(
     if not isinstance(method, Transform):
         raise TypeError("method must be a Transform instance")
     if isinstance(data, AnnData):
-        X = _get_count_matrix(data, layer=layer, use_raw=use_raw)
+        X = _get_count_matrix(data, layer=layer)
         var = data.var
         obs_names = data.obs_names
         var_names = data.var_names
     else:
-        if layer is not None or use_raw:
-            raise TypeError("layer and use_raw are only valid for AnnData input")
+        if layer is not None:
+            raise TypeError("layer is only valid for AnnData input")
         X = data
         var = None
         obs_names = None
@@ -708,6 +686,9 @@ def _transform(
         if _columns.all():
             _columns = None
     representation, label, params = method._build(counts, var=var, columns=_columns)
+    # Empty variables are never dropped: every transform gives them a defined
+    # value, so the fitted matrix always keeps the caller's variable universe.
+    params = {**params, "n_empty_vars": int(_empty_columns(counts).sum())}
     if _columns is not None and var_names is not None:
         var_names = var_names[_columns]
         var = var.iloc[np.flatnonzero(_columns)]
@@ -729,7 +710,6 @@ def transform(
     method: Transform,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
 ) -> TransformedMatrix:
@@ -742,11 +722,8 @@ def transform(
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
             object. Observations are rows and variables are columns.
-        method: Residual, shifted-log/CLR, or experimental Dirichlet transform
-            specification.
+        method: Residual, shifted-CLR, or Dirichlet transform specification.
         layer: AnnData count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``. Valid only for AnnData and
-            mutually exclusive with ``layer``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and operator dtype, either ``"float64"`` or
             ``"float32"``.
@@ -774,7 +751,6 @@ def transform(
         data,
         method,
         layer=layer,
-        use_raw=use_raw,
         check_values=check_values,
         dtype=dtype,
     )

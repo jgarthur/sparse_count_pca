@@ -49,7 +49,6 @@ def _append_zero_gene(counts: sparse.csr_matrix) -> sparse.csr_matrix:
             ),
             True,
         ),
-        (scp.ShiftedLog(count_shift=0.75), False),
         (scp.ShiftedCLR(count_shift=0.75), False),
         (scp.ProportionShiftedCLR(composition_shift=0.00075), False),
         (scp.DirichletLog(concentration=12.5), False),
@@ -57,7 +56,6 @@ def _append_zero_gene(counts: sparse.csr_matrix) -> sparse.csr_matrix:
     ],
     ids=[
         "clipped-scaled-nb-residual",
-        "shifted-log",
         "shifted-clr",
         "proportion-shifted-clr",
         "dirichlet-log",
@@ -119,7 +117,7 @@ def test_all_true_matrix_mask_matches_implicit_all_gene_selection(
 
 def test_all_false_matrix_mask_is_rejected(raw_counts: sparse.csr_matrix) -> None:
     """The matrix-backed two-step PCA API rejects a mask selecting no genes."""
-    transformed = scp.transform(raw_counts, scp.ShiftedLog(count_shift=0.75))
+    transformed = scp.transform(raw_counts, scp.ShiftedCLR(count_shift=0.75))
 
     with pytest.raises(ValueError, match="mask_var selected zero genes"):
         transformed.pca(
@@ -128,21 +126,17 @@ def test_all_false_matrix_mask_is_rejected(raw_counts: sparse.csr_matrix) -> Non
         )
 
 
-def test_anndata_residual_mask_can_exclude_a_real_data_zero_gene(
+def test_anndata_residual_is_unchanged_by_a_real_data_zero_gene(
     raw_counts: sparse.csr_matrix,
 ) -> None:
-    """Clipped residual PCA accepts an empty gene only when the mask excludes it."""
+    """Clipped residual PCA on real counts is unchanged by an appended empty gene."""
     counts = _append_zero_gene(raw_counts)
     adata = AnnData(counts)
     adata.var_names = [
         *(f"gene-{index}" for index in range(raw_counts.shape[1])),
         "zero",
     ]
-    mask = np.ones(counts.shape[1], dtype=bool)
-    mask[-1] = False
-
-    result = scp.residual_pca(
-        adata,
+    kwargs = dict(
         n_comps=2,
         model="scaled_nb",
         residual="deviance",
@@ -150,35 +144,24 @@ def test_anndata_residual_mask_can_exclude_a_real_data_zero_gene(
         clip=1.25,
         clip_mode="symmetric",
         clip_max_nnz_ratio=None,
-        mask_var=mask,
-        copy=True,
     )
+    expected = scp.residual_pca_matrix(raw_counts, dtype="float64", **kwargs)
 
+    result = scp.residual_pca(adata, copy=True, dtype="float64", **kwargs)
+
+    np.testing.assert_allclose(
+        result.uns["pca"]["singular_values"],
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        result.varm["PCs"][:-1], expected.components.T, rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(result.varm["PCs"][-1], 0.0, rtol=0.0, atol=1e-12)
     params = result.uns["pca"]["params"]
-    assert params["normalization_n_vars"] == counts.shape[1]
-    assert params["pca_n_vars"] == raw_counts.shape[1]
-    assert params["mask_var_details"] == {
-        "kind": "array",
-        "key": None,
-        "n_vars_used": raw_counts.shape[1],
-    }
-    assert np.isfinite(result.varm["PCs"][:-1]).all()
-    assert np.isnan(result.varm["PCs"][-1]).all()
-
-    with pytest.raises(
-        ValueError, match="Selected genes with zero total counts are not supported"
-    ):
-        scp.residual_pca(
-            adata,
-            n_comps=2,
-            model="scaled_nb",
-            residual="deviance",
-            alpha=0.1,
-            clip=1.25,
-            clip_mode="symmetric",
-            clip_max_nnz_ratio=None,
-            mask_var=None,
-        )
+    assert params["pca_n_vars"] == counts.shape[1]
+    assert params["n_empty_vars"] == 1
 
 
 def test_correspondence_mask_excludes_a_real_data_zero_gene(

@@ -7,18 +7,16 @@ These functions mutate an `AnnData` object by default and return `None`. Pass
 
 ::: sparse_count_pca.residual_pca
 
-## Shifted-log and CLR PCA
-
-::: sparse_count_pca.shifted_log_pca
+## Shifted-CLR PCA
 
 ::: sparse_count_pca.shifted_clr_pca
 
 ::: sparse_count_pca.proportion_shifted_clr_pca
 
-## Experimental Dirichlet PCA
+## Dirichlet PCA
 
-These prior-based transforms are experimental and are not part of the
-recommended starting workflows.
+These prior-based transforms have no external reference implementation
+pinned; see the [transform catalog](../../transforms.md) for validation status.
 
 ::: sparse_count_pca.dirichlet_log_pca
 

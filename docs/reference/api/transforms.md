@@ -13,10 +13,6 @@ from materialization and PCA.
     options:
       members: false
 
-::: sparse_count_pca.ShiftedLog
-    options:
-      members: false
-
 ::: sparse_count_pca.ShiftedCLR
     options:
       members: false
@@ -25,8 +21,8 @@ from materialization and PCA.
     options:
       members: false
 
-The following prior-based transform specifications are experimental and are
-not part of the recommended starting workflows.
+The following prior-based transform specifications have no external reference
+implementation pinned; see the [transform catalog](../../transforms.md) for validation status.
 
 ::: sparse_count_pca.DirichletLog
     options:

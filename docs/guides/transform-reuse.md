@@ -19,7 +19,7 @@ transformed = scp.transform(
 )
 ```
 
-Other primary transform specifications are `ShiftedLog`, `ShiftedCLR`, and
+Other primary transform specifications are `ShiftedCLR` and
 `ProportionShiftedCLR`.
 Correspondence analysis remains a separate one-step API because its variable
 selection changes the fitted table margins.
@@ -74,6 +74,19 @@ second = transformed.pca(n_comps=20, mask_var=my_alternative_mask)
 Normalization state was fitted once on the full count matrix. Each `pca` call
 selects variables and then computes its own column mean. This ordering is
 described in [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
+
+Unlike the one-step APIs, `pca` **returns** a `PCAResult` and writes nothing
+back, even when the transform was fitted from an `AnnData` object. That is what
+makes several results comparable side by side. To store one, assign it
+yourself:
+
+```python
+adata.obsm["X_pca"] = first.scores
+adata.varm["PCs"] = first.components.T
+```
+
+With a `mask_var`, `components` covers only the selected variables, so a
+full-width `varm` array needs the unselected rows filled with `np.nan`.
 
 ## Lifetime and ownership
 

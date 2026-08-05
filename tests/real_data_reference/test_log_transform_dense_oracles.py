@@ -13,7 +13,6 @@ from tests._oracles import (
     _dense_count_shifted_clr,
     _dense_dirichlet,
     _dense_proportion_shifted_clr,
-    _dense_shifted_log,
 )
 
 REFERENCE_DIR = Path(__file__).resolve().parent
@@ -44,18 +43,6 @@ def _prior_proportions(n_vars: int, kind: str) -> np.ndarray:
         return np.full(n_vars, 1.0 / n_vars, dtype=np.float64)
     weights = np.linspace(1.0, 3.0, n_vars, dtype=np.float64)
     return weights / weights.sum()
-
-
-def test_shifted_log_matches_dense_oracle_on_unequal_depth_real_data(
-    raw_counts: sparse.csr_matrix,
-) -> None:
-    """Every real-data shifted-log entry matches its dense NumPy formula."""
-    actual = scp.transform(
-        raw_counts, scp.ShiftedLog(count_shift=COUNT_SHIFT)
-    ).materialize()
-    expected = _dense_shifted_log(raw_counts, COUNT_SHIFT)
-
-    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=ORACLE_ATOL)
 
 
 def test_count_shifted_clr_matches_dense_oracle_on_unequal_depth_real_data(

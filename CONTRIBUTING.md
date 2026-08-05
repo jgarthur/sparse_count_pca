@@ -20,7 +20,15 @@ Run the standard checks:
 ```bash
 uv run python -m pytest
 uv run ruff check .
+uv run ruff format --check .
 uv run mkdocs build --strict
+```
+
+`ruff format` is the source of truth for layout, so apply it rather than
+hand-wrapping:
+
+```bash
+uv run ruff format .
 ```
 
 ## Documentation

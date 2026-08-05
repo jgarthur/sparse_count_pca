@@ -16,8 +16,6 @@ from ._log_pca import (
     proportion_shifted_clr_pca_matrix,
     shifted_clr_pca,
     shifted_clr_pca_matrix,
-    shifted_log_pca,
-    shifted_log_pca_matrix,
 )
 from ._pca import PCAResult
 from ._residual_pca import residual_pca, residual_pca_matrix
@@ -27,7 +25,6 @@ from ._transform import (
     ProportionShiftedCLR,
     Residual,
     ShiftedCLR,
-    ShiftedLog,
     Transform,
     TransformedMatrix,
     transform,
@@ -42,7 +39,6 @@ __all__ = [
     "ProportionShiftedCLR",
     "Residual",
     "ShiftedCLR",
-    "ShiftedLog",
     "Transform",
     "TransformedMatrix",
     "__version__",
@@ -58,7 +54,5 @@ __all__ = [
     "residual_pca_matrix",
     "shifted_clr_pca",
     "shifted_clr_pca_matrix",
-    "shifted_log_pca",
-    "shifted_log_pca_matrix",
     "transform",
 ]

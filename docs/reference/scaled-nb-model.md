@@ -6,7 +6,7 @@ maximum-likelihood null mean is exactly the Poisson one, and relates it to
 prior work.
 
 To call it, see the
-[transform catalogue](../transforms.md#pearson-and-deviance-residuals) and the
+[transform catalog](../transforms.md#pearson-and-deviance-residuals) and the
 [residual-PCA guide](../guides/residual-pca.md#choose-the-count-model).
 
 ## Notation
@@ -67,6 +67,15 @@ where \(\operatorname{NB}(r,q)\) has probability mass proportional to
 
 The package does not estimate \(\alpha_j\).
 
+The model applies one depth-dispersion relationship across the whole matrix, so
+it does not represent batch structure. Where batches differ substantially in
+sequencing depth, the shared mean depth represents none of them well.
+
+Fitting per batch is not a small adjustment to that. The mean depth and every
+gene proportion become batch-specific, so the null model itself differs by
+batch and the resulting residuals are no longer on a common scale. This package
+does not fit per batch.
+
 ## The maximum-likelihood null mean
 
 Conditional on the size factors and fixed overdispersion, `scaled_nb` has the
@@ -104,8 +113,8 @@ expectation, and \(\operatorname{E}(T_j)=S\lambda_j\), so
 
 At \(T_j=0\) the log-likelihood is strictly decreasing in \(\lambda_j\), so the
 maximum is the boundary estimate \(\widehat{\lambda}_j=0\), which the same
-formula gives. The package rejects selected variables with zero total count in
-any case.
+formula gives. A variable with zero total count contributes a zero residual
+column in any case, so it carries no variance and no coefficient.
 
 Since \(S=m\),
 

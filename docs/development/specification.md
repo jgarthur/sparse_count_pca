@@ -21,7 +21,6 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
-* count-scale shifted-log PCA
 * count-scale shifted-CLR PCA
 * composition-scale shifted-CLR PCA
 * Dirichlet-log PCA
@@ -80,8 +79,6 @@ import sparse_count_pca as scp
 
 scp.residual_pca(adata, ...)
 scp.residual_pca_matrix(X, ...)
-scp.shifted_log_pca(adata, count_shift=...)
-scp.shifted_log_pca_matrix(X, count_shift=...)
 scp.shifted_clr_pca(adata, count_shift=...)
 scp.shifted_clr_pca_matrix(X, count_shift=...)
 scp.proportion_shifted_clr_pca(adata, composition_shift=...)
@@ -93,7 +90,6 @@ scp.dirichlet_clr_pca_matrix(X, ...)
 scp.correspondence_analysis(adata, ...)
 scp.correspondence_analysis_matrix(X, ...)
 scp.transform(adata_or_X, scp.Residual(...))
-scp.transform(adata_or_X, scp.ShiftedLog(...))
 scp.transform(adata_or_X, scp.ShiftedCLR(...))
 scp.transform(adata_or_X, scp.ProportionShiftedCLR(...))
 scp.transform(adata_or_X, scp.DirichletLog(...))
@@ -114,7 +110,6 @@ transformed = scp.transform(
     adata_or_X,
     method,
     layer=None,
-    use_raw=False,
     check_values=True,
     dtype="float64",
 )
@@ -189,23 +184,12 @@ For the same reason, every log-family result records `shift_domain` in its
 
 | Transform | `shift_domain` |
 | --- | --- |
-| `shifted_log`, `shifted_clr` | `"count"` |
+| `shifted_clr` | `"count"` |
 | `proportion_shifted_clr` | `"composition"` |
 | `dirichlet_log`, `dirichlet_clr` | `"dirichlet_prior_counts"` |
 
 A stored result therefore identifies its own shift scale without a reader
 inferring it from the parameter name.
-
-### Count-scale shifted log
-
-For `count_shift=a`, `shifted_log` analyzes
-
-```math
-Z_{ij} = \log(1 + X_{ij}/a).
-```
-
-This is an exactly sparse, zero-at-zero gauge of `log(X + a)`. Ordinary PCA
-column centering removes the omitted constant `log(a)`.
 
 ### Count-scale shifted CLR
 
@@ -368,7 +352,6 @@ def residual_pca(
     n_comps=50,
     *,
     layer=None,
-    use_raw=False,
     mask_var=_empty,
     use_highly_variable=None,
     key_added=None,
@@ -418,7 +401,6 @@ Return type:
 class PCAResult:
     scores: np.ndarray
     components: np.ndarray
-    loadings: np.ndarray
     singular_values: np.ndarray
     explained_variance: np.ndarray
     explained_variance_ratio: np.ndarray
@@ -433,7 +415,6 @@ Where:
 ```python
 scores.shape == (n_obs, n_comps)
 components.shape == (n_comps, n_vars_used)
-loadings.shape == (n_vars_used, n_comps)
 ```
 
 ## Parameter reference
@@ -474,6 +455,13 @@ alpha: array-like     # shape (adata.n_vars,) before masking; mask_var is then a
 
 The AnnData API never accepts an already-masked `alpha` array, to keep `.var`
 alignment unambiguous.
+
+`alpha` must be finite and nonnegative, with one exception: a variable that
+contributes no residual cannot affect any output, so its value is replaced with
+zero rather than validated. That covers variables with no counts for residual
+PCA, and analyzed columns with zero mass for correspondence analysis. Array
+shape is always validated, and a variable that does contribute still raises on
+a non-finite or negative value.
 
 For `residual_pca_matrix`:
 
@@ -609,9 +597,9 @@ precision rather than merely downcasting returned arrays.
 `dtype` controls representation and operator output, not accumulation.
 
 Users who want float64 computation with more compact persisted scores or
-loadings may downcast those arrays after PCA. Such a post-computation cast does
-not change the completed decomposition or float64 variance statistics; it only
-reduces the precision of later operations on the cast arrays.
+components may downcast those arrays after PCA. Such a post-computation cast
+does not change the completed decomposition or float64 variance statistics; it
+only reduces the precision of later operations on the cast arrays.
 
 ### `solver`
 
@@ -639,15 +627,29 @@ Passed through to `scipy.sparse.linalg.svds(..., tol=tol)`.
 Must satisfy:
 
 ```python
-if not 1 <= n_comps < min(n_obs, n_vars_used):
+if not 1 <= n_comps < min(n_obs, n_nonempty_vars):
     raise ValueError(
-        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
+        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_nonempty_vars) "
         "when solver='arpack'"
     )
 ```
 
-`n_vars_used` is `int(mask.sum())` after `mask_var` resolution. It is recorded
-as `pca_n_vars` in PCA parameters. Do not silently clamp.
+`n_nonempty_vars` counts the selected columns that are not identically zero, so
+an empty gene cannot support a component. It is deliberately distinct from
+`n_vars_used`, which everywhere else means the selected output width and
+therefore still counts retained empty genes. The selected column count,
+`int(mask.sum())` after `mask_var` resolution, is recorded as `pca_n_vars`. Do
+not silently clamp.
+
+This is a dimension rule about empty variables, not a rank estimate. A column
+counts as nonempty when it has stored sparse support or a nonzero low-rank
+factor; exact cancellation between those terms is not detected, so the count is
+an upper bound on the rank.
+
+The message reports `n_comps`, `n_obs`, and `n_nonempty_vars` as values, and
+when `n_nonempty_vars` is smaller than the selected column count it also says
+how many selected variables are identically zero, so the bound is not mistaken
+for an off-by-one.
 
 ### `copy`
 
@@ -685,44 +687,13 @@ operator products against an uncentered baseline, but users cannot set it.
 
 ## Count matrix selection
 
-Input matrix selection follows this priority:
+Input matrix selection is:
 
 ```python
-if use_raw and layer is not None:
-    raise ValueError("Specify only one of use_raw=True or layer=...")
-
-if use_raw:
-    if adata.raw is None:
-        raise ValueError("use_raw=True, but adata.raw is None")
-
-    # Use raw counts, but preserve the current adata.var_names feature space.
-    # adata.raw may have more genes than adata because AnnData.raw is not sliced
-    # along variables when adata is sliced.
-    missing = adata.var_names.difference(adata.raw.var_names)
-    if len(missing) > 0:
-        raise ValueError(
-            "use_raw=True requires all current adata.var_names to be present "
-            "in adata.raw.var_names"
-        )
-
-    X = adata.raw[:, adata.var_names].X
-    var = adata.var
-    var_names = adata.var_names
-else:
-    X = adata.layers[layer] if layer is not None else adata.X
-    var = adata.var
-    var_names = adata.var_names
+X = adata.layers[layer] if layer is not None else adata.X
+var = adata.var
+var_names = adata.var_names
 ```
-
-This means PCA loadings always align with `adata.var_names`, so `.varm[...]` can be written normally even when `use_raw=True`.
-
-Recommended user behavior:
-
-```python
-scp.residual_pca(adata, layer="counts", ...)
-```
-
-`use_raw=True` is supported for Scanpy compatibility, but `layer="counts"` is preferred because `.raw` is not guaranteed to contain raw integer counts.
 
 ## Input validation
 
@@ -781,7 +752,7 @@ if np.issubdtype(X.dtype, np.floating) and not np.allclose(
 
 For integer dtypes the check is skipped because it is trivially satisfied.
 
-Edge cases on the chosen count matrix:
+Empty cells are rejected for every transform, during count canonicalization:
 
 ```python
 if (n == 0).any():
@@ -789,14 +760,11 @@ if (n == 0).any():
         "Cells with zero total counts are not supported; filter empty rows "
         "out of the count matrix first"
     )
-
-if (p_j[mask] == 0).any():
-    raise ValueError(
-        "Selected genes with zero total counts are not supported; filter "
-        "empty columns out of the count matrix first, or exclude them with "
-        "mask_var"
-    )
 ```
+
+Empty genes are never rejected. Every transform retains them, with a value that
+follows from its own definition; see
+[empty genes and cells](#empty-genes-and-cells).
 
 For `model="binomial"`:
 
@@ -812,8 +780,74 @@ if np.any(np.asarray(alpha) < 0):
     raise ValueError("alpha must be nonnegative")
 ```
 
-`mask_var` is the user's lever for excluding problematic genes; in v1 the
-package does not silently drop them.
+## Empty genes and cells
+
+### Empty genes
+
+A gene with zero total count is **retained by every transform**; none is
+dropped, so the analyzed matrix always keeps the caller's variable universe and
+components stay aligned to input columns.
+
+Its value is well defined in each family:
+
+| Family | Value at an empty gene | Effect on other genes |
+| --- | --- | --- |
+| Residual (Poisson, binomial, scaled-NB) | `0`, the limit of the residual as the fitted mean goes to zero | none |
+| Correspondence analysis | `0`, the limit of the standardized deviation as column mass goes to zero | none |
+| Count-scale shifted CLR | `log(a) - m_i` | scales the log-ratio centering |
+| Composition-scale shifted CLR | analogous | scales the log-ratio centering |
+| Dirichlet log | `log(a_j) - log(s_i + A)` for prior counts `a_j = A p_j` | consumes prior mass |
+| Dirichlet CLR | `log(a_j)` minus the row mean of the log posterior counts | consumes prior mass |
+
+For the residual and correspondence families the column is **identically
+zero**. Such a column carries no variance and no inertia, so it contributes
+nothing to the decomposition and its coefficient comes back as zero to solver
+precision. An empty gene therefore cannot change any other gene's result, and
+the outcome matches the same input with the column removed. Two consequences:
+
+* `n_comps` is validated against the number of columns that are not
+  identically zero, so empty genes cannot buy components that carry no
+  variance;
+* per-gene parameters of an empty gene cannot reach any output, so a
+  scaled-NB `alpha` value there is replaced with zero rather than validated. Array
+  shape is still checked, and a retained gene's `alpha` is still required to be
+  finite and nonnegative.
+
+For the log-ratio and Dirichlet families the value is nonzero and does affect
+retained genes, because those transforms normalize each observation against the
+full declared variable universe: empty genes weaken the shifted-CLR centering
+and consume Dirichlet prior mass. This follows from the transform definitions
+rather than being a defect. `n_empty_vars` is reported so the effect is
+visible; filter empty genes before calling to avoid it.
+
+The one undefined *output* is the correspondence-analysis column principal
+coordinate, which divides a singular-vector entry by the square root of the
+column mass. That coordinate is reported as `np.nan`, and the column mass is
+reported as zero.
+
+`varm` therefore keeps a single convention: `np.nan` means the gene was
+excluded by `mask_var`, and a finite value, including zero, means it was
+decomposed. Correspondence analysis adds `np.nan` for a zero-mass column's
+undefined coordinate.
+
+### Empty cells
+
+Empty cells are rejected for every transform, during count canonicalization,
+before any transform-specific code runs.
+
+The value at an empty cell is undefined for residual, composition-scale shifted
+CLR, and correspondence analysis. For count-scale shifted CLR it is the zero
+vector, and for the Dirichlet families it is the prior; in both cases every
+empty cell maps to the same point, so the coordinate is an artifact of the
+transform rather than a property of the observation. No family produces an
+informative embedding for one.
+
+Empty cells are rejected rather than marked, because the marker would not be
+inert. Scores in `obsm` feed directly into downstream neighbor and embedding
+steps: a neighbor graph built from scores containing a `NaN` row can acquire
+edges to that row without raising, leaving the exclusion invisible downstream.
+Removing an empty cell also discards no information, since its counts are all
+zero. Filter zero-total rows out of the same matrix or layer before calling.
 
 ## Parameter estimation
 
@@ -837,9 +871,31 @@ Use the following terms consistently in documentation and metadata:
 
 - `normalization_n_vars`: the number of columns in the selected count source
   before `mask_var`;
-- `pca_n_vars`: the number of columns decomposed after `mask_var`.
+- `pca_n_vars`: the number of columns decomposed, after `mask_var`;
+- `n_empty_vars`: the number of empty genes in the normalization universe.
 
-The two are equal only when PCA uses every normalization gene.
+Correspondence analysis scopes `n_empty_vars` to its analyzed table instead,
+because its mask defines that table and its margins are fitted after masking.
+It therefore counts the zero-mass columns of the analyzed table, which are
+exactly the columns that receive `NaN` principal coordinates.
+
+The `alpha` exception deliberately uses a different scope, because it answers a
+different question. `n_empty_vars` describes the output, so it follows the
+analyzed table. The `alpha` rule asks whether a value can reach any output, and
+emptiness is a property of the input: an empty variable's overdispersion can
+never matter, selected or not. Scoping it to the input keeps the rule identical
+across residual PCA and correspondence analysis, so the same `alpha` array
+behaves the same way in both.
+
+`normalization_n_vars` and `pca_n_vars` are equal only when PCA decomposes
+every normalization gene. Because no column is ever dropped for being empty,
+`pca_n_vars` is exactly the selected column count.
+
+`n_empty_vars` is a property of the normalization universe, which is fitted
+before `mask_var` is applied, so it counts every empty gene regardless of the
+mask. It is what makes the shifted-CLR and Dirichlet retention effect
+measurable: the log-ratio centering scale is
+`(normalization_n_vars - n_empty_vars) / normalization_n_vars`.
 
 For binomial residuals, `n_i` is also the binomial trial count for cell `i`:
 
@@ -971,13 +1027,13 @@ adata.uns[uns_key] = {
         "clip_max_nnz_ratio": clip_max_nnz_ratio,
         "zero_center": True,
         "layer": layer,
-        "use_raw": use_raw,
         "mask_var": resolved_mask.mask_var,
         "use_highly_variable": resolved_mask.use_highly_variable,
         "mask_var_details": resolved_mask.details,
         "solver": solver,
         "n_comps": n_comps,
         "pca_n_vars": n_vars_used,
+        "n_empty_vars": n_empty_vars,
         "random_state": random_state,
         "tol": tol,
         "check_values": check_values,
@@ -1042,6 +1098,10 @@ def _serialize_alpha(alpha):
 
 If a variable mask is used, `loadings_full` has shape `(adata.n_vars, n_comps)`. Genes outside the mask receive `np.nan` to make non-used genes explicit (preferred over zeros, which can be mistaken for valid loadings).
 
+That is the only reason a PCA `varm` row is `np.nan`: empty genes are
+decomposed like any other and carry their true coefficient of zero. See
+[empty genes and cells](#empty-genes-and-cells).
+
 ## Sparse-plus-low-rank representation
 
 The internal representation is:
@@ -1058,8 +1118,8 @@ where:
 * rank zero is permitted
 
 Residual transforms and both shifted CLR transforms produce rank-one
-representations. Shifted log produces a rank-zero representation. Dirichlet
-log and Dirichlet CLR produce representations of rank at most two.
+representations. Dirichlet log and Dirichlet CLR produce representations of
+rank at most two.
 The generic form supports transforms with multiple implicit components. Row
 scaling, column scaling, and column selection preserve the sparse-plus-low-rank
 form.
@@ -1495,9 +1555,9 @@ raise NotImplementedError("Only solver='arpack' is supported in v1")
 Validate `n_comps` before calling ARPACK:
 
 ```python
-if not 1 <= n_comps < min(n_obs, n_vars_used):
+if not 1 <= n_comps < min(n_obs, n_nonempty_vars):
     raise ValueError(
-        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
+        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_nonempty_vars) "
         "when solver='arpack'"
     )
 ```
@@ -1541,7 +1601,6 @@ Then:
 ```python
 scores = U * s
 components = Vt
-loadings = Vt.T
 ```
 
 ## Explained variance and total variance
@@ -1719,8 +1778,6 @@ Test:
 ```text
 layer=None
 layer="counts"
-use_raw=True with raw containing all current var_names
-use_raw=True with raw missing at least one current var_name
 mask_var=_empty with highly_variable present
 mask_var=_empty without highly_variable present
 mask_var=None
@@ -1733,15 +1790,29 @@ copy=True
 copy=False
 ```
 
-For `use_raw=True`, verify that:
+### 6. Empty gene and cell tests
 
-```python
-X_used == adata.raw[:, adata.var_names].X
-```
+No transform may change its variable universe, so a fitted transform must
+accept masks sized to its original input.
 
-and that loadings are written to `adata.varm[...]` aligned to current `adata.var_names`.
+For the residual and correspondence-analysis families, appending an all-zero
+column must leave every retained coefficient, score, and singular value
+unchanged to solver precision, and give the empty column a zero coefficient.
+Cover every model, residual, and clipping mode, since upper-tail clipping
+depends on the sign of the structural-zero residual. `n_comps` at the nonempty
+column count must raise. A non-finite `alpha` on an empty gene must be ignored
+while one on a retained gene still raises, and a wrong-length `alpha` must
+still raise, for both residual PCA and correspondence analysis. A zero-mass
+correspondence-analysis column must receive `NaN` principal coordinates and
+zero mass.
 
-### 6. Clipping tests
+For the shifted-CLR and Dirichlet families, empty genes must match the same
+dense oracle as any other gene, and `n_empty_vars` must report their total.
+
+Empty cells must be rejected by every entry point, including a row emptied by a
+correspondence-analysis variable mask.
+
+### 7. Clipping tests
 
 Construct matrices where symmetric zero-count clipping definitely occurs and
 where both residual tails cross the threshold.
@@ -1758,7 +1829,7 @@ clip_max_nnz_ratio=1.0 rejects any support growth
 finite guard includes below the threshold and raises at the threshold
 ```
 
-### 7. Variance tests
+### 8. Variance tests
 
 For small matrices, compare analytic total variance to dense calculation:
 
@@ -1768,7 +1839,7 @@ np.sum((R - R.mean(axis=0)) ** 2) / (n_obs - 1)
 
 Also compare explained variance ratio to dense SVD.
 
-### 8. Townes reference test
+### 9. Townes reference test
 
 `tests/townes_reference/test_townes_reference.py` stores singular values
 generated from `null_residuals()` in the Townes `scrna2019` repository and

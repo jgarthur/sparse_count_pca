@@ -49,7 +49,7 @@ def test_poisson_pearson_matches_scanpy_residuals_and_pca(counts):
     # Singular values are distinct for this fixture, so the ordered, sign-flipped
     # component vectors are uniquely comparable rather than only their subspace.
     np.testing.assert_allclose(
-        result.loadings,
+        result.components.T,
         explicit.varm["PCs"],
         atol=1e-8,
         rtol=1e-8,
@@ -145,7 +145,7 @@ def test_equal_depth_scaled_nb_matches_sctransform_pearson_form(
         atol=1e-10,
     )
     np.testing.assert_allclose(
-        result.loadings,
+        result.components.T,
         explicit.varm["PCs"],
         rtol=1e-8,
         atol=1e-8,

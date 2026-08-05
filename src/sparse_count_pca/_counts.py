@@ -52,6 +52,11 @@ def _sum_counts(X: CSRMatrix, *, axis: int) -> Float64Array:
         return np.asarray(X.sum(axis=axis, dtype=np.float64)).ravel()
 
 
+def _empty_columns(X: CSRMatrix) -> BoolArray:
+    """Flag variables whose counts are zero in every observation."""
+    return _sum_counts(X, axis=0) == 0
+
+
 def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
     """Convert a count matrix to canonical CSR form and validate its data."""
     if isinstance(X, (CSRDataset, CSCDataset)):

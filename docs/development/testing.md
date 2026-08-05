@@ -9,8 +9,12 @@ plots alone is not enough to validate an implicit transform.
 uv sync --extra test --extra docs
 uv run python -m pytest
 uv run ruff check .
+uv run ruff format --check .
 uv run mkdocs build --strict
 ```
+
+CI runs all four. `ruff format` owns layout, so run `uv run ruff format .` to
+apply it rather than wrapping lines by hand.
 
 Normal tests are offline. External R and Python tooling used to regenerate
 pinned reference artifacts is provenance, not a runtime test dependency.

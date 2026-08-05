@@ -231,7 +231,6 @@ def _dirichlet_pca_anndata(
     *,
     transform: DirichletTransform,
     layer: str | None,
-    use_raw: bool,
     mask_var: Any,
     use_highly_variable: bool | None,
     key_added: str | None,
@@ -246,7 +245,7 @@ def _dirichlet_pca_anndata(
 ) -> AnnData | None:
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
-    X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
+    X = _get_count_matrix(adata, layer=layer)
     resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     resolved_prior = _resolve_prior_proportions(prior_proportions, adata)
     result = _compute_dirichlet_pca(
@@ -270,7 +269,6 @@ def _dirichlet_pca_anndata(
         mask=resolved_mask,
         key_added=key_added,
         layer=layer,
-        use_raw=use_raw,
     )
     return adata if copy else None
 
@@ -280,7 +278,6 @@ def dirichlet_log_pca(
     n_comps: int = 50,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
@@ -303,7 +300,6 @@ def dirichlet_log_pca(
             columns.
         n_comps: Number of principal components.
         layer: Count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -336,7 +332,6 @@ def dirichlet_log_pca(
         n_comps,
         transform="dirichlet_log",
         layer=layer,
-        use_raw=use_raw,
         mask_var=mask_var,
         use_highly_variable=use_highly_variable,
         key_added=key_added,
@@ -356,7 +351,6 @@ def dirichlet_clr_pca(
     n_comps: int = 50,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
@@ -379,7 +373,6 @@ def dirichlet_clr_pca(
             columns.
         n_comps: Number of principal components.
         layer: Count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -412,7 +405,6 @@ def dirichlet_clr_pca(
         n_comps,
         transform="dirichlet_clr",
         layer=layer,
-        use_raw=use_raw,
         mask_var=mask_var,
         use_highly_variable=use_highly_variable,
         key_added=key_added,

@@ -120,7 +120,8 @@ def residual_pca_matrix(
         n_comps: Number of principal components.
         model: Null model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
         residual: Residual type: ``"pearson"`` or ``"deviance"``.
-        alpha: Scalar or per-gene scaled-NB overdispersion.
+        alpha: Scalar or per-gene scaled-NB overdispersion. Values below
+            ``1e-8`` use the Poisson limit.
         clip: Positive clipping threshold, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
@@ -211,7 +212,6 @@ def residual_pca(
     n_comps: int = 50,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
@@ -244,8 +244,6 @@ def residual_pca(
         n_comps: Number of principal components. Must be smaller than both the
             observation count and number of selected variables.
         layer: Count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``. Mutually exclusive with
-            ``layer``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -255,7 +253,8 @@ def residual_pca(
         model: Null model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
         residual: Residual type: ``"pearson"`` or ``"deviance"``.
         alpha: Scalar, per-variable array, or ``adata.var`` key containing
-            scaled-NB overdispersion. Required only for ``model="scaled_nb"``.
+            scaled-NB overdispersion. Values below ``1e-8`` use the Poisson
+            limit. Required only for ``model="scaled_nb"``.
         clip: Positive clipping threshold applied to uncentered residuals, or
             ``None`` for no clipping.
         clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
@@ -297,7 +296,7 @@ def residual_pca(
     """
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
-    X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
+    X = _get_count_matrix(adata, layer=layer)
     resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_residual_pca(
@@ -324,6 +323,5 @@ def residual_pca(
         mask=resolved_mask,
         key_added=key_added,
         layer=layer,
-        use_raw=use_raw,
     )
     return adata if copy else None

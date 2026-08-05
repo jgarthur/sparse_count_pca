@@ -1,4 +1,4 @@
-# Transform catalogue
+# Transform catalog
 
 This page defines the transformations `sparse-count-pca` exposes, shows how
 each one is called, and records citations and validation. It notes differences
@@ -12,34 +12,37 @@ input validation, masking, dtype, and output contracts, see the
 | Transform | AnnData function | Matrix function | Two-step specification | Status |
 | --- | --- | --- | --- | --- |
 | Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; see notes on `scaled_nb` |
-| Count-scale shifted log | `shifted_log_pca` | `shifted_log_pca_matrix` | `ShiftedLog` | Supported |
 | Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes the PFlog parameterization |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported |
-| Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Experimental |
-| Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Experimental |
-| Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is experimental |
+| Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Numerically verified only |
+| Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Numerically verified only |
+| Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is numerically verified only |
 
 All PCA functions use observations in rows and variables in columns. A two-step
 specification is passed as the `method` argument of `transform`, which returns
 a `TransformedMatrix` for inspecting transformed values or running PCA more
 than once from one fitted normalization.
 
-Every transform is tested against an independently written dense implementation
-of its formula, covering materialized values, operator products, and PCA or CA
-outputs; the sections below name only the additional pinned external fixtures.
-Those fixtures test selected relationships to prior implementations. Neither
-kind of test makes methods scientifically interchangeable outside the stated
-conditions. The [testing guide](development/testing.md) describes the oracle
-hierarchy and tolerances.
+Status describes scientific validation, not API stability. Every transform is
+verified against an independently written dense implementation of its formula,
+so the label says whether anything beyond that is available:
+
+- **Supported**: also pinned against a named prior implementation, cited in the
+  section below.
+- **Numerically verified only**: implemented as specified, but with no external
+  implementation pinned — either none exists, or the method extends past the
+  available reference. Numeric agreement with a formula is not scientific
+  corroboration of the method.
+
+Pinned fixtures test selected relationships to prior implementations; they do
+not make methods scientifically interchangeable outside the stated conditions.
+The [testing guide](development/testing.md) describes the oracle hierarchy and
+tolerances.
 
 ## What this package does not do
 
-The table above is the complete set of transforms, and one absence is worth
-stating directly because a reader arriving from Scanpy may expect it: **there
-is no library-size-normalized log transform.** The count-scale shifted log
-applies `log1p(X / count_shift)` to raw counts; it does not estimate or divide
-by per-cell size factors, and it is not Scanpy's `normalize_total` followed by
-`log1p`.
+The table above is the complete set of transforms. In particular, there is no
+library-size-normalized log transform.
 
 That workflow is deliberately out of scope rather than merely unimplemented.
 Dividing by a row total and taking `log1p` maps zero to zero, so the normalized
@@ -184,34 +187,6 @@ support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
 
-## Count-scale shifted log
-
-### Formula
-
-For a positive raw-count shift \(a\),
-
-```math
-Z_{ij}=\log\left(1+\frac{X_{ij}}{a}\right).
-```
-
-This is `log(X + a)` with the constant `log(a)` removed. Because PCA operates on
-the column-centered transformed matrix, omitting that constant does not change
-the PCA result: the column-centered PCA is identical to PCA of
-\(\log(X_{ij}+a)\). This is the package's explicit raw-count parameterization of
-an elementary shifted-log transform; there is no external reference
-implementation to pin.
-
-### Interfaces and parameters
-
-Use `shifted_log_pca`, `shifted_log_pca_matrix`, or
-`ShiftedLog(count_shift=a)`. `count_shift` is required and has no implicit
-default.
-
-### Caveats
-
-This transform does **not** divide by observation totals; see
-[what this package does not do](#what-this-package-does-not-do).
-
 ## Count-scale shifted CLR
 
 ### Formula
@@ -343,9 +318,9 @@ prior. AnnData interfaces also accept an `adata.var` key.
 
 ### Caveats
 
-These are package-defined prior-count generalizations, with no external
-reference implementation to pin. Both APIs are experimental, and the prior is
-fitted on the full variable universe before `mask_var` selects PCA columns.
+These are prior-count generalizations with no external reference implementation
+to pin. The prior is fitted on the full variable universe before `mask_var`
+selects PCA columns.
 
 ## Correspondence analysis
 
@@ -375,6 +350,12 @@ negative-binomial variance used there,
 ```math
 V_{ij}=\mu_{ij}(1+\alpha_j\bar n p_j).
 ```
+
+It applies one depth-dispersion relationship across the whole matrix, so it
+does not represent batch structure. Fitting per batch is not a small adjustment
+to that: the mean depth and every gene proportion would become batch-specific,
+so the null model itself would differ by batch and the residuals would no
+longer be on a common scale. This package does not fit per batch.
 
 Both row and column outputs are principal coordinates: each singular vector is
 divided by the square root of its row or column mass, giving the standard

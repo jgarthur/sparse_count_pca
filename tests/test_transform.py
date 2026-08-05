@@ -7,13 +7,13 @@ from scipy.sparse.linalg import LinearOperator
 
 import sparse_count_pca as scp
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-from tests._oracles import _dense_shifted_log, _materialize_dense_residual
+from tests._oracles import _dense_count_shifted_clr, _materialize_dense_residual
 
 
 def test_transformed_matrix_is_linear_operator_and_materializes_exactly(counts):
     """A transformed matrix is an exact uncentered SciPy linear operator."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=0.7))
-    expected = _dense_shifted_log(counts, 0.7)
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
+    expected = _dense_count_shifted_clr(counts, 0.7)
 
     assert isinstance(transformed, LinearOperator)
     np.testing.assert_allclose(
@@ -26,7 +26,7 @@ def test_transformed_matrix_is_linear_operator_and_materializes_exactly(counts):
 
 def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
     """A fitted transform owns its sparse values and support arrays."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=1.0))
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=1.0))
     expected = transformed.materialize()
 
     counts.data[0] = 999
@@ -40,7 +40,6 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
     "method",
     [
         scp.Residual(),
-        scp.ShiftedLog(count_shift=1.0),
         scp.ShiftedCLR(count_shift=1.0),
         scp.ProportionShiftedCLR(composition_shift=1.0),
         scp.DirichletLog(),
@@ -59,7 +58,7 @@ def test_every_public_transform_rejects_empty_cells(counts, method):
 
 def test_returned_operator_is_isolated_from_fitted_transform(counts):
     """A retained PCA operator cannot mutate its source transformed matrix."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=1.0))
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=1.0))
     expected = transformed.materialize()
 
     result = transformed.pca(n_comps=2, return_operator=True)
@@ -78,7 +77,7 @@ def test_returned_operator_is_isolated_from_fitted_transform(counts):
 
 @pytest.mark.parametrize(
     "analysis",
-    ["residual", "shifted_log", "dirichlet", "correspondence"],
+    ["residual", "shifted_clr", "dirichlet", "correspondence"],
 )
 def test_one_step_returned_operator_takes_ownership_without_copy(
     counts, monkeypatch, analysis
@@ -102,8 +101,8 @@ def test_one_step_returned_operator_takes_ownership_without_copy(
     monkeypatch.setattr(SparseLowRankLinearOperator, "__init__", recording_init)
     if analysis == "residual":
         result = scp.residual_pca_matrix(counts, n_comps=2, return_operator=True)
-    elif analysis == "shifted_log":
-        result = scp.shifted_log_pca_matrix(
+    elif analysis == "shifted_clr":
+        result = scp.shifted_clr_pca_matrix(
             counts, n_comps=2, count_shift=1.0, return_operator=True
         )
     elif analysis == "dirichlet":
@@ -120,7 +119,7 @@ def test_one_step_returned_operator_takes_ownership_without_copy(
 def test_transformed_matrix_dtype_controls_products_materialization_and_pca(counts):
     """Transform dtype controls its operator, materialized values, and PCA."""
     transformed = scp.transform(
-        counts, scp.ShiftedLog(count_shift=0.7), dtype="float32"
+        counts, scp.ShiftedCLR(count_shift=0.7), dtype="float32"
     )
 
     assert transformed.dtype == np.dtype("float32")
@@ -133,8 +132,8 @@ def test_transformed_matrix_dtype_controls_products_materialization_and_pca(coun
 
 def test_materialize_accepts_arbitrary_positional_selections_and_out(counts, tmp_path):
     """Materialization supports ordered selections, scalar indices, and out."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=0.7))
-    expected = _dense_shifted_log(counts, 0.7)
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
+    expected = _dense_count_shifted_clr(counts, 0.7)
     out = np.memmap(tmp_path / "subset.dat", mode="w+", shape=(3, 2), dtype=np.float32)
 
     actual = transformed.materialize(obs=[4, 1, 4], var=[3, 0], out=out, block_size=2)
@@ -146,10 +145,57 @@ def test_materialize_accepts_arbitrary_positional_selections_and_out(counts, tmp
     assert transformed.materialize(obs=2, var=1).shape == (1, 1)
 
 
+def test_materialize_accepts_slice_and_boolean_mask_selections(counts):
+    """Materialization supports slices and boolean masks on both axes."""
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
+    expected = _dense_count_shifted_clr(counts, 0.7)
+
+    sliced = transformed.materialize(obs=slice(1, None, 2), var=slice(None, None, -2))
+    np.testing.assert_allclose(sliced, expected[1::2, ::-2], rtol=1e-14, atol=1e-14)
+
+    obs_mask = np.arange(counts.shape[0]) % 2 == 0
+    var_mask = np.arange(counts.shape[1]) % 3 != 0
+    masked = transformed.materialize(obs=obs_mask, var=var_mask)
+    np.testing.assert_allclose(
+        masked, expected[obs_mask][:, var_mask], rtol=1e-14, atol=1e-14
+    )
+
+
+def test_materialize_densifies_only_bounded_sparse_blocks(
+    counts, tmp_path, monkeypatch
+):
+    """Memmap materialization densifies no sparse block larger than block_size."""
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
+    expected = _dense_count_shifted_clr(counts, 0.7)
+    out = np.memmap(
+        tmp_path / "full.dat", mode="w+", shape=counts.shape, dtype=np.float64
+    )
+    block_size = 2
+    dense_block_shapes = []
+    sparse_type = type(transformed._sparse)
+    original_toarray = sparse_type.toarray
+
+    def recording_toarray(matrix, *args, **kwargs):
+        dense_block_shapes.append(matrix.shape)
+        return original_toarray(matrix, *args, **kwargs)
+
+    monkeypatch.setattr(sparse_type, "toarray", recording_toarray)
+
+    actual = transformed.materialize(out=out, block_size=block_size)
+
+    assert actual is out
+    np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
+    assert dense_block_shapes == [
+        (min(block_size, counts.shape[0] - start), counts.shape[1])
+        for start in range(0, counts.shape[0], block_size)
+    ]
+    assert all(shape[0] <= block_size for shape in dense_block_shapes)
+
+
 def test_materialize_accepts_anndata_names(adata):
     """Transforms built from AnnData accept observation and variable names."""
-    transformed = scp.transform(adata, scp.ShiftedLog(count_shift=1.0))
-    expected = _dense_shifted_log(adata.X, 1.0)
+    transformed = scp.transform(adata, scp.ShiftedCLR(count_shift=1.0))
+    expected = _dense_count_shifted_clr(adata.X, 1.0)
 
     actual = transformed.materialize(
         obs=[adata.obs_names[3], adata.obs_names[0]],
@@ -163,7 +209,7 @@ def test_materialize_accepts_anndata_names(adata):
 
 def test_full_variable_access_warns_for_csr_backend(counts):
     """Selecting variables across every row warns about CSR access cost."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=1.0))
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=1.0))
 
     with pytest.warns(sparse.SparseEfficiencyWarning, match="Selecting variables"):
         column = transformed.materialize(var=1)
@@ -173,7 +219,7 @@ def test_full_variable_access_warns_for_csr_backend(counts):
 
 def test_materialize_validates_out_and_block_size(counts):
     """Materialization validates destination shape, dtype, and block size."""
-    transformed = scp.transform(counts, scp.ShiftedLog(count_shift=1.0))
+    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=1.0))
 
     with pytest.raises(ValueError, match="out must have shape"):
         transformed.materialize(obs=[0, 1], out=np.empty((1, counts.shape[1])))

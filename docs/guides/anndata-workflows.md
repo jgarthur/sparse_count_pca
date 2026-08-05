@@ -1,26 +1,24 @@
 # AnnData workflows
 
 The AnnData functions are meant to drop into a Scanpy workflow in place of a
-normalization-plus-PCA step. They read counts from `.X`, a layer, or `.raw.X`,
-resolve the same `highly_variable` mask, and write scores and components to the
-same keys, so everything downstream continues unchanged.
+normalization-plus-PCA step. They read counts from `.X` or a layer, resolve the
+same `highly_variable` mask, and write scores and components to the same keys,
+so everything downstream continues unchanged.
 
 This guide's [complete example](#complete-example) is
 [`examples/anndata_workflows.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/anndata_workflows.py).
 
 ## Select the count matrix
 
-Use exactly one source:
+Use `.X` or a named layer:
 
 ```python
 scp.residual_pca(adata)                  # adata.X
 scp.residual_pca(adata, layer="counts")  # adata.layers["counts"]
-scp.residual_pca(adata, use_raw=True)    # adata.raw.X
 ```
 
-`layer` and `use_raw=True` are mutually exclusive. Input arrays must contain
-finite, nonnegative counts. Floating-point inputs are accepted when their
-values are integer-like within the package tolerance.
+Input arrays must contain finite, nonnegative counts. Floating-point inputs are
+accepted when their values are integer-like within the package tolerance.
 
 ## Select PCA variables
 

@@ -20,6 +20,7 @@ from ._counts import (
     BoolArray,
     CountMatrix,
     _canonicalize_counts,
+    _empty_columns,
     _sum_counts,
     _validate_boolean_mask,
 )
@@ -133,19 +134,23 @@ def _compute_correspondence_analysis(
     n_vars = counts.shape[1]
     if model not in {"poisson", "scaled_nb"}:
         raise ValueError("model must be 'poisson' or 'scaled_nb'")
-    alpha_full = _validate_model(model, "pearson", alpha, n_vars)
+    selected = np.ones(n_vars, dtype=bool)
     if mask is not None:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-        if not mask.any():
+        selected = _validate_boolean_mask(mask, n_vars, name="mask")
+        if not selected.any():
             raise ValueError("mask selected zero columns")
-        if not mask.all():
-            counts = counts[:, mask].tocsr(copy=False)
-            if alpha_full is not None:
-                alpha_full = alpha_full[mask]
-    if not 1 <= n_comps < min(counts.shape):
-        raise ValueError(
-            "n_comps must satisfy 1 <= n_comps < min(n_rows, n_columns_used)"
-        )
+    # A zero-mass column contributes nothing to the fitted table: its
+    # standardized deviation is zero by continuity, so its overdispersion
+    # cannot reach any output. Emptiness is a property of the input rather than
+    # of the mask, so this matches the residual families and does not depend on
+    # which columns were selected.
+    alpha_full = _validate_model(
+        model, "pearson", alpha, n_vars, ignore=_empty_columns(counts)
+    )
+    if not selected.all():
+        counts = counts[:, selected].tocsr(copy=False)
+        if alpha_full is not None:
+            alpha_full = alpha_full[selected]
     row_totals = _sum_counts(counts, axis=1)
     column_totals = _sum_counts(counts, axis=0)
     if not (np.isfinite(row_totals).all() and np.isfinite(column_totals).all()):
@@ -155,10 +160,25 @@ def _compute_correspondence_analysis(
             "Rows with zero mass are not supported; filter empty rows out of "
             "the count table first"
         )
-    if (column_totals == 0).any():
+    empty_columns = column_totals == 0
+    n_empty_vars = int(empty_columns.sum())
+    n_rows, n_columns = counts.shape
+    # Named apart from ``n_columns_used``, which is the analyzed table width and
+    # still counts retained zero-mass columns.
+    n_nonempty_columns = n_columns - n_empty_vars
+    if not 1 <= n_comps < min(n_rows, n_nonempty_columns):
+        detail = (
+            ""
+            if not n_empty_vars
+            else (
+                f"; n_nonempty_columns excludes {n_empty_vars} of the "
+                f"{n_columns} analyzed columns that have zero mass"
+            )
+        )
         raise ValueError(
-            "Columns with zero mass are not supported; filter empty columns out "
-            "of the count table first, or exclude them with mask_var"
+            "n_comps must satisfy 1 <= n_comps < "
+            f"min(n_rows={n_rows}, n_nonempty_columns={n_nonempty_columns}); "
+            f"got n_comps={n_comps}{detail}"
         )
     if model == "scaled_nb":
         warnings.warn(
@@ -206,9 +226,15 @@ def _compute_correspondence_analysis(
     right = decomposition.right_vectors.T.astype(np.float64, copy=False)
     singular_values = decomposition.singular_values
     row_principal = left * singular_values[None, :] / np.sqrt(row_masses)[:, None]
-    column_principal = (
-        right * singular_values[None, :] / np.sqrt(column_masses)[:, None]
-    )
+    # A zero-mass column has a zero singular-vector entry, but the principal
+    # coordinate divides by the square root of its mass, so it alone is
+    # genuinely undefined and is reported as NaN rather than dropped.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        column_principal = (
+            right * singular_values[None, :] / np.sqrt(column_masses)[:, None]
+        )
+    if n_empty_vars:
+        column_principal[empty_columns] = np.nan
     inertias = singular_values**2
     params = {
         "analysis": "correspondence_analysis",
@@ -222,6 +248,7 @@ def _compute_correspondence_analysis(
         ),
         "zero_center": False,
         "n_comps": n_comps,
+        "n_empty_vars": n_empty_vars,
         "solver": solver,
         "random_state": random_state,
         "tol": tol,
@@ -265,12 +292,15 @@ def correspondence_analysis_matrix(
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of correspondence axes. Must be smaller than both
-            matrix dimensions.
+        n_comps: Number of correspondence axes. Must be smaller than the
+            observation count and than the number of analyzed columns with
+            nonzero mass.
         model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
             experimental residual ordination.
-        alpha: Scalar or per-variable nonnegative overdispersion. Required only
-            when ``model="scaled_nb"``.
+        alpha: Scalar or per-variable nonnegative overdispersion. Values below
+            ``1e-8`` use the Poisson limit. Values for analyzed columns with
+            zero mass are replaced with zero instead of being validated.
+            Required only when ``model="scaled_nb"``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``.
@@ -314,7 +344,6 @@ def correspondence_analysis(
     n_comps: int = 2,
     *,
     layer: str | None = None,
-    use_raw: bool = False,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
     key_added: str | None = None,
@@ -338,8 +367,6 @@ def correspondence_analysis(
             columns.
         n_comps: Number of correspondence axes.
         layer: Count layer to use. By default, use ``adata.X``.
-        use_raw: Whether to use ``adata.raw.X``. Mutually exclusive with
-            ``layer``.
         mask_var: Boolean array or ``adata.var`` key defining table columns.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -349,7 +376,7 @@ def correspondence_analysis(
         model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
             experimental residual ordination.
         alpha: Scalar, per-variable array, or ``adata.var`` key containing
-            scaled-NB overdispersion.
+            scaled-NB overdispersion. Values below ``1e-8`` use the Poisson limit.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and calculation dtype.
         solver: SVD solver. Only ``"arpack"`` is supported.
@@ -373,7 +400,7 @@ def correspondence_analysis(
     """
     if copy:
         adata = adata.to_memory() if adata.isbacked else adata.copy()
-    X = _get_count_matrix(adata, layer=layer, use_raw=use_raw)
+    X = _get_count_matrix(adata, layer=layer)
     resolved_mask = _resolve_mask_var(adata.var, mask_var, use_highly_variable)
     alpha_values = _resolve_alpha(alpha, adata, model)
     result = _compute_correspondence_analysis(
@@ -402,7 +429,6 @@ def correspondence_analysis(
     params.update(
         {
             "layer": layer,
-            "use_raw": use_raw,
             "mask_var": resolved_mask.mask_var,
             "use_highly_variable": resolved_mask.use_highly_variable,
             "mask_var_details": resolved_mask.details,

@@ -55,7 +55,7 @@ Start with [`src/sparse_count_pca/__init__.py`](https://github.com/jgarthur/spar
 It exports complete one-step analyses plus an explicit two-step transform API:
 
 - residual PCA: `residual_pca`, `residual_pca_matrix`;
-- count-scale log and CLR: `shifted_log_pca`, `shifted_clr_pca` and matrix variants;
+- count-scale CLR: `shifted_clr_pca` and its matrix variant;
 - composition-scale CLR: `proportion_shifted_clr_pca` and matrix variant;
 - prior-count transforms: `dirichlet_log_pca`, `dirichlet_clr_pca` and matrix
   variants;
@@ -153,7 +153,6 @@ prior-count parameterization and AnnData prior alignment.
 
 | Transform | Shift domain | Representation rank | Empty cells |
 | --- | --- | ---: | --- |
-| shifted log | fixed raw count | 0 | rejected by input policy |
 | shifted CLR | fixed raw count | 1 | rejected by input policy |
 | composition-scale shifted CLR | composition scale | 1 | rejected |
 | Dirichlet log closure | prior counts | at most 2 | rejected by input policy |

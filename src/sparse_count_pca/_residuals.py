@@ -10,6 +10,7 @@ from scipy import sparse
 from scipy.special import xlogy
 
 from ._clip import ClipMode, apply_clipping
+from ._counts import BoolArray
 from ._representation import SparseLowRankMatrix
 
 ALPHA_EPS = 1e-8
@@ -77,6 +78,8 @@ def _validate_model(
     residual: ResidualType,
     alpha: AlphaLike,
     n_vars: int,
+    *,
+    ignore: BoolArray | None = None,
 ) -> Float64Array | None:
     """Validate a residual specification and normalize overdispersion.
 
@@ -85,6 +88,8 @@ def _validate_model(
         residual: Residual type.
         alpha: Scalar or per-gene overdispersion for the scaled-NB model.
         n_vars: Number of genes represented by ``alpha``.
+        ignore: Genes whose overdispersion cannot affect any output. Their
+            values are replaced with zero instead of being validated.
 
     Returns:
         A float64 overdispersion vector for the scaled-NB model, otherwise
@@ -109,6 +114,12 @@ def _validate_model(
         alpha_array = np.full(n_vars, float(alpha_array), dtype=np.float64)
     if alpha_array.ndim != 1 or alpha_array.shape[0] != n_vars:
         raise ValueError("alpha must be a scalar or have shape (n_vars,)")
+    if ignore is not None and ignore.any():
+        # Overdispersion scales only its own gene's residual variance. A gene
+        # with no counts contributes no residual, so its value cannot reach any
+        # output; replace it with zero rather than validating it. Shape is
+        # still checked above, so a wrong-length array still raises.
+        alpha_array = np.where(ignore, 0.0, alpha_array)
     if not np.isfinite(alpha_array).all():
         raise ValueError("alpha must contain only finite values")
     if (alpha_array < 0).any():
@@ -346,7 +357,10 @@ def build_residual_representation(
         residual_nonzero = np.sign(x - mu) * np.sqrt(deviance)
 
     if clip is not None and clip_mode == "upper":
-        assert (u < 0).all() and (v > 0).all()
+        # ``v_j`` is zero exactly for a gene with no counts, whose structural
+        # zeros are already zero rather than negative. Upper clipping still
+        # leaves them alone, so the invariant only needs ``v >= 0``.
+        assert (u < 0).all() and (v >= 0).all()
     S = apply_clipping(
         X,
         residual_nonzero,

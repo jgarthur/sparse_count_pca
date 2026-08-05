@@ -4,11 +4,8 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-from anndata import AnnData
-from scipy import sparse
 
 from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
-from sparse_count_pca._anndata import _get_count_matrix
 
 
 def test_default_outputs_and_copy(adata):
@@ -210,58 +207,6 @@ def test_deprecated_highly_variable_alias(adata):
         )
 
 
-def test_use_raw_aligns_current_var_names(adata):
-    """Raw count selection is reordered and subset to current variables."""
-    # Raw contains an extra leading gene; selection must discard it and align the
-    # remaining columns to the current adata.var_names before PCA.
-    raw = AnnData(
-        sparse.csr_matrix(
-            [
-                [9, 5, 1, 0, 2],
-                [9, 1, 4, 2, 0],
-                [9, 0, 2, 5, 1],
-                [9, 3, 0, 1, 4],
-                [9, 2, 3, 0, 2],
-                [9, 1, 1, 3, 2],
-            ]
-        )
-    )
-    raw.var_names = ["extra", "a", "b", "c", "d"]
-    adata.raw = raw
-    expected = residual_pca_matrix(raw[:, adata.var_names].X, 2, dtype="float64")
-    result = residual_pca(adata, 2, use_raw=True, copy=True, dtype="float64")
-    np.testing.assert_allclose(
-        result.uns["pca"]["singular_values"],
-        expected.singular_values,
-        rtol=0.0,
-        atol=1e-12,
-    )
-    assert result.varm["PCs"].shape == (adata.n_vars, 2)
-
-
-def test_use_raw_with_exact_variable_alignment_borrows_raw_matrix(adata):
-    """An exactly aligned raw matrix is returned without a column slice."""
-    adata.raw = adata.copy()
-
-    selected = _get_count_matrix(adata, layer=None, use_raw=True)
-
-    assert selected is adata.raw.X
-
-
-def test_use_raw_validation(adata):
-    """Raw count selection rejects conflicts and missing variable names."""
-    with pytest.raises(ValueError, match="adata.raw is None"):
-        residual_pca(adata, 2, use_raw=True)
-    with pytest.raises(ValueError, match="Specify only one"):
-        residual_pca(adata, 2, use_raw=True, layer="counts")
-
-    raw = AnnData(adata.X[:, :3].copy())
-    raw.var_names = adata.var_names[:3]
-    adata.raw = raw
-    with pytest.raises(ValueError, match="all current"):
-        residual_pca(adata, 2, use_raw=True)
-
-
 def test_backed_sparse_x(adata, tmp_path):
     """Backed sparse counts produce the same result as in-memory counts."""
     path = tmp_path / "counts.h5ad"
@@ -275,9 +220,26 @@ def test_backed_sparse_x(adata, tmp_path):
         inplace_singular_values = backed.uns["pca"]["singular_values"].copy()
         assert returned is None
         assert backed.isbacked
+        assert "X_pca" in backed.obsm
+        assert "PCs" in backed.varm
+        assert "pca" in backed.uns
+        np.testing.assert_allclose(
+            backed.obsm["X_pca"], matrix_result.scores, rtol=0.0, atol=1e-12
+        )
+        np.testing.assert_allclose(
+            backed.varm["PCs"], matrix_result.components.T, rtol=0.0, atol=1e-12
+        )
         result = residual_pca(backed, 2, copy=True, dtype="float64")
     finally:
         backed.file.close()
+
+    reopened = ad.read_h5ad(path, backed="r")
+    try:
+        assert "X_pca" not in reopened.obsm
+        assert "PCs" not in reopened.varm
+        assert "pca" not in reopened.uns
+    finally:
+        reopened.file.close()
 
     assert not result.isbacked
     np.testing.assert_allclose(

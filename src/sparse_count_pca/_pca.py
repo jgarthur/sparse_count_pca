@@ -24,9 +24,6 @@ class PCAResult:
         scores: Observation coordinates with shape ``(n_obs, n_comps)``.
         components: Right singular vectors with shape
             ``(n_comps, n_vars_used)``.
-        loadings: Transposed component array with shape
-            ``(n_vars_used, n_comps)``. This is a convenience alias for
-            ``components.T``, not a variance-weighted statistical loading.
         singular_values: Singular values in descending order.
         explained_variance: Per-component sample variance, calculated as the
             squared singular values divided by ``n_obs - 1``.
@@ -41,7 +38,6 @@ class PCAResult:
 
     scores: FloatArray
     components: FloatArray
-    loadings: FloatArray
     singular_values: NDArray[np.float64]
     explained_variance: NDArray[np.float64]
     explained_variance_ratio: NDArray[np.float64]
@@ -49,6 +45,24 @@ class PCAResult:
     total_variance: float
     params: dict[str, Any]
     operator: SparseLowRankLinearOperator | None = None
+
+
+def _count_nonempty_columns(representation: SparseLowRankMatrix) -> int:
+    """Count columns that are structurally, not numerically, nonzero.
+
+    A column counts as nonempty when it has stored sparse support or a nonzero
+    low-rank factor. Exact cancellation between the two terms is not detected,
+    so this is an upper bound on the rank rather than a rank estimate. It is
+    used only to stop empty variables from admitting extra components.
+    """
+    nonzero = np.zeros(representation.shape[1], dtype=bool)
+    sparse_part = representation.sparse
+    if sparse_part.nnz:
+        nonzero[sparse_part.indices] = True
+    right = representation.right
+    if right.shape[1]:
+        nonzero |= np.any(right != 0.0, axis=1)
+    return int(nonzero.sum())
 
 
 def compute_pca_from_representation(
@@ -69,11 +83,26 @@ def compute_pca_from_representation(
     if solver != "arpack":
         raise NotImplementedError("Only solver='arpack' is supported in v1")
     operator_dtype = _normalize_operator_dtype(dtype)
-    n_obs, n_vars = representation.shape
-    if not 1 <= n_comps < min(n_obs, n_vars):
+    n_obs, n_selected = representation.shape
+    # A column that is identically zero carries no variance and cannot support
+    # a component. This is a dimension rule about empty variables, not a rank
+    # estimate: it does not detect columns that are only numerically zero.
+    n_nonempty = _count_nonempty_columns(representation)
+    if not 1 <= n_comps < min(n_obs, n_nonempty):
+        n_zero = n_selected - n_nonempty
+        detail = (
+            ""
+            if not n_zero
+            else (
+                f"; n_nonempty_vars excludes {n_zero} of the {n_selected} "
+                "selected variables that are identically zero and carry no "
+                "variance"
+            )
+        )
         raise ValueError(
-            "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
-            "when solver='arpack'"
+            "n_comps must satisfy 1 <= n_comps < "
+            f"min(n_obs={n_obs}, n_nonempty_vars={n_nonempty}) when "
+            f"solver='arpack'; got n_comps={n_comps}{detail}"
         )
 
     operator = SparseLowRankLinearOperator(
@@ -108,7 +137,7 @@ def compute_pca_from_representation(
         **params,
         "zero_center": True,
         "n_comps": n_comps,
-        "pca_n_vars": n_vars,
+        "pca_n_vars": representation.shape[1],
         "solver": solver,
         "random_state": random_state,
         "tol": tol,
@@ -120,7 +149,6 @@ def compute_pca_from_representation(
     return PCAResult(
         scores=scores,
         components=components,
-        loadings=components.T,
         singular_values=singular_values,
         explained_variance=explained_variance,
         explained_variance_ratio=explained_variance / total_variance,
