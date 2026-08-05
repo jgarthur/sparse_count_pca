@@ -62,9 +62,9 @@ variance explained by each retained component.
 The ARPACK solver requires `n_comps` to be strictly less than both the number
 of observations and the number of selected variables whose transformed column
 is not identically zero, which is why the example above uses 2 for a
-four-by-four matrix. Such a column cannot support a component. For residual
-PCA and correspondence analysis these are exactly the genes with no counts;
-other transforms give those genes a nonzero value, so they still count.
+four-by-four matrix. Such a column carries no variance and cannot support a
+component. Whether a gene with no counts produces one depends on the transform;
+each transform's guide states its own behavior.
 
 ## What was written
 
