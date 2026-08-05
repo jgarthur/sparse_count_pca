@@ -134,20 +134,22 @@ def _compute_correspondence_analysis(
     n_vars = counts.shape[1]
     if model not in {"poisson", "scaled_nb"}:
         raise ValueError("model must be 'poisson' or 'scaled_nb'")
+    selected = np.ones(n_vars, dtype=bool)
+    if mask is not None:
+        selected = _validate_boolean_mask(mask, n_vars, name="mask")
+        if not selected.any():
+            raise ValueError("mask selected zero columns")
     # A zero-mass column contributes nothing to the fitted table: its
     # standardized deviation is zero by continuity, so its overdispersion
-    # cannot reach any output.
+    # cannot reach any output. The mask defines the analyzed table, so this
+    # uses the same scope as the reported n_empty_vars.
     alpha_full = _validate_model(
-        model, "pearson", alpha, n_vars, ignore=_empty_columns(counts)
+        model, "pearson", alpha, n_vars, ignore=_empty_columns(counts) & selected
     )
-    if mask is not None:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-        if not mask.any():
-            raise ValueError("mask selected zero columns")
-        if not mask.all():
-            counts = counts[:, mask].tocsr(copy=False)
-            if alpha_full is not None:
-                alpha_full = alpha_full[mask]
+    if not selected.all():
+        counts = counts[:, selected].tocsr(copy=False)
+        if alpha_full is not None:
+            alpha_full = alpha_full[selected]
     row_totals = _sum_counts(counts, axis=1)
     column_totals = _sum_counts(counts, axis=0)
     if not (np.isfinite(row_totals).all() and np.isfinite(column_totals).all()):

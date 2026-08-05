@@ -40,10 +40,9 @@ fitted mean that all three share.
 The fitted cell totals and gene proportions use every gene in the chosen count
 matrix before the PCA variable mask is applied. A gene with zero total count is
 kept, not dropped: its fitted mean is zero, so its residual is zero and it
-carries no variance. It therefore receives a coefficient of exactly zero and
-leaves every other gene's result untouched, and the count is reported as
-`n_empty_vars`. You can pass a matrix straight from a cell subset without
-re-filtering genes.
+carries no variance. Its coefficient therefore comes back as zero, every other
+gene's result is untouched, and the count is reported as `n_empty_vars`. You
+can pass a matrix straight from a cell subset without re-filtering genes.
 
 Empty *cells* are a different matter and are rejected outright. Remove
 zero-total rows from the same matrix or layer before calling.

@@ -233,6 +233,37 @@ def test_ca_keeps_zero_mass_columns_and_reports_undefined_coordinates():
     )
 
 
+def test_ca_ignores_overdispersion_of_a_zero_mass_column():
+    """A non-finite scaled-NB estimate on a zero-mass column cannot reach output."""
+    values = np.array([[5, 0, 3, 2], [2, 0, 1, 4], [3, 0, 6, 1], [1, 0, 2, 5]])
+    X = sparse.csr_matrix(values.astype(np.float64))
+    alpha = np.full(4, 0.1)
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        expected = correspondence_analysis_matrix(
+            X, n_comps=2, model="scaled_nb", alpha=alpha
+        )
+    alpha[1] = np.nan
+
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        result = correspondence_analysis_matrix(
+            X, n_comps=2, model="scaled_nb", alpha=alpha
+        )
+
+    np.testing.assert_allclose(
+        result.singular_values, expected.singular_values, rtol=0.0, atol=1e-12
+    )
+    assert np.isfinite(result.row_principal_coordinates).all()
+
+    # A column that carries mass is still validated, as is array shape.
+    alpha[0] = np.nan
+    with pytest.raises(ValueError, match="alpha must contain only finite values"):
+        correspondence_analysis_matrix(X, n_comps=2, model="scaled_nb", alpha=alpha)
+    with pytest.raises(ValueError, match="alpha must be a scalar or have shape"):
+        correspondence_analysis_matrix(
+            X, n_comps=2, model="scaled_nb", alpha=np.full(3, 0.1)
+        )
+
+
 def test_ca_writes_nan_varm_for_a_zero_mass_gene():
     """A zero-mass column receives NaN principal coordinates in varm."""
     adata = AnnData(sparse.csr_matrix([[1, 0, 3], [2, 0, 1], [3, 0, 2]]))

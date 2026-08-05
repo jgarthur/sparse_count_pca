@@ -47,8 +47,14 @@ class PCAResult:
     operator: SparseLowRankLinearOperator | None = None
 
 
-def _count_nonzero_columns(representation: SparseLowRankMatrix) -> int:
-    """Count columns that are not identically zero before centering."""
+def _count_nonempty_columns(representation: SparseLowRankMatrix) -> int:
+    """Count columns that are structurally, not numerically, nonzero.
+
+    A column counts as nonempty when it has stored sparse support or a nonzero
+    low-rank factor. Exact cancellation between the two terms is not detected,
+    so this is an upper bound on the rank rather than a rank estimate. It is
+    used only to stop empty variables from admitting extra components.
+    """
     nonzero = np.zeros(representation.shape[1], dtype=bool)
     sparse_part = representation.sparse
     if sparse_part.nnz:
@@ -78,25 +84,25 @@ def compute_pca_from_representation(
         raise NotImplementedError("Only solver='arpack' is supported in v1")
     operator_dtype = _normalize_operator_dtype(dtype)
     n_obs, n_selected = representation.shape
-    # An identically zero column carries no variance and cannot support a
-    # component, so the bound uses the informative column count. This matters
-    # for residual families, where an empty gene's column is exactly zero.
-    n_vars = _count_nonzero_columns(representation)
-    if not 1 <= n_comps < min(n_obs, n_vars):
-        n_zero = n_selected - n_vars
+    # A column that is identically zero carries no variance and cannot support
+    # a component. This is a dimension rule about empty variables, not a rank
+    # estimate: it does not detect columns that are only numerically zero.
+    n_nonempty = _count_nonempty_columns(representation)
+    if not 1 <= n_comps < min(n_obs, n_nonempty):
+        n_zero = n_selected - n_nonempty
         detail = (
             ""
             if not n_zero
             else (
-                f"; n_vars_used excludes {n_zero} of the {n_selected} selected "
-                "variables that are identically zero and carry no variance "
-                "(for residual transforms, variables with no counts)"
+                f"; n_nonempty_vars excludes {n_zero} of the {n_selected} "
+                "selected variables that are identically zero and carry no "
+                "variance"
             )
         )
         raise ValueError(
             "n_comps must satisfy 1 <= n_comps < "
-            f"min(n_obs={n_obs}, n_vars_used={n_vars}) when solver='arpack'; "
-            f"got n_comps={n_comps}{detail}"
+            f"min(n_obs={n_obs}, n_nonempty_vars={n_nonempty}) when "
+            f"solver='arpack'; got n_comps={n_comps}{detail}"
         )
 
     operator = SparseLowRankLinearOperator(

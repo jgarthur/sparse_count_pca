@@ -189,9 +189,10 @@ def apply_clipping(
         return sparse.csr_matrix(
             (data, X.indices.copy(), X.indptr.copy()), shape=X.shape
         )
-    # Residual construction guarantees u < 0 and v > 0, so every structural-
-    # zero residual u_i v_j is negative. Upper clipping therefore cannot alter
-    # structural zeros; symmetric clipping only needs lower-tail corrections.
+    # Residual construction guarantees u < 0 and v >= 0, so every structural-
+    # zero residual u_i v_j is negative, or zero for a gene with no counts.
+    # Upper clipping therefore cannot alter structural zeros; symmetric
+    # clipping only needs lower-tail corrections.
     if clip_mode == "upper":
         data = np.minimum(residual_nonzero, clip) - uv_nonzero
         S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)

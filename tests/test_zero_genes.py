@@ -114,15 +114,55 @@ def test_two_step_transform_keeps_the_source_variable_universe(
     assert result.params["pca_n_vars"] == int(mask.sum())
 
 
-def test_residual_rejects_n_comps_beyond_the_informative_rank(
+def test_residual_rejects_n_comps_beyond_the_nonempty_column_count(
     counts: sparse.csr_matrix,
 ) -> None:
     """Empty genes cannot buy components that carry no variance."""
     with_zero = _with_zero_gene(counts)
-    n_informative = counts.shape[1]
 
     with pytest.raises(ValueError, match="identically zero and carry no variance"):
-        scp.residual_pca_matrix(with_zero, n_comps=n_informative)
+        scp.residual_pca_matrix(with_zero, n_comps=counts.shape[1])
+
+
+@pytest.mark.parametrize("clip_mode", ["upper", "symmetric"])
+@pytest.mark.parametrize(
+    ("model", "residual", "alpha"),
+    [
+        ("poisson", "pearson", None),
+        ("poisson", "deviance", None),
+        ("binomial", "pearson", None),
+        ("binomial", "deviance", None),
+        ("scaled_nb", "pearson", np.array([0.0, 0.1, 0.3, 1.0])),
+        ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
+    ],
+)
+def test_clipped_residuals_tolerate_an_empty_gene(
+    counts: sparse.csr_matrix,
+    model: str,
+    residual: str,
+    alpha: np.ndarray | None,
+    clip_mode: str,
+) -> None:
+    """Clipping an empty gene's zero column leaves every retained value alone."""
+    with_zero = _with_zero_gene(counts)
+    full_alpha = None if alpha is None else np.append(alpha, 0.3)
+    kwargs = dict(
+        n_comps=2,
+        model=model,
+        residual=residual,
+        clip=1.5,
+        clip_mode=clip_mode,
+        clip_max_nnz_ratio=None,
+        dtype="float64",
+    )
+
+    expected = scp.residual_pca_matrix(counts, alpha=alpha, **kwargs)
+    actual = scp.residual_pca_matrix(with_zero, alpha=full_alpha, **kwargs)
+
+    np.testing.assert_allclose(
+        actual.singular_values, expected.singular_values, rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(actual.components[:, -1], 0.0, rtol=0.0, atol=1e-12)
 
 
 def test_residual_ignores_overdispersion_of_an_empty_gene(

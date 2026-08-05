@@ -357,7 +357,10 @@ def build_residual_representation(
         residual_nonzero = np.sign(x - mu) * np.sqrt(deviance)
 
     if clip is not None and clip_mode == "upper":
-        assert (u < 0).all() and (v > 0).all()
+        # ``v_j`` is zero exactly for a gene with no counts, whose structural
+        # zeros are already zero rather than negative. Upper clipping still
+        # leaves them alone, so the invariant only needs ``v >= 0``.
+        assert (u < 0).all() and (v >= 0).all()
     S = apply_clipping(
         X,
         residual_nonzero,

@@ -620,21 +620,29 @@ Passed through to `scipy.sparse.linalg.svds(..., tol=tol)`.
 Must satisfy:
 
 ```python
-if not 1 <= n_comps < min(n_obs, n_vars_used):
+if not 1 <= n_comps < min(n_obs, n_nonempty_vars):
     raise ValueError(
-        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
+        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_nonempty_vars) "
         "when solver='arpack'"
     )
 ```
 
-`n_vars_used` counts the selected columns that are not identically zero, so an
-empty gene cannot support a component. The selected column count, `int(mask.sum())`
-after `mask_var` resolution, is recorded as `pca_n_vars`. Do not silently clamp.
+`n_nonempty_vars` counts the selected columns that are not identically zero, so
+an empty gene cannot support a component. It is deliberately distinct from
+`n_vars_used`, which everywhere else means the selected output width and
+therefore still counts retained empty genes. The selected column count,
+`int(mask.sum())` after `mask_var` resolution, is recorded as `pca_n_vars`. Do
+not silently clamp.
 
-The message reports `n_comps`, `n_obs`, and `n_vars_used` as values. When
-`n_vars_used` is smaller than the selected column count, it also says how many
-selected variables are identically zero and what that means, so the bound is not
-mistaken for an off-by-one.
+This is a dimension rule about empty variables, not a rank estimate. A column
+counts as nonempty when it has stored sparse support or a nonzero low-rank
+factor; exact cancellation between those terms is not detected, so the count is
+an upper bound on the rank.
+
+The message reports `n_comps`, `n_obs`, and `n_nonempty_vars` as values, and
+when `n_nonempty_vars` is smaller than the selected column count it also says
+how many selected variables are identically zero, so the bound is not mistaken
+for an off-by-one.
 
 ### `copy`
 
@@ -785,9 +793,9 @@ Its value is well defined in each family:
 
 For the residual and correspondence families the column is **identically
 zero**. Such a column carries no variance and no inertia, so it contributes
-nothing to the decomposition and receives a coefficient of exactly zero. An
-empty gene therefore cannot change any other gene's result, and the outcome is
-identical to the same input with the column removed. Two consequences:
+nothing to the decomposition and its coefficient comes back as zero to solver
+precision. An empty gene therefore cannot change any other gene's result, and
+the outcome matches the same input with the column removed. Two consequences:
 
 * `n_comps` is validated against the number of columns that are not
   identically zero, so empty genes cannot buy components that carry no
@@ -827,12 +835,11 @@ transform rather than a property of the observation. No family produces an
 informative embedding for one.
 
 Empty cells are rejected rather than marked, because the marker would not be
-inert. `np.nan` in `varm` is never consumed numerically by downstream tools,
-whereas `np.nan` in `obsm` is: a neighbor graph built from scores containing a
-`NaN` row can acquire edges to that row without raising, leaving the exclusion
-invisible downstream. Removing an empty cell also discards no information,
-since its counts are all zero. Filter zero-total rows out of the same matrix or
-layer before calling.
+inert. Scores in `obsm` feed directly into downstream neighbor and embedding
+steps: a neighbor graph built from scores containing a `NaN` row can acquire
+edges to that row without raising, leaving the exclusion invisible downstream.
+Removing an empty cell also discards no information, since its counts are all
+zero. Filter zero-total rows out of the same matrix or layer before calling.
 
 ## Parameter estimation
 
@@ -1527,9 +1534,9 @@ raise NotImplementedError("Only solver='arpack' is supported in v1")
 Validate `n_comps` before calling ARPACK:
 
 ```python
-if not 1 <= n_comps < min(n_obs, n_vars_used):
+if not 1 <= n_comps < min(n_obs, n_nonempty_vars):
     raise ValueError(
-        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
+        "n_comps must satisfy 1 <= n_comps < min(n_obs, n_nonempty_vars) "
         "when solver='arpack'"
     )
 ```
@@ -1769,10 +1776,12 @@ accept masks sized to its original input.
 
 For the residual and correspondence-analysis families, appending an all-zero
 column must leave every retained coefficient, score, and singular value
-identical to the same input without it, and give the empty column a
-coefficient of exactly zero. `n_comps` at the informative rank must raise, a
-non-finite `alpha` on an empty gene must be ignored while one on a retained
-gene still raises, and a wrong-length `alpha` must still raise. A zero-mass
+unchanged to solver precision, and give the empty column a zero coefficient.
+Cover every model, residual, and clipping mode, since upper-tail clipping
+depends on the sign of the structural-zero residual. `n_comps` at the nonempty
+column count must raise. A non-finite `alpha` on an empty gene must be ignored
+while one on a retained gene still raises, and a wrong-length `alpha` must
+still raise, for both residual PCA and correspondence analysis. A zero-mass
 correspondence-analysis column must receive `NaN` principal coordinates and
 zero mass.
 
