@@ -141,10 +141,11 @@ def _compute_correspondence_analysis(
             raise ValueError("mask selected zero columns")
     # A zero-mass column contributes nothing to the fitted table: its
     # standardized deviation is zero by continuity, so its overdispersion
-    # cannot reach any output. The mask defines the analyzed table, so this
-    # uses the same scope as the reported n_empty_vars.
+    # cannot reach any output. Emptiness is a property of the input rather than
+    # of the mask, so this matches the residual families and does not depend on
+    # which columns were selected.
     alpha_full = _validate_model(
-        model, "pearson", alpha, n_vars, ignore=_empty_columns(counts) & selected
+        model, "pearson", alpha, n_vars, ignore=_empty_columns(counts)
     )
     if not selected.all():
         counts = counts[:, selected].tocsr(copy=False)

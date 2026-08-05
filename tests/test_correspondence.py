@@ -264,20 +264,23 @@ def test_ca_ignores_overdispersion_of_a_zero_mass_column():
         )
 
 
-def test_ca_validates_alpha_of_a_masked_out_empty_column():
-    """The alpha exception is scoped to the analyzed table, not the input."""
+def test_ca_alpha_exception_does_not_depend_on_the_mask():
+    """Emptiness is an input property, so masking does not change the alpha rule."""
     values = np.array([[5, 0, 3, 2], [2, 0, 1, 4], [3, 0, 6, 1], [1, 0, 2, 5]])
     adata = AnnData(sparse.csr_matrix(values.astype(np.float64)))
     alpha = np.full(4, 0.1)
     alpha[1] = np.nan
     mask = np.array([True, False, True, True])
 
-    # Column 1 is empty, but the mask removes it from the analyzed table, so it
-    # is not covered by the exception and its value is still rejected.
-    with pytest.raises(ValueError, match="alpha must contain only finite values"):
-        correspondence_analysis(
-            adata, n_comps=2, model="scaled_nb", alpha=alpha, mask_var=mask
+    # Column 1 is empty, so its overdispersion can never reach an output whether
+    # or not the mask selects it. The same array is accepted either way, exactly
+    # as residual PCA accepts it.
+    with pytest.warns(UserWarning, match="no classical Pearson chi-square"):
+        result = correspondence_analysis(
+            adata, n_comps=2, model="scaled_nb", alpha=alpha, mask_var=mask, copy=True
         )
+
+    assert np.isfinite(result.obsm["X_ca"]).all()
 
 
 def test_ca_writes_nan_varm_for_a_zero_mass_gene():

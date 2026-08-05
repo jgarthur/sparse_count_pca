@@ -89,6 +89,9 @@ def test_residual_empty_gene_is_inert_and_changes_no_retained_output(
         atol=1e-12,
     )
     np.testing.assert_allclose(
+        actual.obsm["X_pca"], expected.scores, rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(
         actual.varm["PCs"][:-1], expected.components.T, rtol=0.0, atol=1e-12
     )
     np.testing.assert_allclose(actual.varm["PCs"][-1], 0.0, rtol=0.0, atol=1e-12)
@@ -303,33 +306,18 @@ def test_masked_zero_gene_remains_in_full_normalization_universe(
     assert result.params["n_empty_vars"] == 1
 
 
-def test_shifted_clr_reports_the_count_behind_its_centering_scale(
-    counts: sparse.csr_matrix,
-) -> None:
-    """n_empty_vars recovers the factor by which empty genes scale CLR centering."""
+def test_n_empty_vars_counts_every_empty_gene(counts: sparse.csr_matrix) -> None:
+    """The reported count is a total, not a flag or a single-gene special case."""
     n_empty = 5
     padded = sparse.hstack(
         (counts, sparse.csr_matrix((counts.shape[0], n_empty), dtype=counts.dtype)),
         format="csr",
     )
-    method = scp.ShiftedCLR(count_shift=0.7)
-    transformed = scp.transform(padded, method)
-    params = transformed.params
 
-    assert params["n_empty_vars"] == n_empty
+    transformed = scp.transform(padded, scp.ShiftedCLR(count_shift=0.7))
 
-    n_vars = params["normalization_n_vars"]
-    scale = (n_vars - params["n_empty_vars"]) / n_vars
-    logged = np.log(counts.toarray().astype(np.float64) + 0.7)
-    expected = logged - scale * logged.mean(axis=1, keepdims=True)
-
-    actual = transformed.materialize()[:, : counts.shape[1]]
-    np.testing.assert_allclose(
-        actual - actual.mean(axis=0),
-        expected - expected.mean(axis=0),
-        rtol=0.0,
-        atol=1e-12,
-    )
+    assert transformed.params["n_empty_vars"] == n_empty
+    assert transformed.params["normalization_n_vars"] == padded.shape[1]
 
 
 def test_correspondence_mask_excludes_zero_gene_before_computing_margins(

@@ -877,9 +877,15 @@ Use the following terms consistently in documentation and metadata:
 Correspondence analysis scopes `n_empty_vars` to its analyzed table instead,
 because its mask defines that table and its margins are fitted after masking.
 It therefore counts the zero-mass columns of the analyzed table, which are
-exactly the columns that receive `NaN` principal coordinates. The `alpha`
-exception uses the same scope: a masked-out variable is not part of the
-analyzed table, so its value is validated rather than replaced.
+exactly the columns that receive `NaN` principal coordinates.
+
+The `alpha` exception deliberately uses a different scope, because it answers a
+different question. `n_empty_vars` describes the output, so it follows the
+analyzed table. The `alpha` rule asks whether a value can reach any output, and
+emptiness is a property of the input: an empty variable's overdispersion can
+never matter, selected or not. Scoping it to the input keeps the rule identical
+across residual PCA and correspondence analysis, so the same `alpha` array
+behaves the same way in both.
 
 `normalization_n_vars` and `pca_n_vars` are equal only when PCA decomposes
 every normalization gene. Because no column is ever dropped for being empty,
@@ -1800,9 +1806,8 @@ still raise, for both residual PCA and correspondence analysis. A zero-mass
 correspondence-analysis column must receive `NaN` principal coordinates and
 zero mass.
 
-For the shifted-CLR and Dirichlet families, `n_empty_vars` must recover the
-log-ratio centering scale
-`(normalization_n_vars - n_empty_vars) / normalization_n_vars`.
+For the shifted-CLR and Dirichlet families, empty genes must match the same
+dense oracle as any other gene, and `n_empty_vars` must report their total.
 
 Empty cells must be rejected by every entry point, including a row emptied by a
 correspondence-analysis variable mask.
