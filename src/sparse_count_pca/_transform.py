@@ -104,6 +104,8 @@ class Residual(Transform):
         residual: ``"pearson"`` or ``"deviance"``.
         alpha: Scalar, per-variable array, or AnnData variable key containing
             nonnegative scaled-NB overdispersion. Used only by ``scaled_nb``.
+            Values for variables with no counts are replaced with zero instead
+            of being validated, since they cannot reach any output.
         clip: Positive clipping threshold, or ``None`` for no clipping.
         clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
         clip_max_nnz_ratio: Maximum support-growth ratio for exact symmetric

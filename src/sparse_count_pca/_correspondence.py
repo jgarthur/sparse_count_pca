@@ -161,10 +161,23 @@ def _compute_correspondence_analysis(
         )
     empty_columns = column_totals == 0
     n_empty_vars = int(empty_columns.sum())
-    if not 1 <= n_comps < min(counts.shape[0], counts.shape[1] - n_empty_vars):
+    n_rows, n_columns = counts.shape
+    # Named apart from ``n_columns_used``, which is the analyzed table width and
+    # still counts retained zero-mass columns.
+    n_nonempty_columns = n_columns - n_empty_vars
+    if not 1 <= n_comps < min(n_rows, n_nonempty_columns):
+        detail = (
+            ""
+            if not n_empty_vars
+            else (
+                f"; n_nonempty_columns excludes {n_empty_vars} of the "
+                f"{n_columns} analyzed columns that have zero mass"
+            )
+        )
         raise ValueError(
-            "n_comps must satisfy 1 <= n_comps < min(n_rows, n_columns_used), "
-            "where n_columns_used excludes zero-mass columns"
+            "n_comps must satisfy 1 <= n_comps < "
+            f"min(n_rows={n_rows}, n_nonempty_columns={n_nonempty_columns}); "
+            f"got n_comps={n_comps}{detail}"
         )
     if model == "scaled_nb":
         warnings.warn(
@@ -278,12 +291,14 @@ def correspondence_analysis_matrix(
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of correspondence axes. Must be smaller than both
-            matrix dimensions.
+        n_comps: Number of correspondence axes. Must be smaller than the
+            observation count and than the number of analyzed columns with
+            nonzero mass.
         model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
             experimental residual ordination.
-        alpha: Scalar or per-variable nonnegative overdispersion. Required only
-            when ``model="scaled_nb"``.
+        alpha: Scalar or per-variable nonnegative overdispersion. Values for
+            analyzed columns with zero mass are replaced with zero instead of
+            being validated. Required only when ``model="scaled_nb"``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``.

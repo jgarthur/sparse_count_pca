@@ -456,6 +456,13 @@ alpha: array-like     # shape (adata.n_vars,) before masking; mask_var is then a
 The AnnData API never accepts an already-masked `alpha` array, to keep `.var`
 alignment unambiguous.
 
+`alpha` must be finite and nonnegative, with one exception: a variable that
+contributes no residual cannot affect any output, so its value is replaced with
+zero rather than validated. That covers variables with no counts for residual
+PCA, and analyzed columns with zero mass for correspondence analysis. Array
+shape is always validated, and a variable that does contribute still raises on
+a non-finite or negative value.
+
 For `residual_pca_matrix`:
 
 ```python
@@ -865,6 +872,13 @@ Use the following terms consistently in documentation and metadata:
   before `mask_var`;
 - `pca_n_vars`: the number of columns decomposed, after `mask_var`;
 - `n_empty_vars`: the number of empty genes in the normalization universe.
+
+Correspondence analysis scopes `n_empty_vars` to its analyzed table instead,
+because its mask defines that table and its margins are fitted after masking.
+It therefore counts the zero-mass columns of the analyzed table, which are
+exactly the columns that receive `NaN` principal coordinates. The `alpha`
+exception uses the same scope: a masked-out variable is not part of the
+analyzed table, so its value is validated rather than replaced.
 
 `normalization_n_vars` and `pca_n_vars` are equal only when PCA decomposes
 every normalization gene. Because no column is ever dropped for being empty,
