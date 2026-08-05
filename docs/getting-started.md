@@ -60,8 +60,10 @@ is no automatic selection; `adata.uns["pca"]["variance_ratio"]` reports the
 variance explained by each retained component.
 
 The ARPACK solver requires `n_comps` to be strictly less than both the number
-of observations and the number of variables selected for PCA, which is why the
-example above uses 2 for a four-by-four matrix.
+of observations and the number of selected variables that are not all-zero,
+which is why the example above uses 2 for a four-by-four matrix. Genes with no
+counts carry no variance, so they cannot support a component and do not count
+toward that limit.
 
 ## What was written
 
@@ -71,9 +73,15 @@ By default, PCA outputs follow Scanpy's key layout:
 | --- | --- |
 | `adata.obsm["X_pca"]` | observation scores |
 | `adata.varm["PCs"]` | variable loadings with shape `(n_variables, n_components)` |
-| `adata.uns["pca"]` | variance statistics and reproducibility parameters |
+| `adata.uns["pca"]` | variance statistics, with reproducibility parameters nested under `["params"]` |
 
 Passing `key_added="my_pca"` uses that exact key in all three mappings.
+
+Variance statistics are direct entries, such as
+`adata.uns["pca"]["variance_ratio"]`. Everything describing *how* the run was
+configured is one level deeper, such as
+`adata.uns["pca"]["params"]["n_empty_vars"]`. The matrix API exposes the same
+two groups as `result.explained_variance_ratio` and `result.params[...]`.
 
 ## Continue in Scanpy
 

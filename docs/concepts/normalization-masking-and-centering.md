@@ -85,6 +85,11 @@ PCA result metadata distinguishes:
   normalization;
 - `pca_n_vars`: variables selected for PCA.
 
+Both live under the `params` entry, so read them as
+`adata.uns["pca"]["params"]["normalization_n_vars"]`, or
+`result.params["normalization_n_vars"]` from the matrix API. Variance
+statistics sit one level up, directly under `adata.uns["pca"]`.
+
 Masked component rows in `adata.varm` contain `NaN`. This makes exclusion
 visible and prevents a masked variable from being mistaken for a valid zero
 component value.

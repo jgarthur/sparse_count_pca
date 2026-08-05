@@ -120,7 +120,8 @@ def residual_pca_matrix(
         n_comps: Number of principal components.
         model: Null model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
         residual: Residual type: ``"pearson"`` or ``"deviance"``.
-        alpha: Scalar or per-gene scaled-NB overdispersion.
+        alpha: Scalar or per-gene scaled-NB overdispersion. Values below
+            ``1e-8`` use the Poisson limit.
         clip: Positive clipping threshold, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
@@ -252,7 +253,8 @@ def residual_pca(
         model: Null model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
         residual: Residual type: ``"pearson"`` or ``"deviance"``.
         alpha: Scalar, per-variable array, or ``adata.var`` key containing
-            scaled-NB overdispersion. Required only for ``model="scaled_nb"``.
+            scaled-NB overdispersion. Values below ``1e-8`` use the Poisson
+            limit. Required only for ``model="scaled_nb"``.
         clip: Positive clipping threshold applied to uncentered residuals, or
             ``None`` for no clipping.
         clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.

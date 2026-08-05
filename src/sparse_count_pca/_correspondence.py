@@ -297,9 +297,10 @@ def correspondence_analysis_matrix(
             nonzero mass.
         model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
             experimental residual ordination.
-        alpha: Scalar or per-variable nonnegative overdispersion. Values for
-            analyzed columns with zero mass are replaced with zero instead of
-            being validated. Required only when ``model="scaled_nb"``.
+        alpha: Scalar or per-variable nonnegative overdispersion. Values below
+            ``1e-8`` use the Poisson limit. Values for analyzed columns with
+            zero mass are replaced with zero instead of being validated.
+            Required only when ``model="scaled_nb"``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``.
@@ -375,7 +376,7 @@ def correspondence_analysis(
         model: ``"poisson"`` for classical CA or ``"scaled_nb"`` for the
             experimental residual ordination.
         alpha: Scalar, per-variable array, or ``adata.var`` key containing
-            scaled-NB overdispersion.
+            scaled-NB overdispersion. Values below ``1e-8`` use the Poisson limit.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and calculation dtype.
         solver: SVD solver. Only ``"arpack"`` is supported.
