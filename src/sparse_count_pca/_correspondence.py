@@ -20,6 +20,7 @@ from ._counts import (
     BoolArray,
     CountMatrix,
     _canonicalize_counts,
+    _empty_columns,
     _sum_counts,
     _validate_boolean_mask,
 )
@@ -77,6 +78,10 @@ class CorrespondenceAnalysisResult:
     column_masses: Float64Array
     params: dict[str, Any]
     operator: SparseLowRankLinearOperator | None = None
+    #: Analyzed columns as a boolean mask over the original variable universe,
+    #: or ``None`` when every variable was used. Result writers align ``varm``
+    #: rows with it; it is internal and not part of the documented surface.
+    _used_columns: NDArray[np.bool_] | None = None
 
 
 def build_correspondence_representation(
@@ -134,14 +139,27 @@ def _compute_correspondence_analysis(
     if model not in {"poisson", "scaled_nb"}:
         raise ValueError("model must be 'poisson' or 'scaled_nb'")
     alpha_full = _validate_model(model, "pearson", alpha, n_vars)
+    selected = np.ones(n_vars, dtype=bool)
     if mask is not None:
-        mask = _validate_boolean_mask(mask, n_vars, name="mask")
-        if not mask.any():
+        selected = _validate_boolean_mask(mask, n_vars, name="mask")
+        if not selected.any():
             raise ValueError("mask selected zero columns")
-        if not mask.all():
-            counts = counts[:, mask].tocsr(copy=False)
-            if alpha_full is not None:
-                alpha_full = alpha_full[mask]
+    # A zero-mass column has an undefined standardized deviation and an
+    # undefined principal coordinate, so it is dropped before the table is
+    # fitted. Column totals do not depend on which columns are selected, so
+    # dropping empty ones leaves every retained mass unchanged.
+    empty = _empty_columns(counts)
+    n_empty_vars = int(empty.sum())
+    n_empty_vars_excluded = int((selected & empty).sum())
+    if n_empty_vars_excluded:
+        selected = selected & ~empty
+        if not selected.any():
+            raise ValueError("Every selected column has zero mass")
+    used_columns = None if selected.all() else selected
+    if used_columns is not None:
+        counts = counts[:, used_columns].tocsr(copy=False)
+        if alpha_full is not None:
+            alpha_full = alpha_full[used_columns]
     if not 1 <= n_comps < min(counts.shape):
         raise ValueError(
             "n_comps must satisfy 1 <= n_comps < min(n_rows, n_columns_used)"
@@ -154,11 +172,6 @@ def _compute_correspondence_analysis(
         raise ValueError(
             "Rows with zero mass are not supported; filter empty rows out of "
             "the count table first"
-        )
-    if (column_totals == 0).any():
-        raise ValueError(
-            "Columns with zero mass are not supported; filter empty columns out "
-            "of the count table first, or exclude them with mask_var"
         )
     if model == "scaled_nb":
         warnings.warn(
@@ -222,6 +235,8 @@ def _compute_correspondence_analysis(
         ),
         "zero_center": False,
         "n_comps": n_comps,
+        "n_empty_vars": n_empty_vars,
+        "n_empty_vars_excluded": n_empty_vars_excluded,
         "solver": solver,
         "random_state": random_state,
         "tol": tol,
@@ -240,6 +255,7 @@ def _compute_correspondence_analysis(
         column_masses=column_masses,
         params=params,
         operator=operator if return_operator else None,
+        _used_columns=used_columns,
     )
 
 
@@ -392,7 +408,10 @@ def correspondence_analysis(
     else:
         obsm_key = varm_key = uns_key = key_added
     columns = np.full((adata.n_vars, n_comps), np.nan, dtype=np.float64)
-    columns[resolved_mask.values] = result.column_principal_coordinates
+    analyzed = (
+        resolved_mask.values if result._used_columns is None else result._used_columns
+    )
+    columns[analyzed] = result.column_principal_coordinates
     adata.obsm[obsm_key] = result.row_principal_coordinates
     adata.varm[varm_key] = columns
     params = dict(result.params)

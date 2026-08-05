@@ -8,6 +8,7 @@ from typing import Any, TypeAlias
 import numpy as np
 from numpy.typing import DTypeLike, NDArray
 
+from ._counts import _USED_COLUMNS
 from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
 from ._svd import Solver, compute_truncated_svd
@@ -45,6 +46,10 @@ class PCAResult:
     total_variance: float
     params: dict[str, Any]
     operator: SparseLowRankLinearOperator | None = None
+    #: Decomposed columns as a boolean mask over the original variable universe,
+    #: or ``None`` when every variable was used. Result writers align ``varm``
+    #: rows with it; it is internal and not part of the documented surface.
+    _used_columns: NDArray[np.bool_] | None = None
 
 
 def compute_pca_from_representation(
@@ -100,8 +105,9 @@ def compute_pca_from_representation(
     components = np.asarray(decomposition.right_vectors, dtype=operator_dtype)
     total_variance = centered_squared / (n_obs - 1)
     explained_variance = singular_values**2 / (n_obs - 1)
+    used_columns = params.get(_USED_COLUMNS)
     result_params = {
-        **params,
+        **{key: value for key, value in params.items() if key != _USED_COLUMNS},
         "zero_center": True,
         "n_comps": n_comps,
         "pca_n_vars": n_vars,
@@ -123,4 +129,5 @@ def compute_pca_from_representation(
         total_variance=float(total_variance),
         params=result_params,
         operator=operator if return_operator else None,
+        _used_columns=used_columns,
     )

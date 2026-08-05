@@ -197,18 +197,46 @@ def test_experimental_scaled_nb_ca_resolves_anndata_alpha_after_masking(adata):
     assert result.uns["nb_coords"]["params"]["experimental"] is True
 
 
-def test_ca_rejects_zero_mass_rows_and_columns():
-    """Correspondence analysis rejects rows or columns with zero mass."""
+def test_ca_rejects_zero_mass_rows():
+    """Correspondence analysis rejects rows with zero mass."""
     with pytest.raises(ValueError, match="zero total counts"):
         correspondence_analysis_matrix(
             sparse.csr_matrix([[1, 2, 3], [0, 0, 0], [2, 1, 3]]),
             n_comps=2,
         )
-    with pytest.raises(ValueError, match="Columns with zero mass"):
-        correspondence_analysis_matrix(
-            sparse.csr_matrix([[1, 0, 3], [2, 0, 1], [3, 0, 2]]),
-            n_comps=2,
-        )
+
+
+def test_ca_excludes_zero_mass_columns():
+    """CA drops a zero-mass column and matches the table without it."""
+    values = [[1, 3], [2, 1], [3, 2]]
+    padded = sparse.csr_matrix([[row[0], 0, row[1]] for row in values])
+
+    result = correspondence_analysis_matrix(padded, n_comps=1)
+    expected = correspondence_analysis_matrix(sparse.csr_matrix(values), n_comps=1)
+
+    np.testing.assert_allclose(
+        result.singular_values, expected.singular_values, rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        result.row_principal_coordinates,
+        expected.row_principal_coordinates,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    assert result.column_principal_coordinates.shape[0] == 2
+    assert result.params["n_empty_vars"] == 1
+    assert result.params["n_empty_vars_excluded"] == 1
+
+
+def test_ca_writes_nan_columns_for_an_excluded_zero_mass_gene():
+    """An excluded zero-mass column receives NaN principal coordinates."""
+    adata = AnnData(sparse.csr_matrix([[1, 0, 3], [2, 0, 1], [3, 0, 2]]))
+
+    result = correspondence_analysis(adata, n_comps=1, copy=True)
+
+    assert np.isnan(result.varm["CA"][1]).all()
+    assert np.isfinite(result.varm["CA"][[0, 2]]).all()
+    assert result.uns["ca"]["params"]["n_empty_vars_excluded"] == 1
 
 
 def test_ca_rejects_rows_emptied_by_variable_mask():

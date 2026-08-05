@@ -34,41 +34,98 @@ def _with_zero_gene(counts: sparse.csr_matrix) -> sparse.csr_matrix:
         ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
     ],
 )
-def test_residual_entry_points_reject_zero_gene_before_pca_mask(
+def test_residual_entry_points_exclude_zero_gene_without_changing_the_result(
     counts: sparse.csr_matrix,
     model: str,
     residual: str,
     alpha: np.ndarray | None,
 ) -> None:
-    """Every residual family rejects an empty gene before PCA masking."""
+    """Every residual family drops an empty gene and leaves retained genes alone."""
+    with_zero = _with_zero_gene(counts)
+    full_alpha = None if alpha is None else np.append(alpha, 0.2)
+    method = scp.Residual(model=model, residual=residual, alpha=full_alpha)
+    expected = scp.residual_pca_matrix(
+        counts,
+        n_comps=2,
+        model=model,
+        residual=residual,
+        alpha=alpha,
+        dtype="float64",
+    )
+
+    padded = scp.residual_pca_matrix(
+        with_zero,
+        n_comps=2,
+        model=model,
+        residual=residual,
+        alpha=full_alpha,
+        dtype="float64",
+    )
+    np.testing.assert_allclose(
+        padded.singular_values, expected.singular_values, rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(padded.scores, expected.scores, rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        padded.components, expected.components, rtol=0.0, atol=1e-12
+    )
+    assert padded.params["pca_n_vars"] == counts.shape[1]
+    assert padded.params["n_empty_vars"] == 1
+    assert padded.params["n_empty_vars_excluded"] == 1
+
+    # The fitted two-step transform drops the column as well, so a reused
+    # transform never exposes an undefined residual.
+    assert scp.transform(with_zero, method).shape[1] == counts.shape[1]
+
+    actual = scp.residual_pca(
+        AnnData(with_zero),
+        n_comps=2,
+        model=model,
+        residual=residual,
+        alpha=full_alpha,
+        copy=True,
+        dtype="float64",
+    )
+    np.testing.assert_allclose(
+        actual.uns["pca"]["singular_values"],
+        expected.singular_values,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        actual.varm["PCs"][:-1], expected.components.T, rtol=0.0, atol=1e-12
+    )
+    assert np.isnan(actual.varm["PCs"][-1]).all()
+    assert actual.uns["pca"]["params"]["n_empty_vars_excluded"] == 1
+
+
+def test_residual_empty_gene_exclusion_composes_with_a_user_mask(
+    counts: sparse.csr_matrix,
+) -> None:
+    """An empty gene the mask already dropped is not counted as excluded."""
     with_zero = _with_zero_gene(counts)
     adata = AnnData(with_zero)
     mask = np.ones(with_zero.shape[1], dtype=bool)
     mask[-1] = False
-    full_alpha = None if alpha is None else np.append(alpha, 0.2)
-    method = scp.Residual(model=model, residual=residual, alpha=full_alpha)
 
-    with pytest.raises(ValueError, match="Genes with zero total counts"):
-        scp.residual_pca(
-            adata,
-            n_comps=2,
-            mask_var=mask,
-            model=model,
-            residual=residual,
-            alpha=full_alpha,
-        )
+    result = scp.residual_pca(adata, n_comps=2, mask_var=mask, copy=True)
+    params = result.uns["pca"]["params"]
 
-    with pytest.raises(ValueError, match="Genes with zero total counts"):
-        scp.residual_pca_matrix(
-            with_zero,
-            n_comps=2,
-            model=model,
-            residual=residual,
-            alpha=full_alpha,
-        )
+    assert params["n_empty_vars"] == 1
+    assert params["n_empty_vars_excluded"] == 0
+    assert params["pca_n_vars"] == counts.shape[1]
+    assert np.isnan(result.varm["PCs"][-1]).all()
 
-    with pytest.raises(ValueError, match="Genes with zero total counts"):
-        scp.transform(with_zero, method)
+
+def test_residual_rejects_a_mask_selecting_only_empty_genes(
+    counts: sparse.csr_matrix,
+) -> None:
+    """Excluding every empty selected gene must not silently decompose nothing."""
+    with_zero = _with_zero_gene(counts)
+    mask = np.zeros(with_zero.shape[1], dtype=bool)
+    mask[-1] = True
+
+    with pytest.raises(ValueError, match="Every selected gene has zero total counts"):
+        scp.residual_pca(AnnData(with_zero), n_comps=2, mask_var=mask)
 
 
 @pytest.mark.parametrize(
@@ -176,6 +233,40 @@ def test_masked_zero_gene_remains_in_full_normalization_universe(
     assert not np.allclose(actual, dropped, rtol=0.0, atol=1e-8)
     assert result.params["normalization_n_vars"] == with_zero.shape[1]
     assert result.params["pca_n_vars"] == counts.shape[1]
+    # These families keep empty genes in the fit, so the count is reported
+    # rather than acted on. It is what makes the retention effect measurable.
+    assert result.params["n_empty_vars"] == 1
+    assert result.params["n_empty_vars_excluded"] == 0
+
+
+def test_shifted_clr_reports_the_count_behind_its_centering_scale(
+    counts: sparse.csr_matrix,
+) -> None:
+    """n_empty_vars recovers the factor by which empty genes scale CLR centering."""
+    n_empty = 5
+    padded = sparse.hstack(
+        (counts, sparse.csr_matrix((counts.shape[0], n_empty), dtype=counts.dtype)),
+        format="csr",
+    )
+    method = scp.ShiftedCLR(count_shift=0.7)
+    transformed = scp.transform(padded, method)
+    params = transformed.params
+
+    assert params["n_empty_vars"] == n_empty
+    assert params["n_empty_vars_excluded"] == 0
+
+    n_vars = params["normalization_n_vars"]
+    scale = (n_vars - params["n_empty_vars"]) / n_vars
+    logged = np.log(counts.toarray().astype(np.float64) + 0.7)
+    expected = logged - scale * logged.mean(axis=1, keepdims=True)
+
+    actual = transformed.materialize()[:, : counts.shape[1]]
+    np.testing.assert_allclose(
+        actual - actual.mean(axis=0),
+        expected - expected.mean(axis=0),
+        rtol=0.0,
+        atol=1e-12,
+    )
 
 
 def test_correspondence_mask_excludes_zero_gene_before_computing_margins(
