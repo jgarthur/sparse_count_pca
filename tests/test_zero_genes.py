@@ -121,7 +121,7 @@ def test_residual_rejects_n_comps_beyond_the_informative_rank(
     with_zero = _with_zero_gene(counts)
     n_informative = counts.shape[1]
 
-    with pytest.raises(ValueError, match="not identically zero"):
+    with pytest.raises(ValueError, match="identically zero and carry no variance"):
         scp.residual_pca_matrix(with_zero, n_comps=n_informative)
 
 

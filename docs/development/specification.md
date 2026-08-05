@@ -631,6 +631,11 @@ if not 1 <= n_comps < min(n_obs, n_vars_used):
 empty gene cannot support a component. The selected column count, `int(mask.sum())`
 after `mask_var` resolution, is recorded as `pca_n_vars`. Do not silently clamp.
 
+The message reports `n_comps`, `n_obs`, and `n_vars_used` as values. When
+`n_vars_used` is smaller than the selected column count, it also says how many
+selected variables are identically zero and what that means, so the bound is not
+mistaken for an off-by-one.
+
 ### `copy`
 
 ```python
@@ -788,17 +793,16 @@ identical to the same input with the column removed. Two consequences:
   identically zero, so empty genes cannot buy components that carry no
   variance;
 * per-gene parameters of an empty gene cannot reach any output, so a
-  scaled-NB `alpha` value there is neutralized rather than validated. Array
+  scaled-NB `alpha` value there is replaced with zero rather than validated. Array
   shape is still checked, and a retained gene's `alpha` is still required to be
   finite and nonnegative.
 
 For the log-ratio and Dirichlet families the value is nonzero and does affect
 retained genes, because those transforms normalize each observation against the
-full declared variable universe. For the shifted-CLR families the
-per-observation mean is divided by `n_vars`, so `b` empty genes scale the
-log-ratio centering term by `(n_vars - b) / n_vars`. This follows from the
-transform definitions rather than being a defect; `n_empty_vars` is reported so
-the effect is measurable. Filter empty genes before calling to avoid it.
+full declared variable universe: empty genes weaken the shifted-CLR centering
+and consume Dirichlet prior mass. This follows from the transform definitions
+rather than being a defect. `n_empty_vars` is reported so the effect is
+visible; filter empty genes before calling to avoid it.
 
 The one undefined *output* is the correspondence-analysis column principal
 coordinate, which divides a singular-vector entry by the square root of the

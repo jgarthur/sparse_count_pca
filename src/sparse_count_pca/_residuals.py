@@ -88,8 +88,8 @@ def _validate_model(
         residual: Residual type.
         alpha: Scalar or per-gene overdispersion for the scaled-NB model.
         n_vars: Number of genes represented by ``alpha``.
-        ignore: Genes whose overdispersion cannot affect any output, whose
-            values are neutralized instead of validated.
+        ignore: Genes whose overdispersion cannot affect any output. Their
+            values are replaced with zero instead of being validated.
 
     Returns:
         A float64 overdispersion vector for the scaled-NB model, otherwise
@@ -117,8 +117,8 @@ def _validate_model(
     if ignore is not None and ignore.any():
         # Overdispersion scales only its own gene's residual variance. A gene
         # with no counts contributes no residual, so its value cannot reach any
-        # output and is neutralized rather than validated. Shape is still
-        # checked above, so a wrong-length array still raises.
+        # output; replace it with zero rather than validating it. Shape is
+        # still checked above, so a wrong-length array still raises.
         alpha_array = np.where(ignore, 0.0, alpha_array)
     if not np.isfinite(alpha_array).all():
         raise ValueError("alpha must contain only finite values")

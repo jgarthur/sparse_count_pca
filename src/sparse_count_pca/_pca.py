@@ -77,16 +77,26 @@ def compute_pca_from_representation(
     if solver != "arpack":
         raise NotImplementedError("Only solver='arpack' is supported in v1")
     operator_dtype = _normalize_operator_dtype(dtype)
-    n_obs, _ = representation.shape
+    n_obs, n_selected = representation.shape
     # An identically zero column carries no variance and cannot support a
     # component, so the bound uses the informative column count. This matters
     # for residual families, where an empty gene's column is exactly zero.
     n_vars = _count_nonzero_columns(representation)
     if not 1 <= n_comps < min(n_obs, n_vars):
+        n_zero = n_selected - n_vars
+        detail = (
+            ""
+            if not n_zero
+            else (
+                f"; n_vars_used excludes {n_zero} of the {n_selected} selected "
+                "variables that are identically zero and carry no variance "
+                "(for residual transforms, variables with no counts)"
+            )
+        )
         raise ValueError(
-            "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
-            "when solver='arpack', where n_vars_used counts columns that are "
-            "not identically zero"
+            "n_comps must satisfy 1 <= n_comps < "
+            f"min(n_obs={n_obs}, n_vars_used={n_vars}) when solver='arpack'; "
+            f"got n_comps={n_comps}{detail}"
         )
 
     operator = SparseLowRankLinearOperator(
