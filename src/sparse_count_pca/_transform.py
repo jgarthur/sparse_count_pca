@@ -721,8 +721,7 @@ def transform(
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
             object. Observations are rows and variables are columns.
-        method: Residual, shifted-CLR, or package-defined Dirichlet transform
-            specification.
+        method: Residual, shifted-CLR, or Dirichlet transform specification.
         layer: AnnData count layer to use. By default, use ``adata.X``.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Representation and operator dtype, either ``"float64"`` or

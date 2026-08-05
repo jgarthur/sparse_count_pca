@@ -67,9 +67,14 @@ where \(\operatorname{NB}(r,q)\) has probability mass proportional to
 
 The package does not estimate \(\alpha_j\).
 
-The model fits one dispersion-depth relationship over the whole matrix. For
-multiple batches or strongly different depth regimes, fit batch-wise or use a
-model that represents those differences.
+The model applies one depth-dispersion relationship across the whole matrix, so
+it does not represent batch structure. Where batches differ substantially in
+sequencing depth, the shared mean depth represents none of them well.
+
+Fitting per batch is not a small adjustment to that. The mean depth and every
+gene proportion become batch-specific, so the null model itself differs by
+batch and the resulting residuals are no longer on a common scale. This package
+does not fit per batch.
 
 ## The maximum-likelihood null mean
 

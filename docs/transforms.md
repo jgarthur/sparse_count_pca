@@ -14,25 +14,27 @@ input validation, masking, dtype, and output contracts, see the
 | Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; see notes on `scaled_nb` |
 | Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes the PFlog parameterization |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported |
-| Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Package-defined |
-| Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Package-defined |
-| Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is experimental |
+| Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Numerically verified only |
+| Dirichlet CLR | `dirichlet_clr_pca` | `dirichlet_clr_pca_matrix` | `DirichletCLR` | Numerically verified only |
+| Correspondence analysis | `correspondence_analysis` | `correspondence_analysis_matrix` | — | Supported; `scaled_nb` mode is numerically verified only |
 
 All PCA functions use observations in rows and variables in columns. A two-step
 specification is passed as the `method` argument of `transform`, which returns
 a `TransformedMatrix` for inspecting transformed values or running PCA more
 than once from one fitted normalization.
 
-Status labels describe scientific validation, not API stability:
+Status describes scientific validation, not API stability. Every transform is
+verified against an independently written dense implementation of its formula,
+so the label says whether anything beyond that is available:
 
-- **Supported**: verified against an independent dense implementation and the
-  external fixtures named below, where available.
-- **Package-defined**: verified independently, but specific to this package's
-  Dirichlet prior-count formulation.
-- **Experimental**: verified independently, but extended beyond the available
-  external reference, as with `scaled_nb` correspondence analysis.
+- **Supported**: also pinned against a named prior implementation, cited in the
+  section below.
+- **Numerically verified only**: implemented as specified, but with no external
+  implementation pinned — either none exists, or the method extends past the
+  available reference. Numeric agreement with a formula is not scientific
+  corroboration of the method.
 
-External fixtures test selected relationships to prior implementations; they do
+Pinned fixtures test selected relationships to prior implementations; they do
 not make methods scientifically interchangeable outside the stated conditions.
 The [testing guide](development/testing.md) describes the oracle hierarchy and
 tolerances.
@@ -40,9 +42,7 @@ tolerances.
 ## What this package does not do
 
 The table above is the complete set of transforms. In particular, there is no
-library-size-normalized log transform and no plain shifted-log transform of raw
-counts. A raw-count shifted log without a depth model is deliberately not
-exposed because it invites comparisons driven by sequencing depth.
+library-size-normalized log transform.
 
 That workflow is deliberately out of scope rather than merely unimplemented.
 Dividing by a row total and taking `log1p` maps zero to zero, so the normalized
@@ -318,9 +318,9 @@ prior. AnnData interfaces also accept an `adata.var` key.
 
 ### Caveats
 
-These are package-defined prior-count generalizations, with no external
-reference implementation to pin. The prior is fitted on the full variable
-universe before `mask_var` selects PCA columns.
+These are prior-count generalizations with no external reference implementation
+to pin. The prior is fitted on the full variable universe before `mask_var`
+selects PCA columns.
 
 ## Correspondence analysis
 
@@ -351,9 +351,11 @@ negative-binomial variance used there,
 V_{ij}=\mu_{ij}(1+\alpha_j\bar n p_j).
 ```
 
-It fits one dispersion-depth relationship over the whole matrix. For multiple
-batches or strongly different depth regimes, analyze batches separately or use
-a model that represents those differences.
+It applies one depth-dispersion relationship across the whole matrix, so it
+does not represent batch structure. Fitting per batch is not a small adjustment
+to that: the mean depth and every gene proportion would become batch-specific,
+so the null model itself would differ by batch and the residuals would no
+longer be on a common scale. This package does not fit per batch.
 
 Both row and column outputs are principal coordinates: each singular vector is
 divided by the square root of its row or column mass, giving the standard

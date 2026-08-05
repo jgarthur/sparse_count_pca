@@ -15,8 +15,8 @@ return result objects without mutating the input.
 
 ## Dirichlet PCA
 
-These prior-based transforms are package-defined; see the
-[transform catalog](../../transforms.md) for validation status.
+These prior-based transforms have no external reference implementation
+pinned; see the [transform catalog](../../transforms.md) for validation status.
 
 ::: sparse_count_pca.dirichlet_log_pca_matrix
 

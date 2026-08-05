@@ -21,8 +21,8 @@ from materialization and PCA.
     options:
       members: false
 
-The following prior-based transform specifications are package-defined; see the
-[transform catalog](../../transforms.md) for validation status.
+The following prior-based transform specifications have no external reference
+implementation pinned; see the [transform catalog](../../transforms.md) for validation status.
 
 ::: sparse_count_pca.DirichletLog
     options:
