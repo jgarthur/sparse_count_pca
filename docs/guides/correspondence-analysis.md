@@ -56,6 +56,11 @@ column totals, masses, expected values, and inertia are recomputed from the
 selected contingency table. Removing a variable and masking it therefore have
 the same margin-defining role for CA, but not for residual or CLR PCA.
 
+A column with zero mass is kept in the table and contributes nothing to the
+axes, but its principal coordinate divides by the square root of its mass and
+is reported as `NaN`. Empty rows are rejected, including a row left empty by
+the variable mask.
+
 ## Experimental scaled-NB residual ordination
 
 Passing `model="scaled_nb"` replaces the Poisson variance with the package's

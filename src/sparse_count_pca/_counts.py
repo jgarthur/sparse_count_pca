@@ -57,12 +57,6 @@ def _empty_columns(X: CSRMatrix) -> BoolArray:
     return _sum_counts(X, axis=0) == 0
 
 
-#: Private ``params`` key carrying the decomposed columns as a boolean mask over
-#: the original variable universe, or ``None`` when every variable was used.
-#: Result writers pop it to align ``varm`` rows; it is never serialized.
-_USED_COLUMNS = "_used_columns"
-
-
 def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
     """Convert a count matrix to canonical CSR form and validate its data."""
     if isinstance(X, (CSRDataset, CSCDataset)):

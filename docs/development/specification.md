@@ -627,8 +627,9 @@ if not 1 <= n_comps < min(n_obs, n_vars_used):
     )
 ```
 
-`n_vars_used` is `int(mask.sum())` after `mask_var` resolution. It is recorded
-as `pca_n_vars` in PCA parameters. Do not silently clamp.
+`n_vars_used` counts the selected columns that are not identically zero, so an
+empty gene cannot support a component. The selected column count, `int(mask.sum())`
+after `mask_var` resolution, is recorded as `pca_n_vars`. Do not silently clamp.
 
 ### `copy`
 
@@ -760,100 +761,74 @@ if np.any(np.asarray(alpha) < 0):
 
 ## Empty genes and cells
 
-A gene or cell whose counts are all zero is a boundary case for every
-transform in this package. The rule is:
-
-> **Exclude where the transformed value is undefined; keep where it is
-> defined.**
-
 ### Empty genes
 
-| Family | Value at an empty gene | Affects other genes | Handling |
-| --- | --- | --- | --- |
-| Residual (Poisson, binomial, scaled-NB) | undefined, `0/0` | no | excluded from the fit and from PCA |
-| Correspondence analysis | undefined, zero mass | no | excluded from the fit and from PCA |
-| Count-scale shifted CLR | defined, `log(a) - m_i` | yes | retained |
-| Composition-scale shifted CLR | defined | yes | retained |
-| Dirichlet log, Dirichlet CLR | defined, `log(alpha_j)` | yes | retained |
+A gene with zero total count is **retained by every transform**; none is
+dropped, so the analyzed matrix always keeps the caller's variable universe and
+components stay aligned to input columns.
 
-For residual and correspondence analysis the fitted mean of an empty gene is
-zero, so its residual or standardized deviation is `0/0`. Exclusion is exact
-rather than approximate: an empty gene contributes nothing to any cell total,
-to the grand total, or to any other gene's proportion, so `n_i`, `M`, and every
-retained `p_j` are unchanged by removing it. The decomposition of the retained
-genes is therefore identical whether or not empty genes were present.
+Its value is well defined in each family:
 
-Exclusion happens before PCA masking and composes with `mask_var`: the
-decomposed columns are those selected by `mask_var` **and** non-empty. Excluded
-genes receive `np.nan` in `varm`, using the same convention as genes excluded by
-`mask_var`. If the composition selects nothing, raise:
+| Family | Value at an empty gene | Effect on other genes |
+| --- | --- | --- |
+| Residual (Poisson, binomial, scaled-NB) | `0`, the limit of the residual as the fitted mean goes to zero | none |
+| Correspondence analysis | `0`, the limit of the standardized deviation as column mass goes to zero | none |
+| Count-scale shifted CLR | `log(a) - m_i` | scales the log-ratio centering |
+| Composition-scale shifted CLR | analogous | scales the log-ratio centering |
+| Dirichlet log | `log(a_j) - log(s_i + A)` for prior counts `a_j = A p_j` | consumes prior mass |
+| Dirichlet CLR | `log(a_j)` minus the row mean of the log posterior counts | consumes prior mass |
 
-```python
-if not (mask & ~empty).any():
-    raise ValueError("Every selected gene has zero total counts")
-```
+For the residual and correspondence families the column is **identically
+zero**. Such a column carries no variance and no inertia, so it contributes
+nothing to the decomposition and receives a coefficient of exactly zero. An
+empty gene therefore cannot change any other gene's result, and the outcome is
+identical to the same input with the column removed. Two consequences:
 
-`n_comps` is validated against the count of decomposed columns, that is, after
-exclusion.
+* `n_comps` is validated against the number of columns that are not
+  identically zero, so empty genes cannot buy components that carry no
+  variance;
+* per-gene parameters of an empty gene cannot reach any output, so a
+  scaled-NB `alpha` value there is neutralized rather than validated. Array
+  shape is still checked, and a retained gene's `alpha` is still required to be
+  finite and nonnegative.
 
-For the log-ratio and Dirichlet families the value at an empty gene is
-well defined, so the transform is applied as specified and no column is
-dropped. These transforms normalize each observation against the full declared
-variable universe, so retaining empty genes does change the values of the
-retained ones: for the shifted-CLR families the per-observation mean is divided
-by `n_vars`, so `b` empty genes scale the log-ratio centering term by
-`(n_vars - b) / n_vars`, and for the Dirichlet families the concentration is
-spread across every declared part. This is a property of the transform
-definitions rather than a defect, and the package reports `n_empty_vars` so the
-effect is measurable rather than hidden. Users who do not want empty genes in
-the normalization universe should filter them before calling.
+For the log-ratio and Dirichlet families the value is nonzero and does affect
+retained genes, because those transforms normalize each observation against the
+full declared variable universe. For the shifted-CLR families the
+per-observation mean is divided by `n_vars`, so `b` empty genes scale the
+log-ratio centering term by `(n_vars - b) / n_vars`. This follows from the
+transform definitions rather than being a defect; `n_empty_vars` is reported so
+the effect is measurable. Filter empty genes before calling to avoid it.
+
+The one undefined *output* is the correspondence-analysis column principal
+coordinate, which divides a singular-vector entry by the square root of the
+column mass. That coordinate is reported as `np.nan`, and the column mass is
+reported as zero.
+
+`varm` therefore keeps a single convention: `np.nan` means the gene was
+excluded by `mask_var`, and a finite value, including zero, means it was
+decomposed. Correspondence analysis adds `np.nan` for a zero-mass column's
+undefined coordinate.
 
 ### Empty cells
 
-Empty cells are rejected for every transform, in count canonicalization, before
-any transform-specific code runs.
+Empty cells are rejected for every transform, during count canonicalization,
+before any transform-specific code runs.
 
 The value at an empty cell is undefined for residual, composition-scale shifted
 CLR, and correspondence analysis. For count-scale shifted CLR it is the zero
 vector, and for the Dirichlet families it is the prior; in both cases every
 empty cell maps to the same point, so the coordinate is an artifact of the
 transform rather than a property of the observation. No family produces an
-informative embedding, and none is affected by another cell being empty: an
-empty cell changes no column total, no grand total, and no other cell's `n_i`.
+informative embedding for one.
 
-Empty cells are rejected rather than excluded-and-marked, because the marker
-would not be inert. `np.nan` in `varm` is never consumed numerically by
-downstream tools, whereas `np.nan` in `obsm` is: a neighbor graph built from
-scores containing a `NaN` row can acquire edges to that row without raising, so
-the exclusion would be invisible downstream. Removing an empty cell also
-discards no information, since its counts are all zero.
-
-Note one asymmetry when filtering upstream in AnnData: `.raw` is sliced along
-observations but not along variables, so genes removed from `.X` remain
-available in `.raw` while removed cells do not.
-
-### Relationship to other implementations
-
-Conventions differ across the ecosystem, so results on matrices containing
-empty genes or cells are not directly comparable without checking each
-implementation's handling. For reference, as of the versions pinned in this
-repository's test environment and in the cited sources:
-
-- Scanpy's Pearson-residual HVG selection excludes empty genes from the
-  residual computation and writes a fill value back for them; its
-  Pearson-residual normalization computes `0/0` and returns `NaN` for those
-  columns. `normalize_total` warns on empty cells and leaves their rows
-  unchanged.
-- sctransform's `vst` fits parameters only for genes detected in at least
-  `min_cells` cells, `5` by default, so empty genes do not appear in its
-  output.
-- The `runorm` shifted-CLR implementation divides the per-observation mean by
-  the full column count, matching the convention used here for the shifted-CLR
-  families, and maps empty cells to zero rows.
-
-This package's choices coincide with Scanpy's Pearson-residual HVG behavior on
-the residual side and with `runorm` on the shifted-CLR side. The empty-cell
-rejection is stricter than any of them.
+Empty cells are rejected rather than marked, because the marker would not be
+inert. `np.nan` in `varm` is never consumed numerically by downstream tools,
+whereas `np.nan` in `obsm` is: a neighbor graph built from scores containing a
+`NaN` row can acquire edges to that row without raising, leaving the exclusion
+invisible downstream. Removing an empty cell also discards no information,
+since its counts are all zero. Filter zero-total rows out of the same matrix or
+layer before calling.
 
 ## Parameter estimation
 
@@ -877,24 +852,17 @@ Use the following terms consistently in documentation and metadata:
 
 - `normalization_n_vars`: the number of columns in the selected count source
   before `mask_var`;
-- `pca_n_vars`: the number of columns decomposed, after `mask_var` and after
-  any empty-gene exclusion;
-- `n_empty_vars`: the number of empty genes in the normalization universe,
-  recorded for every family;
-- `n_empty_vars_excluded`: the number of genes dropped from PCA because they
-  are empty. Nonzero only for the residual and correspondence-analysis
-  families, and counted among the genes `mask_var` selected.
+- `pca_n_vars`: the number of columns decomposed, after `mask_var`;
+- `n_empty_vars`: the number of empty genes in the normalization universe.
 
 `normalization_n_vars` and `pca_n_vars` are equal only when PCA decomposes
-every normalization gene.
+every normalization gene. Because no column is ever dropped for being empty,
+`pca_n_vars` is exactly the selected column count.
 
-The two empty-gene counts deliberately use different scopes.
-`n_empty_vars_excluded` records an action taken on the decomposed columns, so a
-gene the mask already dropped is not counted. `n_empty_vars` is a property of
-the normalization universe, which is fitted before `mask_var` is applied, so it
-counts every empty gene regardless of the mask. The universe-scoped count is
-what makes the shifted-CLR and Dirichlet retention effect measurable: the
-log-ratio centering scale is
+`n_empty_vars` is a property of the normalization universe, which is fitted
+before `mask_var` is applied, so it counts every empty gene regardless of the
+mask. It is what makes the shifted-CLR and Dirichlet retention effect
+measurable: the log-ratio centering scale is
 `(normalization_n_vars - n_empty_vars) / normalization_n_vars`.
 
 For binomial residuals, `n_i` is also the binomial trial count for cell `i`:
@@ -1034,7 +1002,6 @@ adata.uns[uns_key] = {
         "n_comps": n_comps,
         "pca_n_vars": n_vars_used,
         "n_empty_vars": n_empty_vars,
-        "n_empty_vars_excluded": n_empty_vars_excluded,
         "random_state": random_state,
         "tol": tol,
         "check_values": check_values,
@@ -1099,10 +1066,9 @@ def _serialize_alpha(alpha):
 
 If a variable mask is used, `loadings_full` has shape `(adata.n_vars, n_comps)`. Genes outside the mask receive `np.nan` to make non-used genes explicit (preferred over zeros, which can be mistaken for valid loadings).
 
-Genes excluded because they are empty receive `np.nan` on the same basis, so
-`varm` carries one convention: `np.nan` means the gene was not decomposed, and a
-finite value, including zero, means it was. `n_empty_vars_excluded` distinguishes
-the two reasons a row can be `np.nan`.
+That is the only reason a PCA `varm` row is `np.nan`: empty genes are
+decomposed like any other and carry their true coefficient of zero. See
+[empty genes and cells](#empty-genes-and-cells).
 
 ## Sparse-plus-low-rank representation
 
@@ -1794,14 +1760,20 @@ copy=False
 
 ### 6. Empty gene and cell tests
 
-For the residual and correspondence-analysis families, appending an all-zero
-column must leave the decomposition bit-identical to the same input without it,
-give the excluded gene a `NaN` row in `varm`, and report
-`n_empty_vars_excluded`. An empty gene the mask already dropped must not be
-counted as excluded, and a mask selecting only empty genes must raise.
+No transform may change its variable universe, so a fitted transform must
+accept masks sized to its original input.
 
-For the shifted-CLR and Dirichlet families, empty genes must be retained, and
-`n_empty_vars` must recover the log-ratio centering scale
+For the residual and correspondence-analysis families, appending an all-zero
+column must leave every retained coefficient, score, and singular value
+identical to the same input without it, and give the empty column a
+coefficient of exactly zero. `n_comps` at the informative rank must raise, a
+non-finite `alpha` on an empty gene must be ignored while one on a retained
+gene still raises, and a wrong-length `alpha` must still raise. A zero-mass
+correspondence-analysis column must receive `NaN` principal coordinates and
+zero mass.
+
+For the shifted-CLR and Dirichlet families, `n_empty_vars` must recover the
+log-ratio centering scale
 `(normalization_n_vars - n_empty_vars) / normalization_n_vars`.
 
 Empty cells must be rejected by every entry point, including a row emptied by a

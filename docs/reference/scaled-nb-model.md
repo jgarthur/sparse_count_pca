@@ -108,8 +108,8 @@ expectation, and \(\operatorname{E}(T_j)=S\lambda_j\), so
 
 At \(T_j=0\) the log-likelihood is strictly decreasing in \(\lambda_j\), so the
 maximum is the boundary estimate \(\widehat{\lambda}_j=0\), which the same
-formula gives. Residual methods exclude variables with zero total count from
-the decomposition in any case.
+formula gives. A variable with zero total count contributes a zero residual
+column in any case, so it carries no variance and no coefficient.
 
 Since \(S=m\),
 

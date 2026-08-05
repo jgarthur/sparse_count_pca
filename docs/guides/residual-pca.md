@@ -38,17 +38,15 @@ each model's null distribution, variance, and provenance, and derives the
 fitted mean that all three share.
 
 The fitted cell totals and gene proportions use every gene in the chosen count
-matrix before the PCA variable mask is applied. A gene with zero total count
-has a fitted mean of zero, so its residual is undefined; residual methods drop
-such genes from the decomposition and write `NaN` into their `varm` rows, the
-same convention used for genes `mask_var` excludes. The count is reported as
-`n_empty_vars_excluded`.
+matrix before the PCA variable mask is applied. A gene with zero total count is
+kept, not dropped: its fitted mean is zero, so its residual is zero and it
+carries no variance. It therefore receives a coefficient of exactly zero and
+leaves every other gene's result untouched, and the count is reported as
+`n_empty_vars`. You can pass a matrix straight from a cell subset without
+re-filtering genes.
 
-Dropping them costs nothing: an all-zero gene leaves cell totals, other gene
-proportions, and the residual values of retained genes unchanged, so the
-decomposition is identical whether or not it was present. Empty *cells* are a
-different matter and are rejected outright — filter them with
-`sc.pp.filter_cells(adata, min_counts=1)`.
+Empty *cells* are a different matter and are rejected outright. Remove
+zero-total rows from the same matrix or layer before calling.
 
 For `model="scaled_nb"`, pass a scalar, a vector of length `n_vars`, or an
 `adata.var` column name:

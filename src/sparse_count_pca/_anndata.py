@@ -53,17 +53,12 @@ def _write_pca_result(
         np.nan,
         dtype=result.components.dtype,
     )
-    params = dict(result.params)
-    # Decomposed columns can be narrower than the requested mask when a family
-    # drops empty variables. ``NaN`` marks both reasons a row was not
-    # decomposed; ``n_empty_vars_excluded`` distinguishes them.
-    used = result._used_columns
-    decomposed = mask.values if used is None else used
     # Scanpy calls these loadings, but they are component coefficients
     # (components.T), not variance-weighted statistical loadings.
-    loadings[decomposed] = result.components.T
+    loadings[mask.values] = result.components.T
     adata.obsm[obsm_key] = result.scores
     adata.varm[varm_key] = loadings
+    params = dict(result.params)
     params.update(
         {
             "layer": layer,

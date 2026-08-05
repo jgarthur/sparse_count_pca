@@ -8,7 +8,6 @@ from typing import Any, TypeAlias
 import numpy as np
 from numpy.typing import DTypeLike, NDArray
 
-from ._counts import _USED_COLUMNS
 from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
 from ._svd import Solver, compute_truncated_svd
@@ -46,10 +45,18 @@ class PCAResult:
     total_variance: float
     params: dict[str, Any]
     operator: SparseLowRankLinearOperator | None = None
-    #: Decomposed columns as a boolean mask over the original variable universe,
-    #: or ``None`` when every variable was used. Result writers align ``varm``
-    #: rows with it; it is internal and not part of the documented surface.
-    _used_columns: NDArray[np.bool_] | None = None
+
+
+def _count_nonzero_columns(representation: SparseLowRankMatrix) -> int:
+    """Count columns that are not identically zero before centering."""
+    nonzero = np.zeros(representation.shape[1], dtype=bool)
+    sparse_part = representation.sparse
+    if sparse_part.nnz:
+        nonzero[sparse_part.indices] = True
+    right = representation.right
+    if right.shape[1]:
+        nonzero |= np.any(right != 0.0, axis=1)
+    return int(nonzero.sum())
 
 
 def compute_pca_from_representation(
@@ -70,11 +77,16 @@ def compute_pca_from_representation(
     if solver != "arpack":
         raise NotImplementedError("Only solver='arpack' is supported in v1")
     operator_dtype = _normalize_operator_dtype(dtype)
-    n_obs, n_vars = representation.shape
+    n_obs, _ = representation.shape
+    # An identically zero column carries no variance and cannot support a
+    # component, so the bound uses the informative column count. This matters
+    # for residual families, where an empty gene's column is exactly zero.
+    n_vars = _count_nonzero_columns(representation)
     if not 1 <= n_comps < min(n_obs, n_vars):
         raise ValueError(
             "n_comps must satisfy 1 <= n_comps < min(n_obs, n_vars_used) "
-            "when solver='arpack'"
+            "when solver='arpack', where n_vars_used counts columns that are "
+            "not identically zero"
         )
 
     operator = SparseLowRankLinearOperator(
@@ -105,12 +117,11 @@ def compute_pca_from_representation(
     components = np.asarray(decomposition.right_vectors, dtype=operator_dtype)
     total_variance = centered_squared / (n_obs - 1)
     explained_variance = singular_values**2 / (n_obs - 1)
-    used_columns = params.get(_USED_COLUMNS)
     result_params = {
-        **{key: value for key, value in params.items() if key != _USED_COLUMNS},
+        **params,
         "zero_center": True,
         "n_comps": n_comps,
-        "pca_n_vars": n_vars,
+        "pca_n_vars": representation.shape[1],
         "solver": solver,
         "random_state": random_state,
         "tol": tol,
@@ -129,5 +140,4 @@ def compute_pca_from_representation(
         total_variance=float(total_variance),
         params=result_params,
         operator=operator if return_operator else None,
-        _used_columns=used_columns,
     )

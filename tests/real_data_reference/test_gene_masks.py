@@ -126,7 +126,7 @@ def test_all_false_matrix_mask_is_rejected(raw_counts: sparse.csr_matrix) -> Non
         )
 
 
-def test_anndata_residual_excludes_a_real_data_zero_gene(
+def test_anndata_residual_is_unchanged_by_a_real_data_zero_gene(
     raw_counts: sparse.csr_matrix,
 ) -> None:
     """Clipped residual PCA on real counts is unchanged by an appended empty gene."""
@@ -158,10 +158,10 @@ def test_anndata_residual_excludes_a_real_data_zero_gene(
     np.testing.assert_allclose(
         result.varm["PCs"][:-1], expected.components.T, rtol=0.0, atol=1e-12
     )
-    assert np.isnan(result.varm["PCs"][-1]).all()
+    np.testing.assert_allclose(result.varm["PCs"][-1], 0.0, rtol=0.0, atol=1e-12)
     params = result.uns["pca"]["params"]
-    assert params["pca_n_vars"] == raw_counts.shape[1]
-    assert params["n_empty_vars_excluded"] == 1
+    assert params["pca_n_vars"] == counts.shape[1]
+    assert params["n_empty_vars"] == 1
 
 
 def test_correspondence_mask_excludes_a_real_data_zero_gene(

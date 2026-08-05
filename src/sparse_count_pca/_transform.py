@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any
 
 import numpy as np
 from anndata import AnnData
@@ -16,7 +16,6 @@ from scipy.sparse.linalg import LinearOperator
 from ._anndata import _empty, _get_count_matrix, _resolve_mask_var
 from ._clip import ClipMode, validate_clip
 from ._counts import (
-    _USED_COLUMNS,
     BoolArray,
     CountMatrix,
     _canonicalize_counts,
@@ -53,11 +52,6 @@ class Transform(ABC):
     extension mechanism because the representation-building contract is
     private.
     """
-
-    #: Whether an all-zero variable has an undefined transformed value and must
-    #: therefore be dropped before the representation is built. Families whose
-    #: value at an empty variable is well defined keep those columns instead.
-    _excludes_empty_vars: ClassVar[bool] = False
 
     @abstractmethod
     def _build(
@@ -120,8 +114,6 @@ class Residual(Transform):
         >>> transformed = transform(counts, method)
     """
 
-    _excludes_empty_vars: ClassVar[bool] = True
-
     model: Model = "poisson"
     residual: ResidualType = "pearson"
     alpha: AlphaLike | str = None
@@ -139,7 +131,6 @@ class Residual(Transform):
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
         n_vars = counts.shape[1]
         alpha_input = _resolve_vector_parameter(self.alpha, var=var, name="alpha")
-        alpha_full = _validate_model(self.model, self.residual, alpha_input, n_vars)
         n = _sum_counts(counts, axis=1)
         column_totals = _sum_counts(counts, axis=0)
         if not (np.isfinite(n).all() and np.isfinite(column_totals).all()):
@@ -149,6 +140,16 @@ class Residual(Transform):
                 "Cells with zero total counts are not supported; filter empty "
                 "rows out of the count matrix first"
             )
+        # A gene with no counts has a fitted mean of zero, so its residual is
+        # zero by continuity and the representation carries an exactly zero
+        # column. Its overdispersion is therefore irrelevant.
+        alpha_full = _validate_model(
+            self.model,
+            self.residual,
+            alpha_input,
+            n_vars,
+            ignore=column_totals == 0,
+        )
         with np.errstate(over="ignore"):
             total = float(np.sum(n, dtype=np.float64))
         if not np.isfinite(total):
@@ -157,14 +158,6 @@ class Residual(Transform):
 
         all_columns = columns is None or columns.all()
         p = p_full if all_columns else p_full[columns]
-        if (p == 0).any():
-            # ``_transform`` drops empty variables before building a residual
-            # representation, so reaching this point means the caller bypassed
-            # that step with a mask that selects an undefined column.
-            raise ValueError(
-                "Genes with zero total counts have undefined residuals; "
-                "filter empty columns out of the count matrix first"
-            )
         if self.model == "binomial" and (p >= 1).any():
             raise ValueError("Binomial residuals require 0 < p_j < 1")
         alpha_used = (
@@ -640,16 +633,6 @@ class TransformedMatrix(LinearOperator):
             if mask.all()
             else self._representation.select_columns(mask)
         )
-        # ``mask`` indexes the fitted columns, which may already exclude empty
-        # variables. Compose the two so the recorded selection stays expressed
-        # over the original variable universe.
-        fitted_columns = params.get(_USED_COLUMNS)
-        if fitted_columns is None:
-            params[_USED_COLUMNS] = None if mask.all() else mask
-        else:
-            composed = np.zeros(fitted_columns.shape[0], dtype=bool)
-            composed[np.flatnonzero(fitted_columns)] = mask
-            params[_USED_COLUMNS] = composed
         return compute_pca_from_representation(
             representation,
             n_comps,
@@ -699,28 +682,10 @@ def _transform(
             raise ValueError("columns selected zero genes")
         if _columns.all():
             _columns = None
-    empty = _empty_columns(counts)
-    n_empty_vars = int(empty.sum())
-    n_empty_vars_excluded = 0
-    if method._excludes_empty_vars and n_empty_vars:
-        # The value at an empty variable is undefined for this family, so it is
-        # dropped before the representation is built. Empty variables change no
-        # cell total, no grand total, and no retained variable's proportion, so
-        # the retained columns are unaffected by the exclusion.
-        selected = ~empty if _columns is None else (_columns & ~empty)
-        n_empty_vars_excluded = int(
-            (empty if _columns is None else (_columns & empty)).sum()
-        )
-        if not selected.any():
-            raise ValueError("Every selected gene has zero total counts")
-        _columns = None if selected.all() else selected
     representation, label, params = method._build(counts, var=var, columns=_columns)
-    params = {
-        **params,
-        "n_empty_vars": n_empty_vars,
-        "n_empty_vars_excluded": n_empty_vars_excluded,
-        _USED_COLUMNS: _columns,
-    }
+    # Empty variables are never dropped: every transform gives them a defined
+    # value, so the fitted matrix always keeps the caller's variable universe.
+    params = {**params, "n_empty_vars": int(_empty_columns(counts).sum())}
     if _columns is not None and var_names is not None:
         var_names = var_names[_columns]
         var = var.iloc[np.flatnonzero(_columns)]
