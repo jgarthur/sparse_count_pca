@@ -60,10 +60,11 @@ is no automatic selection; `adata.uns["pca"]["variance_ratio"]` reports the
 variance explained by each retained component.
 
 The ARPACK solver requires `n_comps` to be strictly less than both the number
-of observations and the number of selected variables that are not all-zero,
-which is why the example above uses 2 for a four-by-four matrix. Genes with no
-counts carry no variance, so they cannot support a component and do not count
-toward that limit.
+of observations and the number of selected variables whose transformed column
+is not identically zero, which is why the example above uses 2 for a
+four-by-four matrix. Such a column cannot support a component. For residual
+PCA and correspondence analysis these are exactly the genes with no counts;
+other transforms give those genes a nonzero value, so they still count.
 
 ## What was written
 

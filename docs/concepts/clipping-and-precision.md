@@ -47,7 +47,8 @@ all-zero count matrix is rejected earlier because its cells have zero total
 counts.
 
 ARPACK also requires `n_comps` to be strictly smaller than both the number of
-observations and the number of selected variables that are not all-zero.
+observations and the number of selected variables whose transformed column is
+not identically zero.
 
 For exact validation boundaries, see the
 [clipping contract](../development/specification.md#clipping) and
