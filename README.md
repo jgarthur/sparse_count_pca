@@ -47,7 +47,7 @@ Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
 to `adata.varm["PCs"]`, and variance statistics and parameters to
 `adata.uns["pca"]`.
 
-[Run a complete example with simulated data](docs/getting-started.md)
+[Run a complete example with simulated data](https://sparse-count-pca.readthedocs.io/en/latest/getting-started/)
 
 ## Supported transforms
 
@@ -58,13 +58,13 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca(...)` | CLR after a fixed shift on the composition scale |
 | Correspondence analysis | `correspondence_analysis(...)` | Classical contingency-table ordination |
 
-[Compare transform assumptions, formulas, provenance, and API maturity](docs/transforms.md)
+[Compare transform assumptions, formulas, provenance, and API
+maturity](https://sparse-count-pca.readthedocs.io/en/latest/transforms/)
 
 Already using Scanpy's Pearson-residual preprocessing? See
-[coming from Scanpy](docs/reference/compatibility.md#coming-from-scanpy) for
-what each call maps to, and
-[what this package does not do](docs/transforms.md#what-this-package-does-not-do)
-for the transforms it deliberately omits.
+[coming from Scanpy][scanpy-compatibility] for what each call maps to, and
+[what this package does not do][omitted-transforms] for the transforms it
+deliberately omits.
 
 `scaled_nb` is a package-specific name for a negative-binomial model that
 scales overdispersion inversely with cell depth, as in the sSeq model from
@@ -72,11 +72,11 @@ scales overdispersion inversely with cell depth, as in the sSeq model from
 is not an implementation of
 [SCTransform](https://doi.org/10.1186/s13059-019-1874-1); its Pearson residuals
 agree with SCTransform's only under conditions that ordinary data does not meet.
-See the [scaled-NB null model](docs/reference/scaled-nb-model.md).
+See the [scaled-NB null model][scaled-nb-model].
 
 There is also an experimental scaled-NB extension to correspondence analysis;
 see the
-[correspondence-analysis guide](docs/guides/correspondence-analysis.md).
+[correspondence-analysis guide][correspondence-analysis-guide].
 
 ## How it works
 
@@ -91,14 +91,14 @@ actual matrix. Selecting PCA variables preserves this form, and column centering
 adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator`
 to expose matrix-vector and matrix-matrix products to
 `scipy.sparse.linalg.svds`, currently using the ARPACK solver. See
-[sparse plus low rank](docs/concepts/sparse-plus-low-rank.md) for more details.
+[sparse plus low rank][sparse-plus-low-rank] for more details.
 
 ## API structure
 
 - **One-step AnnData API.** Functions such as `residual_pca`,
   `shifted_clr_pca`, and `correspondence_analysis` write results directly into
   an `AnnData` object, as in the quick start above. Counts may come from `.X`
-  or a layer. See [AnnData workflows](docs/guides/anndata-workflows.md).
+  or a layer. See [AnnData workflows][anndata-workflows].
 - **One-step matrix API.** The corresponding `_matrix` functions take dense or
   sparse matrices outside AnnData and return a result object:
 
@@ -113,7 +113,7 @@ to expose matrix-vector and matrix-matrix products to
 - **Two-step transform API.** `transform` fits a normalization once, so
   transformed values can be inspected in bounded slices, or several PCA masks
   can share one fitted state. See
-  [transform once and reuse](docs/guides/transform-reuse.md).
+  [transform once and reuse][transform-reuse].
 
 ## Important distinctions
 
@@ -121,15 +121,15 @@ to expose matrix-vector and matrix-matrix products to
   the count matrix first if excluded genes should not affect cell totals, gene
   proportions, or CLR row means. Correspondence analysis is the exception: its
   mask defines the contingency table, so margins are recomputed after masking.
-  See [normalization, masking, and centering](docs/concepts/normalization-masking-and-centering.md).
+  See [normalization, masking, and centering][normalization-masking-centering].
 - **Scaled-NB residuals are not a drop-in SCTransform v2 implementation.** Do
   not expect default outputs to match. See the
-  [compatibility reference](docs/reference/compatibility.md#sctransform-v2) for
-  the conditions under which equality can be tested.
+  [compatibility reference][sctransform-compatibility] for the conditions under
+  which equality can be tested.
 - **Symmetric residual clipping can expand sparse support**, because it alters
   negative residuals at zero-count entries that the low-rank baseline would
   otherwise carry. Upper-only clipping cannot. See
-  [clipping and precision](docs/concepts/clipping-and-precision.md).
+  [clipping and precision][clipping-and-precision].
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.
@@ -156,3 +156,14 @@ uv run mkdocs build --strict
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for project invariants and documentation
 expectations.
+
+[anndata-workflows]: https://sparse-count-pca.readthedocs.io/en/latest/guides/anndata-workflows/
+[clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
+[correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
+[normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
+[omitted-transforms]: https://sparse-count-pca.readthedocs.io/en/latest/transforms/#what-this-package-does-not-do
+[scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
+[scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
+[sctransform-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#sctransform-v2
+[sparse-plus-low-rank]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/sparse-plus-low-rank/
+[transform-reuse]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/

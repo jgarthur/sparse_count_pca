@@ -1,0 +1,15 @@
+# Changelog
+
+All notable user-facing changes are recorded here.
+
+## 1.0.0rc1 - 2026-08-05
+
+- Provide exact sparse-plus-low-rank representations for residual, shifted-CLR,
+  composition-shifted-CLR, and Dirichlet transforms.
+- Compute PCA from implicit transforms without materializing the dense matrix.
+- Provide classical and scaled-negative-binomial correspondence analysis.
+- Support one-step matrix and AnnData APIs plus reusable fitted transforms.
+- Validate count inputs, masks, clipping behavior, precision, and degenerate
+  margins with explicit public contracts.
+- Document compatibility boundaries and verify results against dense formulas
+  and pinned external references.
