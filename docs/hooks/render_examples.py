@@ -44,11 +44,7 @@ def _shared_dependency_digest() -> str:
         Path(__file__),
         REPOSITORY_ROOT / "pyproject.toml",
         REPOSITORY_ROOT / "uv.lock",
-        *(
-            path
-            for path in (REPOSITORY_ROOT / "src").rglob("*.py")
-            if path.is_file()
-        ),
+        *(path for path in (REPOSITORY_ROOT / "src").rglob("*.py") if path.is_file()),
     ]
     return _digest_files(paths)
 
@@ -82,8 +78,7 @@ def _cache_hit(entry: Any, digest: str) -> bool:
         return False
     outputs = entry.get("outputs")
     return isinstance(outputs, list) and all(
-        isinstance(relative_path, str)
-        and (OUTPUT_DIRECTORY / relative_path).is_file()
+        isinstance(relative_path, str) and (OUTPUT_DIRECTORY / relative_path).is_file()
         for relative_path in outputs
     )
 

@@ -150,6 +150,7 @@ normalization machinery.
 uv sync --extra test --extra docs
 uv run python -m pytest
 uv run ruff check .
+uv run ruff format --check .
 uv run mkdocs build --strict
 ```
 

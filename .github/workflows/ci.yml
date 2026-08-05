@@ -40,6 +40,8 @@ jobs:
         run: uv run --frozen python -m pytest
       - name: Run lint
         run: uv run --frozen ruff check .
+      - name: Check formatting
+        run: uv run --frozen ruff format --check .
 
   docs:
     name: Documentation
