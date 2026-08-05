@@ -762,7 +762,8 @@ if (n == 0).any():
     )
 ```
 
-Empty genes are handled per transform family; see
+Empty genes are never rejected. Every transform retains them, with a value that
+follows from its own definition; see
 [empty genes and cells](#empty-genes-and-cells).
 
 For `model="binomial"`:
