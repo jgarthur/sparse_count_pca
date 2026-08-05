@@ -40,6 +40,8 @@ fitted mean that all three share.
 The fitted cell totals and gene proportions use every gene in the chosen count
 matrix before the PCA variable mask is applied. Residual methods reject empty
 cells and genes before masking; `mask_var` cannot hide an empty gene.
+Removing an all-zero gene leaves cell totals, other gene proportions, and the
+residual PCA values for retained genes unchanged.
 
 For `model="scaled_nb"`, pass a scalar, a vector of length `n_vars`, or an
 `adata.var` column name:

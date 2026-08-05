@@ -21,8 +21,8 @@ from materialization and PCA.
     options:
       members: false
 
-The following prior-based transform specifications are experimental and are
-not part of the recommended starting workflows.
+The following prior-based transform specifications are package-defined; see the
+[transform catalog](../../transforms.md) for validation status.
 
 ::: sparse_count_pca.DirichletLog
     options:

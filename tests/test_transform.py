@@ -150,12 +150,8 @@ def test_materialize_accepts_slice_and_boolean_mask_selections(counts):
     transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
     expected = _dense_count_shifted_clr(counts, 0.7)
 
-    sliced = transformed.materialize(
-        obs=slice(1, None, 2), var=slice(None, None, -2)
-    )
-    np.testing.assert_allclose(
-        sliced, expected[1::2, ::-2], rtol=1e-14, atol=1e-14
-    )
+    sliced = transformed.materialize(obs=slice(1, None, 2), var=slice(None, None, -2))
+    np.testing.assert_allclose(sliced, expected[1::2, ::-2], rtol=1e-14, atol=1e-14)
 
     obs_mask = np.arange(counts.shape[0]) % 2 == 0
     var_mask = np.arange(counts.shape[1]) % 3 != 0

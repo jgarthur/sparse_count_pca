@@ -24,9 +24,7 @@ def test_processed_display_math_passes_validation() -> None:
     assert on_page_content(html, page) == html
 
 
-def test_render_examples_prunes_only_unaccounted_outputs(
-    tmp_path, monkeypatch
-) -> None:
+def test_render_examples_prunes_only_unaccounted_outputs(tmp_path, monkeypatch) -> None:
     """The docs hook retains cached outputs and removes stale generated files."""
     example_directory = tmp_path / "examples"
     output_directory = tmp_path / "docs" / "examples"

@@ -129,6 +129,7 @@ def _prune_stale_outputs(cache: dict[str, dict[str, Any]]) -> int:
 
 def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
     """Execute one percent notebook and export its cells and outputs to Markdown."""
+    # Keep docs-only dependencies lazy so test-only environments can import the hook.
     import jupytext
     from nbconvert import MarkdownExporter
     from nbconvert.preprocessors import ExecutePreprocessor
