@@ -95,15 +95,29 @@ def dirichlet_log_pca_matrix(
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of principal components.
-        concentration: Positive total Dirichlet prior concentration.
-        prior_proportions: Positive per-variable prior proportions summing to
-            one. ``None`` uses a uniform prior.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        concentration: Positive total Dirichlet prior concentration, in units of
+            counts: it is the number of prior pseudo-counts spread over the
+            variables, so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each observation harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``n_vars`` array, or ``None`` for a uniform
+            prior. Values must be strictly positive and sum to one; these are
+            proportions, not counts.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         return_operator: Whether to retain the centered operator in the result.
 
     Returns:
@@ -157,15 +171,29 @@ def dirichlet_clr_pca_matrix(
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of principal components.
-        concentration: Positive total Dirichlet prior concentration.
-        prior_proportions: Positive per-variable prior proportions summing to
-            one. ``None`` uses a uniform prior.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        concentration: Positive total Dirichlet prior concentration, in units of
+            counts: it is the number of prior pseudo-counts spread over the
+            variables, so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each observation harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``n_vars`` array, or ``None`` for a uniform
+            prior. Values must be strictly positive and sum to one; these are
+            proportions, not counts.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         return_operator: Whether to retain the centered operator in the result.
 
     Returns:
@@ -292,27 +320,44 @@ def dirichlet_log_pca(
 ) -> AnnData | None:
     """Compute Dirichlet-log PCA and write AnnData outputs.
 
-    The prior is defined over the full variable universe before ``mask_var``
-    selects and centers PCA columns.
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    analyzed values are ``log((X_ij + a_j) / (n_i + concentration))``, where
+    ``n_i`` is cell ``i``'s count total. The prior is defined over the full
+    variable universe before ``mask_var`` selects and centers PCA columns.
 
     Args:
         adata: AnnData object with observations in rows and variables in
             columns.
-        n_comps: Number of principal components.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
         layer: Count layer to use. By default, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
         use_highly_variable: Deprecated Scanpy-compatible mask selector.
-        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
-        concentration: Positive total Dirichlet prior concentration.
-        prior_proportions: Positive per-variable array, ``adata.var`` key, or
-            ``None`` for a uniform prior.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
+        concentration: Positive total Dirichlet prior concentration, in units of
+            counts: it is the number of prior pseudo-counts spread over the
+            variables, so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each cell harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``adata.n_vars`` array, an ``adata.var`` key, or
+            ``None`` for a uniform prior. Values must be strictly positive and
+            sum to one; these are proportions, not counts.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
 
     Returns:
@@ -365,27 +410,45 @@ def dirichlet_clr_pca(
 ) -> AnnData | None:
     """Compute Dirichlet-CLR PCA and write AnnData outputs.
 
-    The prior and CLR row mean use the full variable universe before
-    ``mask_var`` selects and centers PCA columns.
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    analyzed values are ``clr(X_i + a)``, which equals the CLR of the
+    posterior-mean composition ``(X_i + a) / (n_i + concentration)`` because CLR
+    removes the per-cell denominator. The prior and CLR row mean use the full
+    variable universe before ``mask_var`` selects and centers PCA columns.
 
     Args:
         adata: AnnData object with observations in rows and variables in
             columns.
-        n_comps: Number of principal components.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
         layer: Count layer to use. By default, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
         use_highly_variable: Deprecated Scanpy-compatible mask selector.
-        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
-        concentration: Positive total Dirichlet prior concentration.
-        prior_proportions: Positive per-variable array, ``adata.var`` key, or
-            ``None`` for a uniform prior.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
+        concentration: Positive total Dirichlet prior concentration, in units of
+            counts: it is the number of prior pseudo-counts spread over the
+            variables, so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each cell harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``adata.n_vars`` array, an ``adata.var`` key, or
+            ``None`` for a uniform prior. Values must be strictly positive and
+            sum to one; these are proportions, not counts.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
 
     Returns:

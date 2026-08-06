@@ -67,6 +67,13 @@ scp.residual_pca(
 )
 ```
 
+`alpha` is the overdispersion itself, not its inverse. It is a
+reciprocal-of-size parameterization rather than a `size`/`theta` one: gene `j`
+contributes variance
+`mu_ij * (1 + alpha_j * mean_n * p_j)`, so larger values mean more variance and
+`alpha = 0` is the Poisson limit. Estimates reported on a `size`, `theta`, or
+`r` scale must be inverted before they are passed here.
+
 Values of `alpha` below `1e-8` use the Poisson limit. The package consumes
 overdispersion estimates but does not fit them;
 [Yu, Huber, and Vitek (2013)](https://doi.org/10.1093/bioinformatics/btt143)

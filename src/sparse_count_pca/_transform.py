@@ -99,18 +99,40 @@ def _serialize_parameter(value: Any, *, none: Any = None) -> Any:
 class Residual(Transform):
     """Specify a Pearson or deviance residual transformation.
 
+    Every model uses the same fitted null mean ``mu_ij = n_i * p_j``, where
+    ``n_i`` is observation ``i``'s count total and ``p_j`` is variable ``j``'s
+    share of the grand total. Pearson residuals are
+    ``(x_ij - mu_ij) / sqrt(V_ij)`` and deviance residuals are
+    ``sign(x_ij - mu_ij) * sqrt(d(x_ij, mu_ij))``.
+
     Attributes:
-        model: ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
-        residual: ``"pearson"`` or ``"deviance"``.
-        alpha: Scalar, per-variable array, or AnnData variable key containing
-            nonnegative scaled-NB overdispersion. Used only by ``scaled_nb``.
-            Values below ``1e-8`` use the Poisson limit. Values for variables
-            with no counts are replaced with zero instead of being validated,
-            since they cannot reach any output.
-        clip: Positive clipping threshold, or ``None`` for no clipping.
-        clip_mode: ``"symmetric"`` or upper-tail-only ``"upper"`` clipping.
-        clip_max_nnz_ratio: Maximum support-growth ratio for exact symmetric
-            clipping, or ``None`` for no limit.
+        model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses
+            ``mu_ij``, ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and
+            ``"scaled_nb"`` uses ``mu_ij * (1 + alpha_j * mean_n * p_j)``, where
+            ``mean_n`` is the mean observation count total.
+        residual: ``"pearson"`` for standardized deviations from ``mu_ij``, or
+            ``"deviance"`` for signed square-root deviance contributions.
+        alpha: Per-variable overdispersion of the ``scaled_nb`` model, as a
+            scalar broadcast to every variable, a length-``n_vars`` array, or an
+            AnnData variable key. This is the overdispersion itself, not its
+            inverse: it is a reciprocal-of-size parameterization rather than a
+            ``size``/``theta`` one, so larger values mean more variance and
+            ``alpha=0`` is the Poisson limit. Must be nonnegative; values below
+            ``1e-8`` use the Poisson limit. Used only by ``scaled_nb``, and
+            rejected for the other models. Values for
+            variables with no counts are replaced with zero instead of being
+            validated, since they cannot reach any output.
+        clip: Positive threshold applied to the uncentered residual values
+            before PCA centering, or ``None`` for no clipping.
+        clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``;
+            ``"upper"`` clips only from above, into ``(-inf, clip]``, which
+            leaves zero-count residuals untouched.
+        clip_max_nnz_ratio: Upper bound on how far exact symmetric clipping may
+            grow the stored sparse support, as a multiple of the input count
+            matrix's number of stored nonzeros. Reaching it raises
+            ``RuntimeError``; ``None`` removes the limit. Only exact symmetric
+            clipping can add support, so the limit never binds when ``clip`` is
+            ``None`` or ``clip_mode="upper"``.
 
     Examples:
         >>> method = Residual(model="poisson", residual="pearson")
@@ -200,10 +222,17 @@ class Residual(Transform):
 class ShiftedCLR(Transform):
     """Specify count-scale shifted CLR coordinates.
 
+    The transform is ``clr(x_i + count_shift)``, that is
+    ``log(x_ij + count_shift) - mean_k log(x_ik + count_shift)`` over all
+    ``n_vars`` variables.
+
     Attributes:
-        count_shift: Positive shift added to every raw count. The PFlog
-            formulation in Booeshaghi et al. preprint v4 uses
-            ``1 / (4 * alpha)``.
+        count_shift: Positive constant added to every raw count before taking
+            logs. It is an additive shift on the raw-count scale, not a
+            multiplicative rescaling, and it is the same for every observation
+            regardless of sequencing depth. Larger values shrink log-ratios
+            toward zero. The PFlog formulation in Booeshaghi et al. preprint v4
+            uses ``count_shift = 1 / (4 * alpha)``.
 
     Examples:
         >>> transformed = transform(counts, ShiftedCLR(count_shift=1.0))
@@ -234,9 +263,17 @@ class ShiftedCLR(Transform):
 class ProportionShiftedCLR(Transform):
     """Specify composition-scale shifted CLR coordinates.
 
+    The transform is ``clr(x_i / n_i + composition_shift)``, where ``n_i`` is
+    observation ``i``'s count total.
+
     Attributes:
-        composition_shift: Positive shift added after dividing each row by its
-            count total.
+        composition_shift: Positive constant added to every proportion after
+            dividing each row by its count total. It is an additive shift on the
+            composition scale, not a multiplicative rescaling. Because
+            ``clr(x_i / n_i + composition_shift) = clr(x_i + n_i *
+            composition_shift)``, the equivalent raw-count shift is
+            ``n_i * composition_shift`` and therefore differs per observation.
+            This is what distinguishes it from ``ShiftedCLR``.
 
     Examples:
         >>> transformed = transform(
@@ -272,10 +309,20 @@ class ProportionShiftedCLR(Transform):
 class DirichletLog(Transform):
     """Specify log posterior-mean compositions under a Dirichlet prior.
 
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    transform is ``log((x_ij + a_j) / (n_i + concentration))``, where ``n_i`` is
+    observation ``i``'s count total.
+
     Attributes:
-        concentration: Positive total prior concentration.
-        prior_proportions: Positive per-variable proportions, an AnnData
-            variable key, or ``None`` for a uniform prior.
+        concentration: Positive total prior concentration, in units of counts:
+            it is the number of prior pseudo-counts spread over the variables,
+            so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each observation harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``n_vars`` array, an AnnData variable key, or
+            ``None`` for a uniform prior. Values must be strictly positive and
+            sum to one; these are proportions, not counts.
 
     Examples:
         >>> transformed = transform(counts, DirichletLog(concentration=1.0))
@@ -317,10 +364,22 @@ class DirichletLog(Transform):
 class DirichletCLR(Transform):
     """Specify CLR posterior-mean compositions under a Dirichlet prior.
 
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    transform is ``clr((x_i + a) / (n_i + concentration))``, which equals
+    ``clr(x_i + a)`` because CLR removes the per-observation denominator. A
+    uniform prior therefore reduces to ``ShiftedCLR`` with
+    ``count_shift = concentration / n_vars``.
+
     Attributes:
-        concentration: Positive total prior concentration.
-        prior_proportions: Positive per-variable proportions, an AnnData
-            variable key, or ``None`` for a uniform prior.
+        concentration: Positive total prior concentration, in units of counts:
+            it is the number of prior pseudo-counts spread over the variables,
+            so it is an additive shift of ``concentration *
+            prior_proportions_j`` counts for variable ``j``. Larger values
+            shrink each observation harder toward the prior composition.
+        prior_proportions: Prior composition the pseudo-counts are distributed
+            across, as a length-``n_vars`` array, an AnnData variable key, or
+            ``None`` for a uniform prior. Values must be strictly positive and
+            sum to one; these are proportions, not counts.
 
     Examples:
         >>> transformed = transform(counts, DirichletCLR(concentration=1.0))
@@ -404,7 +463,11 @@ class TransformedMatrix(LinearOperator):
         shape: Transformed matrix shape ``(n_obs, n_vars)``.
         dtype: Floating-point representation and operator dtype.
         transform_label: Human-readable transform name.
-        params: Fitted transform and reproducibility metadata.
+        params: Fitted transform and reproducibility metadata. It records the
+            transform's own parameters plus ``normalization_n_vars``, the number
+            of variables the normalization was fitted on, ``n_empty_vars``, how
+            many of those have no counts, and, for the shifted transforms,
+            ``shift_domain``, naming the scale the shift was applied on.
         obs_names: Copied AnnData observation names, or ``None`` for matrix
             input.
         var_names: Copied AnnData variable names, or ``None`` for matrix input.
@@ -499,8 +562,9 @@ class TransformedMatrix(LinearOperator):
             var: Variable selector, or ``None`` for every variable.
             out: Writable floating-point NumPy array or memory map with the
                 selected output shape. If omitted, allocate a new array.
-            block_size: Positive number of selected observations processed per
-                output block.
+            block_size: Positive number of selected observations densified per
+                output block. It trades peak memory against the number of
+                passes and does not change the returned values.
 
         Returns:
             Dense two-dimensional transformed values. When ``out`` is given,
@@ -579,15 +643,22 @@ class TransformedMatrix(LinearOperator):
         for the selected columns.
 
         Args:
-            n_comps: Number of principal components.
+            n_comps: Number of principal components to return. Must satisfy
+                ``1 <= n_comps < min(n_obs, n_nonempty_vars)``, where
+                ``n_nonempty_vars`` counts selected variables that are not
+                identically zero.
             mask_var: Boolean array or, for AnnData-derived transforms, an
                 ``adata.var`` key. When omitted, use ``"highly_variable"`` if
                 present; explicit ``None`` selects every variable.
             use_highly_variable: Deprecated Scanpy-compatible mask selector,
                 available only for AnnData-derived transforms.
             solver: SVD solver. Only ``"arpack"`` is supported.
-            random_state: Seed used to construct ARPACK's starting vector.
-            tol: Convergence tolerance passed to SciPy.
+            random_state: Seed for the random starting vector handed to ARPACK.
+                ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+                reproducible.
+            tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0``
+                requests machine precision; larger values stop sooner and less
+                accurately.
             return_operator: Whether to retain an isolated centered operator in
                 the result.
 
@@ -724,9 +795,12 @@ def transform(
             object. Observations are rows and variables are columns.
         method: Residual, shifted-CLR, or Dirichlet transform specification.
         layer: AnnData count layer to use. By default, use ``adata.X``.
-        check_values: Whether floating-point counts must be integer-like.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
         dtype: Representation and operator dtype, either ``"float64"`` or
-            ``"float32"``.
+            ``"float32"``. Normalization is always fitted in float64 and cast
+            afterwards.
 
     Returns:
         An uncentered implicit transformed matrix that supports matrix products,

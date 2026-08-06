@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here.
 
+## Unreleased
+
+- Clarify parameter documentation across the public API: state each transform's
+  formula where it is short, say that shifts are additive and on which scale,
+  and record that `alpha` is the overdispersion itself rather than its inverse.
+
 ## 1.0.0rc1 - 2026-08-05
 
 - Provide exact sparse-plus-low-rank representations for residual, shifted-CLR,

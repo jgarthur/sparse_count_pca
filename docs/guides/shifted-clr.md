@@ -44,6 +44,11 @@ result = scp.shifted_clr_pca_matrix(
 )
 ```
 
+The `alpha` in that formula is PFlog's own parameter and is unrelated to the
+`alpha` overdispersion argument of the residual transforms. `count_shift` must
+be positive; it is added to the counts, so larger values shrink the resulting
+log ratios toward zero.
+
 The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr)
 implementation provides the same PFlog parameterization through Rust-backed
 Python tooling. See [compatibility](../reference/compatibility.md) for the

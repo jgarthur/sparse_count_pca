@@ -79,20 +79,33 @@ def shifted_clr_pca_matrix(
 ) -> PCAResult:
     """Compute PCA of count-scale shifted CLR coordinates.
 
-    The transform is ``clr(X + count_shift)``. The PFlog formulation in
-    Booeshaghi et al. preprint v4 is obtained with
-    ``count_shift = 1 / (4 * alpha)``.
+    The transform is ``clr(X + count_shift)``, that is
+    ``log(x_ij + count_shift) - mean_k log(x_ik + count_shift)`` over all
+    ``n_vars`` variables. The PFlog formulation in Booeshaghi et al. preprint v4
+    is obtained with ``count_shift = 1 / (4 * alpha)``.
 
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of principal components.
-        count_shift: Positive raw-count shift.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        count_shift: Positive constant added to every raw count before taking
+            logs. It is an additive shift on the raw-count scale, not a
+            multiplicative rescaling, and it is the same for every observation
+            regardless of sequencing depth. Larger values shrink log-ratios
+            toward zero.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         return_operator: Whether to retain the centered operator in the result.
 
     Returns:
@@ -143,13 +156,26 @@ def proportion_shifted_clr_pca_matrix(
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
             in rows and variables in columns.
-        n_comps: Number of principal components.
-        composition_shift: Positive shift on the row-composition scale.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        composition_shift: Positive constant added to every proportion after
+            dividing each row by its count total. It is an additive shift on the
+            composition scale, not a multiplicative rescaling. Because
+            ``clr(x_i / n_i + composition_shift) = clr(x_i + n_i *
+            composition_shift)``, the equivalent raw-count shift is
+            ``n_i * composition_shift`` and therefore differs per observation.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         return_operator: Whether to retain the centered operator in the result.
 
     Returns:
@@ -241,26 +267,39 @@ def shifted_clr_pca(
 ) -> AnnData | None:
     """Compute count-scale shifted-CLR PCA and write AnnData outputs.
 
-    CLR row means use the full variable universe before ``mask_var`` selects
-    and centers PCA columns.
+    The transform is ``clr(X + count_shift)``. CLR row means use the full
+    variable universe before ``mask_var`` selects and centers PCA columns.
 
     Args:
         adata: AnnData object with observations in rows and variables in
             columns.
-        n_comps: Number of principal components.
-        count_shift: Positive raw-count shift. Use ``1 / (4 * alpha)`` for the
-            PFlog formulation in Booeshaghi et al. preprint v4.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        count_shift: Positive constant added to every raw count before taking
+            logs. It is an additive shift on the raw-count scale, not a
+            multiplicative rescaling, and it is the same for every cell
+            regardless of sequencing depth. Larger values shrink log-ratios
+            toward zero. Use ``1 / (4 * alpha)`` for the PFlog formulation in
+            Booeshaghi et al. preprint v4.
         layer: Count layer to use. By default, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
         use_highly_variable: Deprecated Scanpy-compatible mask selector.
-        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
 
     Returns:
@@ -317,19 +356,33 @@ def proportion_shifted_clr_pca(
     Args:
         adata: AnnData object with observations in rows and variables in
             columns.
-        n_comps: Number of principal components.
-        composition_shift: Positive shift on the row-composition scale.
+        n_comps: Number of principal components to return. Must satisfy
+            ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
+        composition_shift: Positive constant added to every proportion after
+            dividing each cell by its count total. It is an additive shift on
+            the composition scale, not a multiplicative rescaling. Because
+            ``clr(x_i / n_i + composition_shift) = clr(x_i + n_i *
+            composition_shift)``, the equivalent raw-count shift is
+            ``n_i * composition_shift`` and therefore differs per cell.
         layer: Count layer to use. By default, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
         use_highly_variable: Deprecated Scanpy-compatible mask selector.
-        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``.
-        check_values: Whether floating-point counts must be integer-like.
-        dtype: Representation and ARPACK calculation dtype.
+        key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
+            to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
+        check_values: When ``True``, reject floating-point input whose values
+            are not within ``1e-8`` of integers. Set it to ``False`` to accept
+            genuinely fractional input.
+        dtype: Representation and ARPACK calculation dtype, either
+            ``"float64"`` or ``"float32"``. Normalization is always fitted in
+            float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed used to construct ARPACK's starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random starting vector handed to ARPACK.
+            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
+            reproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision; larger values stop sooner and less accurately.
         copy: If ``True``, return a modified copy; otherwise mutate ``adata``.
 
     Returns:

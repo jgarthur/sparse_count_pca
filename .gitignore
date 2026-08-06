@@ -16,3 +16,4 @@ docs/examples/
 # files for agents
 AGENTS.md
 CLAUDE.md
+.claude/

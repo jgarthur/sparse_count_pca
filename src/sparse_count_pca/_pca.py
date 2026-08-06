@@ -21,16 +21,24 @@ class PCAResult:
     """Outputs from PCA of an implicit sparse-plus-low-rank transform.
 
     Attributes:
-        scores: Observation coordinates with shape ``(n_obs, n_comps)``.
-        components: Right singular vectors with shape
-            ``(n_comps, n_vars_used)``.
-        singular_values: Singular values in descending order.
-        explained_variance: Per-component sample variance, calculated as the
-            squared singular values divided by ``n_obs - 1``.
-        explained_variance_ratio: Fraction of total centered transformed
-            variance explained by each returned component.
-        mean: Column mean of the selected uncentered transform.
-        total_variance: Total sample variance of the centered transform.
+        scores: Observation coordinates with shape ``(n_obs, n_comps)``, equal
+            to the centered transform projected onto ``components``, that is the
+            left singular vectors scaled by ``singular_values``.
+        components: Unit-norm right singular vectors with shape
+            ``(n_comps, n_vars_used)``, one component per row, over the
+            variables selected for PCA.
+        singular_values: Singular values of the centered transform, in
+            descending order.
+        explained_variance: Sample variance carried by each returned component,
+            equal to its squared singular value divided by ``n_obs - 1``.
+        explained_variance_ratio: ``explained_variance / total_variance``, the
+            fraction of total centered variance carried by each returned
+            component. Entries sum to one only if every component is returned.
+        mean: Column mean of the selected uncentered transform, the vector
+            subtracted before decomposition.
+        total_variance: Total sample variance of the centered transform across
+            all selected variables, not only the returned components. It is the
+            denominator of ``explained_variance_ratio``.
         params: Transform, solver, dtype, masking, and reproducibility metadata.
         operator: Centered operator passed to ARPACK when
             ``return_operator=True``; otherwise ``None``.

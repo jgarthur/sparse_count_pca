@@ -37,8 +37,10 @@ def compute_truncated_svd(
         A: Matrix or linear operator to decompose.
         n_comps: Number of singular triplets to return.
         solver: SVD solver name. Version 1 supports only ``"arpack"``.
-        random_state: Seed for the ARPACK starting vector.
-        tol: Convergence tolerance passed to SciPy.
+        random_state: Seed for the random ARPACK starting vector. ``None``
+            draws an unseeded vector and makes the run irreproducible.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
+            machine precision.
 
     Returns:
         A tuple ``(U, singular_values, Vt)`` sorted by descending singular

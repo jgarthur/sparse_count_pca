@@ -41,7 +41,12 @@ def build_pearson_residual_representation(
     model: Literal["poisson", "scaled_nb"],
     alpha: Float64Array | None,
 ) -> SparseLowRankMatrix:
-    """Build an unclipped Poisson or scaled-NB Pearson representation."""
+    """Build an unclipped Poisson or scaled-NB Pearson representation.
+
+    The residual is ``(x_ij - mu_ij) / sqrt(V_ij)`` with ``mu_ij = n_i * p_j``.
+    Poisson uses ``V_ij = mu_ij``; scaled-NB multiplies it by
+    ``1 + alpha_j * mean(n) * p_j``.
+    """
     rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
     if model == "poisson":
         if alpha is not None:
@@ -86,7 +91,9 @@ def _validate_model(
     Args:
         model: Null model name.
         residual: Residual type.
-        alpha: Scalar or per-gene overdispersion for the scaled-NB model.
+        alpha: Scalar or per-gene overdispersion for the scaled-NB model. This
+            is the overdispersion itself, not its inverse: larger values mean
+            more variance and zero is the Poisson limit.
         n_vars: Number of genes represented by ``alpha``.
         ignore: Genes whose overdispersion cannot affect any output. Their
             values are replaced with zero instead of being validated.
@@ -289,15 +296,18 @@ def build_residual_representation(
 
     Args:
         X: CSR count matrix with shape ``(n_obs, n_vars)``.
-        n: Cell totals computed before variable masking.
-        p: Gene proportions for the columns of ``X``.
+        n: Cell totals ``n_i``, computed before variable masking.
+        p: Gene proportions ``p_j`` for the columns of ``X``, each gene's total
+            divided by the unmasked grand total, so the null mean is
+            ``mu_ij = n_i * p_j``.
         model: One of ``"poisson"``, ``"binomial"``, or ``"scaled_nb"``.
         residual: Either ``"pearson"`` or ``"deviance"``.
-        alpha: Validated per-gene scaled-NB overdispersion, or ``None``.
-        clip: Positive clipping threshold, or ``None``.
+        alpha: Validated per-gene scaled-NB overdispersion, not its inverse, or
+            ``None`` for the other models.
+        clip: Positive threshold applied to residual values, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
-        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
-            symmetric clipping, or ``None`` for no limit.
+        clip_max_nnz_ratio: Maximum stored-nonzero growth factor allowed by
+            exact symmetric clipping, or ``None`` for no limit.
 
     Returns:
         A rank-one sparse-plus-low-rank representation.

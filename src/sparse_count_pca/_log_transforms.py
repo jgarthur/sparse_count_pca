@@ -33,7 +33,12 @@ def validate_dirichlet_prior(
     prior_proportions: PriorProportions,
     n_vars: int,
 ) -> tuple[float, Float64Array]:
-    """Validate a total prior concentration and prior composition."""
+    """Validate a total prior concentration and prior composition.
+
+    The prior counts are ``concentration * prior_proportions``, so
+    ``concentration`` is a pseudo-count total and ``prior_proportions`` must be
+    strictly positive and sum to one. ``None`` means a uniform prior.
+    """
     concentration = validate_positive_scalar(concentration, name="concentration")
     if prior_proportions is None:
         proportions = np.full(n_vars, 1.0 / n_vars, dtype=np.float64)
@@ -83,7 +88,13 @@ def build_shifted_clr_representation(
     *,
     count_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent count-scale shifted CLR as sparse plus rank one."""
+    """Represent count-scale shifted CLR as sparse plus rank one.
+
+    The transform is ``clr(x_i + count_shift)``, where ``count_shift`` is a
+    constant added to every raw count. Factoring out ``log(count_shift)``, which
+    the CLR row mean cancels, leaves the sparse part
+    ``log1p(x_ij / count_shift)`` and a rank-one row-mean correction.
+    """
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
     sparse_part = log1p_count_correction(X, count_shift)
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
@@ -99,7 +110,12 @@ def build_proportion_shifted_clr_representation(
     *,
     composition_shift: float,
 ) -> SparseLowRankMatrix:
-    """Represent composition-scale shifted CLR as sparse plus rank one."""
+    """Represent composition-scale shifted CLR as sparse plus rank one.
+
+    The transform is ``clr(x_i / n_i + composition_shift)``, equivalently
+    ``clr(x_i + n_i * composition_shift)``, so the equivalent raw-count shift
+    ``n_i * composition_shift`` differs per row.
+    """
     composition_shift = validate_positive_scalar(
         composition_shift, name="composition_shift"
     )
@@ -139,7 +155,11 @@ def build_dirichlet_log_representation(
     concentration: float,
     prior_proportions: PriorProportions = None,
 ) -> SparseLowRankMatrix:
-    """Represent log Dirichlet posterior-mean proportions implicitly."""
+    """Represent log Dirichlet posterior-mean proportions implicitly.
+
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    transform is ``log((x_ij + a_j) / (n_i + concentration))``.
+    """
     concentration, proportions = validate_dirichlet_prior(
         concentration, prior_proportions, X.shape[1]
     )
@@ -175,7 +195,13 @@ def build_dirichlet_clr_representation(
     concentration: float,
     prior_proportions: PriorProportions = None,
 ) -> SparseLowRankMatrix:
-    """Represent CLR of Dirichlet posterior-mean proportions implicitly."""
+    """Represent CLR of Dirichlet posterior-mean proportions implicitly.
+
+    With prior counts ``a_j = concentration * prior_proportions_j``, the
+    transform is ``clr(x_i + a)``, which equals the CLR of the posterior-mean
+    composition because CLR cancels the shared denominator
+    ``n_i + concentration``.
+    """
     concentration, proportions = validate_dirichlet_prior(
         concentration, prior_proportions, X.shape[1]
     )
