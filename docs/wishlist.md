@@ -9,13 +9,10 @@ documentation; do not leave completed work described as a wish.
 
 ### Release and packaging
 
-`.readthedocs.yaml` now defines the documentation build, but the hosted project
-and public URLs remain unfinished: the GitHub repository is private and the
-intended Read the Docs URL returns 404.
-
-After publication, replace README `docs/...` links with the public site URLs,
-add Homepage, Documentation, and Repository entries under `[project.urls]`, and
-verify links into `examples/` and `tests/` on the public `main` branch.
+Import the public repository into Read the Docs with the `sparse-count-pca`
+slug, run the first hosted build from the existing `.readthedocs.yaml`, and
+verify the public links now used by the README and package metadata. The
+intended Read the Docs URL still returns 404 until that import is completed.
 
 ## After 1.0
 

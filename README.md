@@ -154,8 +154,9 @@ uv run ruff format --check .
 uv run mkdocs build --strict
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for project invariants and documentation
-expectations.
+See
+[CONTRIBUTING.md](https://github.com/jgarthur/sparse_count_pca/blob/main/CONTRIBUTING.md)
+for project invariants and documentation expectations.
 
 [anndata-workflows]: https://sparse-count-pca.readthedocs.io/en/latest/guides/anndata-workflows/
 [clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
