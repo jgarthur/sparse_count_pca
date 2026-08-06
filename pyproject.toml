@@ -1,14 +1,50 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "sparse-count-pca"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "PCA of implicitly represented sparse count transforms"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["anndata", "numpy", "scikit-learn", "scipy"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Joey Arthur" }]
+keywords = [
+    "anndata",
+    "bioinformatics",
+    "dimensionality reduction",
+    "principal component analysis",
+    "single-cell",
+    "sparse matrix",
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Typing :: Typed",
+]
+dependencies = [
+    "anndata>=0.11.4",
+    "numpy>=2.2.6",
+    "scikit-learn>=1.7.2",
+    "scipy>=1.15.3",
+]
+
+[project.urls]
+Homepage = "https://sparse-count-pca.readthedocs.io/"
+Documentation = "https://sparse-count-pca.readthedocs.io/en/latest/"
+Repository = "https://github.com/jgarthur/sparse_count_pca"
+Issues = "https://github.com/jgarthur/sparse_count_pca/issues"
+Changelog = "https://github.com/jgarthur/sparse_count_pca/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 docs = [
@@ -28,8 +64,10 @@ packages = ["src/sparse_count_pca"]
 only-include = [
     "/src",
     "/tests",
+    "/CHANGELOG.md",
     "/examples",
     "/CONTRIBUTING.md",
+    "/LICENSE",
     "/README.md",
     "/docs",
     "/mkdocs.yml",

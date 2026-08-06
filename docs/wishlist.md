@@ -5,18 +5,6 @@ committed API. When work is completed, remove it from this file and record the
 outcome in the appropriate specification, design, architecture, or provenance
 documentation; do not leave completed work described as a wish.
 
-## Before 1.0
-
-### Release and packaging
-
-`.readthedocs.yaml` now defines the documentation build, but the hosted project
-and public URLs remain unfinished: the GitHub repository is private and the
-intended Read the Docs URL returns 404.
-
-After publication, replace README `docs/...` links with the public site URLs,
-add Homepage, Documentation, and Repository entries under `[project.urls]`, and
-verify links into `examples/` and `tests/` on the public `main` branch.
-
 ## After 1.0
 
 ### Block-wise inverse reconstruction to count space

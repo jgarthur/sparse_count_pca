@@ -3181,7 +3181,7 @@ wheels = [
 
 [[package]]
 name = "sparse-count-pca"
-version = "0.1.0"
+version = "1.0.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "anndata", version = "0.11.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -3215,19 +3215,19 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata" },
+    { name = "anndata", specifier = ">=0.11.4" },
     { name = "ipykernel", marker = "extra == 'docs'" },
     { name = "jupytext", marker = "extra == 'docs'" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mkdocstrings-python", marker = "extra == 'docs'" },
     { name = "nbconvert", marker = "extra == 'docs'" },
-    { name = "numpy" },
+    { name = "numpy", specifier = ">=2.2.6" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'docs'" },
     { name = "ruff", marker = "extra == 'test'" },
     { name = "scanpy", marker = "extra == 'test'", specifier = ">=1.10" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
+    { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "scipy", specifier = ">=1.15.3" },
     { name = "zarr", marker = "extra == 'test'" },
 ]
 provides-extras = ["docs", "test"]
