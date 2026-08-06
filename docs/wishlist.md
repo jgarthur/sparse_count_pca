@@ -5,15 +5,6 @@ committed API. When work is completed, remove it from this file and record the
 outcome in the appropriate specification, design, architecture, or provenance
 documentation; do not leave completed work described as a wish.
 
-## Before 1.0
-
-### Release and packaging
-
-Import the public repository into Read the Docs with the `sparse-count-pca`
-slug, run the first hosted build from the existing `.readthedocs.yaml`, and
-verify the public links now used by the README and package metadata. The
-intended Read the Docs URL still returns 404 until that import is completed.
-
 ## After 1.0
 
 ### Block-wise inverse reconstruction to count space
