@@ -148,10 +148,8 @@ Use `residual_pca`, `residual_pca_matrix`, or
 - `model`: `"poisson"`, `"binomial"`, or `"scaled_nb"`;
 - `residual`: `"pearson"` or `"deviance"`;
 - `alpha`: nonnegative scalar or per-variable overdispersion required by
-  `scaled_nb`. It is a dispersion, not a size: larger values mean more variance
-  and \(\alpha_j=0\) is the Poisson limit, so an estimate reported as a size
-  (`theta`, \(r\)) must be inverted first. Not currently estimated in this
-  package
+  `scaled_nb`; variance under the model increases with `alpha`. Not currently
+  estimated in this package
 - optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`; see
   [clipping and precision](concepts/clipping-and-precision.md).
 
@@ -223,8 +221,9 @@ see [Aitchison (1982)](https://doi.org/10.1111/j.2517-6161.1982.tb01195.x).
 The PFlog parameterization is documented by Booeshaghi et al. and the follow-up
 [`cleartools/scclr`](https://github.com/cleartools/scclr) implementation, which
 is built on the [`runorm`](https://github.com/cleartools/runorm) crate. Its
-`alpha` is a dataset-wide overdispersion under the standard NB2 model, not the
-per-gene `alpha` of the residual transforms above; see
+`alpha` is a dataset-wide overdispersion under a common negative-binomial
+size-factor model, not the per-gene `alpha` of the residual transforms above;
+see
 [PFlog and cleartools compatibility](reference/compatibility.md#shifted-clr-pflog-and-cleartools).
 
 Its dense oracle follows the
@@ -383,8 +382,8 @@ them.
 Use `correspondence_analysis` or `correspondence_analysis_matrix` with
 `model="poisson"` for classical CA. There is no two-step transform
 specification because CA has its own coordinates, inertia, and mass-weighting
-contract. `model="scaled_nb"` additionally requires nonnegative `alpha`, the
-overdispersion itself rather than its inverse, as in the residual section above.
+contract. `model="scaled_nb"` additionally requires the nonnegative
+overdispersion parameter `alpha`.
 
 ### Origin and validation
 

@@ -25,13 +25,10 @@ def validate_clip(
     """Validate clipping options.
 
     Args:
-        clip: Positive threshold applied to residual values, or ``None`` for no
-            clipping.
-        clip_mode: ``"symmetric"`` clips into ``[-clip, clip]``; ``"upper"``
-            clips only from above, into ``(-inf, clip]``.
-        clip_max_nnz_ratio: Maximum stored-nonzero growth factor allowed by
-            exact symmetric clipping, relative to the input count matrix, or
-            ``None`` for no limit. Must be at least 1.
+        clip: Positive clipping threshold, or ``None``.
+        clip_mode: Whether to clip symmetrically or only the upper tail.
+        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
+            symmetric clipping, or ``None`` for no limit.
 
     Raises:
         ValueError: If a clipping option is outside its supported range.
@@ -170,13 +167,10 @@ def apply_clipping(
         u: Rank-one row factor.
         v: Rank-one column factor.
         rows: Precomputed row index aligned with ``X.data``.
-        clip: Positive threshold applied to residual values, or ``None`` for no
-            clipping.
-        clip_mode: ``"symmetric"`` clips into ``[-clip, clip]``; ``"upper"``
-            clips only from above, into ``(-inf, clip]``.
-        clip_max_nnz_ratio: Maximum stored-nonzero growth factor allowed by
-            exact symmetric clipping, relative to ``X.nnz``, or ``None`` for no
-            limit.
+        clip: Positive clipping threshold, or ``None``.
+        clip_mode: Whether to clip symmetrically or only the upper tail.
+        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
+            symmetric clipping, or ``None`` for no limit.
 
     Returns:
         A CSR matrix ``S`` such that ``S + u v.T`` equals the requested

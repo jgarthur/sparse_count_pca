@@ -49,12 +49,11 @@ def _compute_residual_pca(
         mask: Boolean variable mask, or ``None`` to use every column.
         model: Residual null model.
         residual: Residual type.
-        alpha: Nonnegative scaled-NB overdispersion, not its inverse, or
-            ``None`` for the other models.
-        clip: Positive threshold applied to uncentered residuals, or ``None``.
+        alpha: Scaled-NB overdispersion, or ``None``.
+        clip: Positive clipping threshold, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
-        clip_max_nnz_ratio: Maximum stored-nonzero growth factor allowed by
-            exact symmetric clipping, or ``None`` for no limit.
+        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
+            symmetric clipping, or ``None`` for no limit.
         check_values: Whether floating-point counts must be integer-like.
         dtype: Storage and operator floating-point dtype.
         solver: SVD solver name.
@@ -111,55 +110,46 @@ def residual_pca_matrix(
 ) -> PCAResult:
     """Compute PCA of implicitly represented residuals from a count matrix.
 
-    The entire matrix defines cell totals and gene proportions. Every model uses
-    the fitted null mean ``mu_ij = n_i * p_j``, where ``n_i`` is cell ``i``'s
-    count total and ``p_j`` is gene ``j``'s share of the grand total. Pearson
-    residuals are ``(x_ij - mu_ij) / sqrt(V_ij)`` and deviance residuals are
-    ``sign(x_ij - mu_ij) * sqrt(d(x_ij, mu_ij))``. Residuals are represented
-    without materializing the dense residual matrix, centered by column, and
-    decomposed with ARPACK.
+    The entire matrix defines cell totals and gene proportions. Residuals are
+    represented without materializing the dense residual matrix, centered by
+    column, and decomposed with ARPACK.
 
     Args:
-        X: Dense, SciPy sparse, or backed sparse count matrix with cells in
-            rows.
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations in rows
+            and variables in columns.
         n_comps: Number of principal components to return. Must satisfy
             ``1 <= n_comps < min(n_obs, n_nonempty_vars)``.
-        model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses
-            ``mu_ij``, ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and
-            ``"scaled_nb"`` uses ``mu_ij * (1 + alpha_j * mean_n * p_j)``, where
-            ``mean_n`` is the mean cell count total.
+        model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses ``mu_ij``,
+            ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and ``"scaled_nb"`` uses ``mu_ij
+            * (1 + alpha_j * mean_n * p_j)``, where ``mean_n`` is the mean observation
+            count total.
         residual: ``"pearson"`` for standardized deviations from ``mu_ij``, or
             ``"deviance"`` for signed square-root deviance contributions.
-        alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
-            broadcast to every gene or a length-``n_vars`` array. It is a
-            dispersion, not a size: larger values mean more variance and
-            ``alpha=0`` is the Poisson limit. An estimate reported as a size
-            (``theta``, ``r``) must be inverted first. Must be nonnegative;
-            values below ``1e-8`` use the Poisson limit. Required only for
-            ``model="scaled_nb"`` and rejected for the other models.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
+            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
+            only). Larger values mean more variance, and values below ``1e-8`` use the
+            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
+            models. Values for variables with no counts are replaced with zero.
         clip: Positive threshold applied to the uncentered residual values
             before PCA centering, or ``None`` for no clipping.
-        clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``;
-            ``"upper"`` clips only from above, into ``(-inf, clip]``, which
-            leaves zero-count residuals untouched.
-        clip_max_nnz_ratio: Upper bound on how far exact symmetric clipping may
-            grow the stored sparse support, as a multiple of ``X``'s number of
-            stored nonzeros. Reaching it raises ``RuntimeError``; ``None``
-            removes the limit. Only exact symmetric clipping can add support, so
-            the limit never binds when ``clip`` is ``None`` or
-            ``clip_mode="upper"``.
-        check_values: When ``True``, reject floating-point input whose values
-            are not within ``1e-8`` of integers. Set it to ``False`` to accept
-            genuinely fractional input.
+        clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
+            clips only from above, into ``(-inf, clip]``, which leaves negative
+            residuals (including all zero counts) untouched.
+        clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
+            stored sparse support, as a multiple of the input count matrix's number of
+            stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
+            limit. Only symmetric clipping can grow support, so the limit never binds
+            when ``clip`` is ``None`` or ``clip_mode="upper"``.
+        check_values: When ``True``, reject floating-point input whose values are not
+            within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``. Normalization is always fitted in
             float64 and cast afterwards.
-        solver: SVD solver. Version 1 supports only ``"arpack"``.
-        random_state: Seed for the random starting vector handed to ARPACK.
-            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
-            reproducible.
-        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
-            machine precision; larger values stop sooner and less accurately.
+        solver: SVD solver. Only ``"arpack"`` is supported.
+        random_state: Seed for the random starting vector handed to ARPACK. ``None``
+            breaks bit-for-bit reproducibility.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests machine
+            precision.
         return_operator: Whether to include the centered residual operator in
             the result.
 
@@ -260,12 +250,8 @@ def residual_pca(
     """Compute residual PCA and write Scanpy-compatible AnnData outputs.
 
     The chosen count matrix fits cell totals and gene proportions before
-    ``mask_var`` selects PCA variables. Every model uses the fitted null mean
-    ``mu_ij = n_i * p_j``, where ``n_i`` is cell ``i``'s count total and ``p_j``
-    is gene ``j``'s share of the grand total. Pearson residuals are
-    ``(x_ij - mu_ij) / sqrt(V_ij)`` and deviance residuals are
-    ``sign(x_ij - mu_ij) * sqrt(d(x_ij, mu_ij))``. Residual clipping, when
-    enabled, occurs before centering the selected transformed columns.
+    ``mask_var`` selects PCA variables. Residual clipping, when enabled, occurs
+    before centering the selected transformed columns.
 
     By default, scores are written to ``adata.obsm["X_pca"]``, component
     vectors to ``adata.varm["PCs"]``, and variance statistics and parameters to
@@ -278,52 +264,46 @@ def residual_pca(
             ``1 <= n_comps < min(n_obs, n_nonempty_vars)``, where
             ``n_nonempty_vars`` counts selected variables that are not
             identically zero.
-        layer: Count layer to use. By default, use ``adata.X``.
+        layer: AnnData count layer to use. If ``layer=None``, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
         use_highly_variable: Deprecated Scanpy-compatible mask selector.
         key_added: Exact key used in ``obsm``, ``varm``, and ``uns``. Defaults
             to the conventional PCA keys.
-        model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses
-            ``mu_ij``, ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and
-            ``"scaled_nb"`` uses ``mu_ij * (1 + alpha_j * mean_n * p_j)``, where
-            ``mean_n`` is the mean cell count total.
+        model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses ``mu_ij``,
+            ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and ``"scaled_nb"`` uses ``mu_ij
+            * (1 + alpha_j * mean_n * p_j)``, where ``mean_n`` is the mean observation
+            count total.
         residual: ``"pearson"`` for standardized deviations from ``mu_ij``, or
             ``"deviance"`` for signed square-root deviance contributions.
-        alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
-            broadcast to every gene, a length-``adata.n_vars`` array, or an
-            ``adata.var`` key. It is a dispersion, not a size: larger values
-            mean more variance and ``alpha=0`` is the Poisson limit. An estimate
-            reported as a size (``theta``, ``r``) must be inverted first. Must
-            be nonnegative; values below ``1e-8`` use the Poisson limit.
-            Required only for ``model="scaled_nb"`` and rejected for the other
-            models.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
+            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
+            only). Larger values mean more variance, and values below ``1e-8`` use the
+            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
+            models. Values for variables with no counts are replaced with zero.
         clip: Positive threshold applied to the uncentered residual values
             before PCA centering, or ``None`` for no clipping.
-        clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``;
-            ``"upper"`` clips only from above, into ``(-inf, clip]``, which
-            leaves zero-count residuals untouched.
-        clip_max_nnz_ratio: Upper bound on how far exact symmetric clipping may
-            grow the stored sparse support, as a multiple of the count matrix's
-            number of stored nonzeros. Reaching it raises ``RuntimeError``;
-            ``None`` removes the limit. Only exact symmetric clipping can add
-            support, so the limit never binds when ``clip`` is ``None`` or
-            ``clip_mode="upper"``.
-        check_values: When ``True``, reject floating-point input whose values
-            are not within ``1e-8`` of integers. Set it to ``False`` to accept
-            genuinely fractional input.
+        clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
+            clips only from above, into ``(-inf, clip]``, which leaves negative
+            residuals (including all zero counts) untouched.
+        clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
+            stored sparse support, as a multiple of the input count matrix's number of
+            stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
+            limit. Only symmetric clipping can grow support, so the limit never binds
+            when ``clip`` is ``None`` or ``clip_mode="upper"``.
+        check_values: When ``True``, reject floating-point input whose values are not
+            within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``. Normalization is always fitted in
             float64 and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed for the random starting vector handed to ARPACK.
-            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
-            reproducible.
-        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
-            machine precision; larger values stop sooner and less accurately.
-        copy: If ``True``, return a modified copy. Otherwise mutate ``adata``
-            and return ``None``.
+        random_state: Seed for the random starting vector handed to ARPACK. ``None``
+            breaks bit-for-bit reproducibility.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests machine
+            precision.
+        copy: If ``True``, return a modified copy. Otherwise mutate ``adata`` and return
+            ``None``.
 
     Returns:
         A modified AnnData object when ``copy=True``; otherwise ``None``.

@@ -99,8 +99,8 @@ The PFlog normalization proposed in
 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
 with `count_shift = 1 / (4 * alpha)`.
 
-That `alpha` is a dataset-wide overdispersion under the standard NB2 model, not
-the per-gene, depth-scaled `alpha` of
+That `alpha` is a dataset-wide overdispersion under a common negative-binomial
+size-factor model, not the per-gene, depth-scaled `alpha` of
 [the scaled-NB null model](scaled-nb-model.md). Because the shift is its
 reciprocal, a more overdispersed dataset takes a smaller `count_shift`.
 
@@ -111,14 +111,7 @@ on the [`runorm`](https://github.com/cleartools/runorm) normalization crate.
 
 PFlog is the transform itself — proportional fitting, then `log1p`, then
 per-cell centering — and `runorm` expresses the shift as a proportional-fitting
-target rather than as a pseudocount. Setting that target from `alpha` is the
-current recommendation, not what makes the transform PFlog.
-
-The target is what decides which transform here it corresponds to. An alpha
-target holds the row scale constant across cells, giving the count-scale shift
-above. A depth target rescales each cell by its own depth first, giving
-`ProportionShiftedCLR`. Read `runorm`'s own documentation for its current target
-semantics.
+target rather than as a pseudocount.
 
 This package tests transformed values against a separately maintained dense
 PFlog oracle. That formula-level parity does not imply identical defaults,
@@ -126,8 +119,7 @@ metadata, dtype behavior, clipping behavior, or AnnData ownership semantics
 across packages.
 
 `ProportionShiftedCLR` is a different historical formula with a fixed shift
-after library-size division. It should not be labeled as the PFlog formulation
-from Booeshaghi et al. preprint v4.
+after library-size division, from v3 of the same preprint.
 
 ## scan-rs and Cell Ranger
 

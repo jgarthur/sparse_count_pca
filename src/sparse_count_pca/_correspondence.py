@@ -99,12 +99,7 @@ def build_correspondence_representation(
     row_totals: Float64Array | None = None,
     column_totals: Float64Array | None = None,
 ) -> tuple[SparseLowRankMatrix, Float64Array, Float64Array]:
-    """Build a total-scaled Pearson-residual representation.
-
-    The analyzed entries are ``(x_ij - mu_ij) / (sqrt(N) * sqrt(V_ij))``, the
-    Pearson residuals of the same null model divided by the square root of the
-    grand total ``N``. Row and column masses are the margins divided by ``N``.
-    """
+    """Build a total-scaled Pearson-residual representation."""
     if row_totals is None:
         row_totals = _sum_counts(X, axis=1)
     if column_totals is None:
@@ -301,15 +296,13 @@ def correspondence_analysis_matrix(
 ) -> CorrespondenceAnalysisResult:
     """Compute correspondence analysis from a nonnegative count matrix.
 
-    Classical mode decomposes the standardized independence-residual matrix
-    ``(x_ij - mu_ij) / (sqrt(N) * sqrt(mu_ij))`` without ordinary PCA column
-    centering, where ``mu_ij = n_i * p_j`` and ``N`` is the grand total. The
-    experimental scaled-NB mode substitutes an exposure-scaled
-    negative-binomial variance and emits ``UserWarning``.
+    Classical mode decomposes the standardized Pearson-residual matrix without
+    ordinary PCA column centering. The experimental scaled-NB mode substitutes
+    an exposure-scaled negative-binomial variance and emits ``UserWarning``.
 
     Args:
-        X: Dense, SciPy sparse, or backed sparse count matrix with observations
-            in rows and variables in columns.
+        X: Dense, SciPy sparse, or backed sparse count matrix with observations in rows
+            and variables in columns.
         n_comps: Number of correspondence axes to return. Must satisfy
             ``1 <= n_comps < min(n_rows, n_nonempty_columns)``, where
             ``n_nonempty_columns`` counts analyzed columns with nonzero mass.
@@ -317,27 +310,21 @@ def correspondence_analysis_matrix(
             variance ``mu_ij``, or ``"scaled_nb"`` for the experimental residual
             ordination, standardizing by ``mu_ij * (1 + alpha_j * mean_n *
             p_j)`` with ``mean_n`` the mean row total.
-        alpha: Per-variable overdispersion of the ``scaled_nb`` model, as a
-            scalar broadcast to every variable or a length-``n_vars`` array. It
-            is a dispersion, not a size: larger values mean more variance and
-            ``alpha=0`` is the Poisson limit. An estimate reported as a size
-            (``theta``, ``r``) must be inverted first. Must be nonnegative;
-            values below ``1e-8`` use the Poisson limit. Values for analyzed
-            columns with zero mass are replaced with zero instead of being
-            validated.
-            Required only when ``model="scaled_nb"``, and rejected otherwise.
-        check_values: When ``True``, reject floating-point input whose values
-            are not within ``1e-8`` of integers. Set it to ``False`` to accept
-            genuinely fractional input.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
+            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
+            only). Larger values mean more variance, and values below ``1e-8`` use the
+            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
+            models. Values for variables with no counts are replaced with zero.
+        check_values: When ``True``, reject floating-point input whose values are not
+            within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``. Margins are always fitted in float64
             and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed for the random starting vector handed to ARPACK.
-            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
-            reproducible.
-        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
-            machine precision; larger values stop sooner and less accurately.
+        random_state: Seed for the random starting vector handed to ARPACK. ``None``
+            breaks bit-for-bit reproducibility.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests machine
+            precision.
         return_operator: Whether to retain the uncentered operator in the
             result.
 
@@ -399,7 +386,7 @@ def correspondence_analysis(
         n_comps: Number of correspondence axes to return. Must satisfy
             ``1 <= n_comps < min(n_obs, n_nonempty_columns)``, where
             ``n_nonempty_columns`` counts selected columns with nonzero mass.
-        layer: Count layer to use. By default, use ``adata.X``.
+        layer: AnnData count layer to use. If ``layer=None``, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key defining table columns.
             When omitted, use ``"highly_variable"`` if present; explicit
             ``None`` selects every variable.
@@ -409,28 +396,24 @@ def correspondence_analysis(
         model: ``"poisson"`` for classical CA, standardizing by the Poisson
             variance ``mu_ij``, or ``"scaled_nb"`` for the experimental residual
             ordination, standardizing by ``mu_ij * (1 + alpha_j * mean_n *
-            p_j)`` with ``mean_n`` the mean cell count total.
-        alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
-            broadcast to every gene, a length-``adata.n_vars`` array, or an
-            ``adata.var`` key. It is a dispersion, not a size: larger values
-            mean more variance and ``alpha=0`` is the Poisson limit. An estimate
-            reported as a size (``theta``, ``r``) must be inverted first. Must
-            be nonnegative; values below ``1e-8`` use the Poisson limit.
-            Required only when ``model="scaled_nb"``, and rejected otherwise.
-        check_values: When ``True``, reject floating-point input whose values
-            are not within ``1e-8`` of integers. Set it to ``False`` to accept
-            genuinely fractional input.
+            p_j)`` with ``mean_n`` the mean row total.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
+            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
+            only). Larger values mean more variance, and values below ``1e-8`` use the
+            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
+            models. Values for variables with no counts are replaced with zero.
+        check_values: When ``True``, reject floating-point input whose values are not
+            within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either
             ``"float64"`` or ``"float32"``. Margins are always fitted in float64
             and cast afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
-        random_state: Seed for the random starting vector handed to ARPACK.
-            ``None`` draws an unseeded vector, so runs are no longer bit-for-bit
-            reproducible.
-        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests
-            machine precision; larger values stop sooner and less accurately.
-        copy: If ``True``, return a modified copy. Otherwise mutate ``adata``
-            and return ``None``.
+        random_state: Seed for the random starting vector handed to ARPACK. ``None``
+            breaks bit-for-bit reproducibility.
+        tol: Convergence tolerance passed to SciPy's ``svds``. ``0.0`` requests machine
+            precision.
+        copy: If ``True``, return a modified copy. Otherwise mutate ``adata`` and return
+            ``None``.
 
     Returns:
         A modified AnnData object when ``copy=True``; otherwise ``None``.
