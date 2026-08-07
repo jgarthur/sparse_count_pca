@@ -10,8 +10,8 @@ All notable user-facing changes are recorded here.
 - Describe PFlog's `alpha` as a dataset-wide overdispersion under a common
   negative-binomial size-factor model, distinct from the per-gene `scaled_nb`
   `alpha`, and note that `cleartools/scclr` is built on the `runorm` crate,
-  whose proportional-fitting target decides whether PFlog matches the
-  count-scale or the composition-scale transform here.
+  which expresses the shift as a proportional-fitting target rather than a
+  pseudocount.
 
 ## 1.0.0rc1 - 2026-08-05
 
