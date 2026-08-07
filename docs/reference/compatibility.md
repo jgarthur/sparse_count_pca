@@ -109,11 +109,16 @@ describes the same PFlog formula and represents it as sparse values plus a
 per-cell mean before implicit PCA. It provides Rust-backed Python tooling built
 on the [`runorm`](https://github.com/cleartools/runorm) normalization crate.
 
-`runorm` chooses its shift through a proportional-fitting target rather than a
-pseudocount argument, and only its `Alpha` and `EstimateAlpha` targets give
-PFlog. Its depth targets rescale each cell before the log, which is not the
-count-scale shift used here. Read `runorm`'s own documentation for the current
-target semantics rather than assuming a mapping onto these transforms.
+PFlog is the transform itself — proportional fitting, then `log1p`, then
+per-cell centering — and `runorm` expresses the shift as a proportional-fitting
+target rather than as a pseudocount. Setting that target from `alpha` is the
+current recommendation, not what makes the transform PFlog.
+
+The target is what decides which transform here it corresponds to. An alpha
+target holds the row scale constant across cells, giving the count-scale shift
+above. A depth target rescales each cell by its own depth first, giving
+`ProportionShiftedCLR`. Read `runorm`'s own documentation for its current target
+semantics.
 
 This package tests transformed values against a separately maintained dense
 PFlog oracle. That formula-level parity does not imply identical defaults,

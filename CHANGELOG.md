@@ -9,7 +9,8 @@ All notable user-facing changes are recorded here.
   and record that `alpha` is the overdispersion itself rather than its inverse.
 - Describe PFlog's `alpha` as a dataset-wide NB2 overdispersion, distinct from
   the per-gene `scaled_nb` `alpha`, and note that `cleartools/scclr` is built on
-  the `runorm` crate, whose alpha targets are the ones giving PFlog.
+  the `runorm` crate, whose proportional-fitting target decides whether PFlog
+  matches the count-scale or the composition-scale transform here.
 
 ## 1.0.0rc1 - 2026-08-05
 
