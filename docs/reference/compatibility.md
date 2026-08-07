@@ -97,11 +97,21 @@ clr(x + count_shift).
 The PFlog normalization proposed in
 [Booeshaghi et al., preprint version 4 (June 22,
 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
-with `count_shift = 1 / (4 * alpha)`. The follow-up
-[`cleartools/scclr`](https://github.com/cleartools/scclr) project describes the
-same PFlog formula and represents it as sparse values plus a per-cell mean
-before implicit PCA. It provides Rust-backed Python tooling; related
-`cleartools` projects provide other language interfaces.
+with `count_shift = 1 / (4 * alpha)`.
+
+That `alpha` is a dataset-wide overdispersion under a negative-binomial
+size-factor model, not the per-gene, depth-scaled `alpha` of
+[the scaled-NB null model](scaled-nb-model.md). Because the shift is its
+reciprocal, a more overdispersed dataset takes a smaller `count_shift`.
+
+The follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr) package
+describes the same PFlog formula and represents it as sparse values plus a
+per-cell mean before implicit PCA. It provides Rust-backed Python tooling built
+on the [`runorm`](https://github.com/cleartools/runorm) normalization crate.
+
+PFlog is the transform itself — proportional fitting, then `log1p`, then
+per-cell centering — and `runorm` expresses the shift as a proportional-fitting
+target rather than as a pseudocount.
 
 This package tests transformed values against a separately maintained dense
 PFlog oracle. That formula-level parity does not imply identical defaults,
@@ -109,8 +119,7 @@ metadata, dtype behavior, clipping behavior, or AnnData ownership semantics
 across packages.
 
 `ProportionShiftedCLR` is a different historical formula with a fixed shift
-after library-size division. It should not be labeled as the PFlog formulation
-from Booeshaghi et al. preprint v4.
+after library-size division, from v3 of the same preprint.
 
 ## scan-rs and Cell Ranger
 

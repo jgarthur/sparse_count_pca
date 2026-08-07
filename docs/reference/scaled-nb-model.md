@@ -56,7 +56,10 @@ X_{ij}\sim
 ```
 
 where \(\operatorname{NB}(r,q)\) has probability mass proportional to
-\(q^{r}(1-q)^{x}\), and \(\widetilde\alpha_{ij} = 1/r_{ij}\). Then
+\(q^{r}(1-q)^{x}\), and \(\widetilde\alpha_{ij} = 1/r_{ij}\). Here \(r_{ij}\) is
+the size of the negative binomial, so the supplied \(\alpha_j\) is a dispersion
+rather than a size: an estimate reported on the size scale, such as an
+SCTransform `theta`, must be inverted before it is passed as `alpha`. Then
 
 ```math
 \operatorname{E}(X_{ij})=s_i\lambda_j,
@@ -146,7 +149,7 @@ expected value, so that mean and variance scale linearly with it. That paper
 obtains its size factors by the DESeq median-of-ratios method rather than the
 depth ratio \(s_i=n_i/\bar n\) used here.
 
-This differs from the standard NB2 model considered by
+This differs from the negative-binomial size-factor model considered by
 [Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7)
 in the context of Pearson residuals, where the overdispersion does not scale
 inversely with \(s_i\). Its NB probability parameter therefore varies across

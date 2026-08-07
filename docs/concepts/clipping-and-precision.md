@@ -3,12 +3,14 @@
 ## Clipping is opt-in and exact
 
 Residual transforms do not clip outliers by default. Set a positive finite
-`clip` threshold to enable clipping before PCA centering.
+`clip` threshold to enable clipping before PCA centering. The threshold is in
+residual units, not counts, and applies to the uncentered residual values.
 
 Two modes are available:
 
 - `clip_mode="symmetric"` clips to `[-clip, clip]`;
-- `clip_mode="upper"` clips only values above `clip`.
+- `clip_mode="upper"` clips only values above `clip`, leaving the negative residuals
+  untouched.
 
 The implementation represents the clipped residual matrix exactly.
 
@@ -19,10 +21,12 @@ clipping can therefore change an entry that was represented by the low-rank
 zero baseline. The changed entries must move into the sparse correction, which
 can expand its support.
 
-`clip_max_nnz_ratio` bounds that expansion. Its default is `2.0`; the operation
-raises before constructing a correction whose stored-entry ratio meets or
-exceeds the limit. Use `1.0` to reject any support growth or `None` to allow
-unlimited exact expansion.
+`clip_max_nnz_ratio` bounds that expansion. It is a multiple of the input count
+matrix's stored nonzeros, so `2.0`, the default, permits the sparse part to grow
+to just under twice that. The operation raises `RuntimeError` before
+constructing a correction that meets or exceeds the limit. Use `1.0` to reject
+any support growth, `clip_mode="upper"` to avoid it by construction, or `None` to
+allow unlimited exact expansion.
 
 Upper-only clipping leaves negative zero-count residuals unchanged and cannot
 expand support for the implemented models.

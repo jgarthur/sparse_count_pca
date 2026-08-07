@@ -44,10 +44,20 @@ result = scp.shifted_clr_pca_matrix(
 )
 ```
 
-The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr)
-implementation provides the same PFlog parameterization through Rust-backed
-Python tooling. See [compatibility](../reference/compatibility.md) for the
-scope of this relationship.
+That `alpha` is a dataset-wide overdispersion under a negative-binomial
+size-factor model, not the per-gene
+[`scaled_nb` `alpha`](../reference/scaled-nb-model.md) of the residual
+transforms in this package. Because the shift is its reciprocal, a more
+overdispersed dataset gets a smaller `count_shift`.
+
+The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr) package
+provides the same PFlog parameterization through Rust-backed Python tooling,
+built on the [`runorm`](https://github.com/cleartools/runorm) normalization
+crate. `runorm` selects the shift through a proportional-fitting target rather
+than a pseudocount argument; that target choice decides whether it matches
+this transform or `ProportionShiftedCLR`. See
+[compatibility](../reference/compatibility.md#shifted-clr-pflog-and-cleartools)
+for the scope of this relationship.
 
 ## Composition-scale shifted CLR
 

@@ -147,7 +147,9 @@ Use `residual_pca`, `residual_pca_matrix`, or
 
 - `model`: `"poisson"`, `"binomial"`, or `"scaled_nb"`;
 - `residual`: `"pearson"` or `"deviance"`;
-- `alpha`: nonnegative scalar or per-variable values required by `scaled_nb`; not currently estimated in this package
+- `alpha`: nonnegative scalar or per-variable overdispersion required by
+  `scaled_nb`; variance under the model increases with `alpha`. Not currently
+  estimated in this package
 - optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`; see
   [clipping and precision](concepts/clipping-and-precision.md).
 
@@ -208,15 +210,20 @@ row-centering `log1p(4 * alpha * X)`.
 ### Interfaces and parameters
 
 Use `shifted_clr_pca`, `shifted_clr_pca_matrix`, or
-`ShiftedCLR(count_shift=a)`. `count_shift` is required and positive.
+`ShiftedCLR(count_shift=a)`. `count_shift` is required and positive. It is
+added to the raw counts, the same amount for every observation and variable, so
+larger values shrink the resulting log ratios toward zero.
 
 ### Origin and validation
 
 The centered log-ratio transformation comes from compositional data analysis;
 see [Aitchison (1982)](https://doi.org/10.1111/j.2517-6161.1982.tb01195.x).
-The PFlog parameterization is documented by Booeshaghi et al. and the
-follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr)
-implementation.
+The PFlog parameterization is documented by Booeshaghi et al. and the follow-up
+[`cleartools/scclr`](https://github.com/cleartools/scclr) implementation, which
+is built on the [`runorm`](https://github.com/cleartools/runorm) crate. Its
+`alpha` is a dataset-wide overdispersion under a negative-binomial size-factor
+model, not the per-gene `alpha` of the residual transforms above; see
+[PFlog and cleartools compatibility](reference/compatibility.md#shifted-clr-pflog-and-cleartools).
 
 Its dense oracle follows the
 [pinned upstream count-scale PFlog formula](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).
@@ -246,7 +253,8 @@ Its effective raw-count shift is therefore different for every observation.
 
 Use `proportion_shifted_clr_pca`, `proportion_shifted_clr_pca_matrix`, or
 `ProportionShiftedCLR(composition_shift=tau)`. `composition_shift` is required
-and positive.
+and positive. It is added to each observation's proportions rather than to its
+counts, so its equivalent raw-count shift \(n_i\tau\) differs per observation.
 
 ### Origin and validation
 
@@ -313,7 +321,12 @@ Count-scale shifted CLR is the uniform-prior special case: with
 
 Use `dirichlet_log_pca`, `dirichlet_log_pca_matrix`, or `DirichletLog`; and
 `dirichlet_clr_pca`, `dirichlet_clr_pca_matrix`, or `DirichletCLR`.
-`concentration` defaults to `1.0`; `prior_proportions=None` uses a uniform
+`concentration` is the total prior concentration \(A\), measured in counts: it
+is the number of prior pseudo-counts spread over the variables, so larger values
+shrink each observation harder toward the prior composition. It defaults to
+`1.0`. `prior_proportions` is the composition \(q\) those pseudo-counts are
+distributed across; its values are proportions rather than counts, must be
+strictly positive, and must sum to one. `prior_proportions=None` uses a uniform
 prior. AnnData interfaces also accept an `adata.var` key.
 
 ### Caveats
@@ -368,7 +381,8 @@ them.
 Use `correspondence_analysis` or `correspondence_analysis_matrix` with
 `model="poisson"` for classical CA. There is no two-step transform
 specification because CA has its own coordinates, inertia, and mass-weighting
-contract. `model="scaled_nb"` additionally requires nonnegative `alpha`.
+contract. `model="scaled_nb"` additionally requires the nonnegative
+overdispersion parameter `alpha`.
 
 ### Origin and validation
 
