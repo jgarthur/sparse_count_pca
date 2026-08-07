@@ -46,11 +46,8 @@ result = scp.shifted_clr_pca_matrix(
 
 That `alpha` is a dataset-wide overdispersion under the standard NB2 model, not
 the per-gene [`scaled_nb` `alpha`](../reference/scaled-nb-model.md) of the
-residual transforms. Because the shift is its reciprocal, a more overdispersed
-dataset gets a smaller `count_shift`.
-
-`count_shift` itself must be positive. It is added to the counts, so larger
-values shrink the resulting log ratios toward zero.
+residual transforms in this package. Because the shift is its reciprocal, a more
+overdispersed dataset gets a smaller `count_shift`.
 
 The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr) package
 provides the same PFlog parameterization through Rust-backed Python tooling,

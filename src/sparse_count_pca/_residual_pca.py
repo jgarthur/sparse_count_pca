@@ -131,13 +131,12 @@ def residual_pca_matrix(
         residual: ``"pearson"`` for standardized deviations from ``mu_ij``, or
             ``"deviance"`` for signed square-root deviance contributions.
         alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
-            broadcast to every gene or a length-``n_vars`` array. This is the
-            overdispersion itself, not its inverse: it is a
-            reciprocal-of-size parameterization rather than a ``size``/``theta``
-            one, so larger values mean more variance and ``alpha=0`` is the
-            Poisson limit. Must be nonnegative; values below ``1e-8`` use the
-            Poisson limit. Required only for ``model="scaled_nb"`` and rejected
-            for the other models.
+            broadcast to every gene or a length-``n_vars`` array. It is a
+            dispersion, not a size: larger values mean more variance and
+            ``alpha=0`` is the Poisson limit. An estimate reported as a size
+            (``theta``, ``r``) must be inverted first. Must be nonnegative;
+            values below ``1e-8`` use the Poisson limit. Required only for
+            ``model="scaled_nb"`` and rejected for the other models.
         clip: Positive threshold applied to the uncentered residual values
             before PCA centering, or ``None`` for no clipping.
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``;
@@ -294,12 +293,12 @@ def residual_pca(
             ``"deviance"`` for signed square-root deviance contributions.
         alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
             broadcast to every gene, a length-``adata.n_vars`` array, or an
-            ``adata.var`` key. This is the overdispersion itself, not its
-            inverse: it is a reciprocal-of-size parameterization rather than a
-            ``size``/``theta`` one, so larger values mean more variance and
-            ``alpha=0`` is the Poisson limit. Must be nonnegative; values below
-            ``1e-8`` use the Poisson limit. Required only for
-            ``model="scaled_nb"`` and rejected for the other models.
+            ``adata.var`` key. It is a dispersion, not a size: larger values
+            mean more variance and ``alpha=0`` is the Poisson limit. An estimate
+            reported as a size (``theta``, ``r``) must be inverted first. Must
+            be nonnegative; values below ``1e-8`` use the Poisson limit.
+            Required only for ``model="scaled_nb"`` and rejected for the other
+            models.
         clip: Positive threshold applied to the uncentered residual values
             before PCA centering, or ``None`` for no clipping.
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``;

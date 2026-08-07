@@ -114,12 +114,11 @@ class Residual(Transform):
             ``"deviance"`` for signed square-root deviance contributions.
         alpha: Per-variable overdispersion of the ``scaled_nb`` model, as a
             scalar broadcast to every variable, a length-``n_vars`` array, or an
-            AnnData variable key. This is the overdispersion itself, not its
-            inverse: it is a reciprocal-of-size parameterization rather than a
-            ``size``/``theta`` one, so larger values mean more variance and
-            ``alpha=0`` is the Poisson limit. Must be nonnegative; values below
-            ``1e-8`` use the Poisson limit. Used only by ``scaled_nb``, and
-            rejected for the other models. Values for
+            AnnData variable key. It is a dispersion, not a size: larger values
+            mean more variance and ``alpha=0`` is the Poisson limit. An estimate
+            reported as a size (``theta``, ``r``) must be inverted first. Must
+            be nonnegative; values below ``1e-8`` use the Poisson limit. Used
+            only by ``scaled_nb``, and rejected for the other models. Values for
             variables with no counts are replaced with zero instead of being
             validated, since they cannot reach any output.
         clip: Positive threshold applied to the uncentered residual values

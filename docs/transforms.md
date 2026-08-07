@@ -148,10 +148,10 @@ Use `residual_pca`, `residual_pca_matrix`, or
 - `model`: `"poisson"`, `"binomial"`, or `"scaled_nb"`;
 - `residual`: `"pearson"` or `"deviance"`;
 - `alpha`: nonnegative scalar or per-variable overdispersion required by
-  `scaled_nb`. It is the overdispersion itself, not its inverse: this is a
-  reciprocal-of-size parameterization rather than a `size`/`theta` one, so
-  larger values mean more variance and \(\alpha_j=0\) is the Poisson limit. Not
-  currently estimated in this package
+  `scaled_nb`. It is a dispersion, not a size: larger values mean more variance
+  and \(\alpha_j=0\) is the Poisson limit, so an estimate reported as a size
+  (`theta`, \(r\)) must be inverted first. Not currently estimated in this
+  package
 - optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`; see
   [clipping and precision](concepts/clipping-and-precision.md).
 

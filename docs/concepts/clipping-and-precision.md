@@ -9,7 +9,7 @@ residual units, not counts, and applies to the uncentered residual values.
 Two modes are available:
 
 - `clip_mode="symmetric"` clips to `[-clip, clip]`;
-- `clip_mode="upper"` clips only values above `clip`, leaving the lower tail
+- `clip_mode="upper"` clips only values above `clip`, leaving the negative residuals
   untouched.
 
 The implementation represents the clipped residual matrix exactly.
@@ -25,7 +25,8 @@ can expand its support.
 matrix's stored nonzeros, so `2.0`, the default, permits the sparse part to grow
 to just under twice that. The operation raises `RuntimeError` before
 constructing a correction that meets or exceeds the limit. Use `1.0` to reject
-any support growth or `None` to allow unlimited exact expansion.
+any support growth, `clip_mode="upper"` to avoid it by construction, or `None` to
+allow unlimited exact expansion.
 
 Upper-only clipping leaves negative zero-count residuals unchanged and cannot
 expand support for the implemented models.

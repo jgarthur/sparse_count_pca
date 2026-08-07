@@ -318,13 +318,13 @@ def correspondence_analysis_matrix(
             ordination, standardizing by ``mu_ij * (1 + alpha_j * mean_n *
             p_j)`` with ``mean_n`` the mean row total.
         alpha: Per-variable overdispersion of the ``scaled_nb`` model, as a
-            scalar broadcast to every variable or a length-``n_vars`` array.
-            This is the overdispersion itself, not its inverse: it is the
-            reciprocal-of-size parameterization rather than a ``size``/``theta``
-            one, so larger values mean more variance and ``alpha=0`` is the
-            Poisson limit. Must be nonnegative; values below ``1e-8`` use the
-            Poisson limit. Values for analyzed columns with zero mass are
-            replaced with zero instead of being validated.
+            scalar broadcast to every variable or a length-``n_vars`` array. It
+            is a dispersion, not a size: larger values mean more variance and
+            ``alpha=0`` is the Poisson limit. An estimate reported as a size
+            (``theta``, ``r``) must be inverted first. Must be nonnegative;
+            values below ``1e-8`` use the Poisson limit. Values for analyzed
+            columns with zero mass are replaced with zero instead of being
+            validated.
             Required only when ``model="scaled_nb"``, and rejected otherwise.
         check_values: When ``True``, reject floating-point input whose values
             are not within ``1e-8`` of integers. Set it to ``False`` to accept
@@ -412,12 +412,11 @@ def correspondence_analysis(
             p_j)`` with ``mean_n`` the mean cell count total.
         alpha: Per-gene overdispersion of the ``scaled_nb`` model, as a scalar
             broadcast to every gene, a length-``adata.n_vars`` array, or an
-            ``adata.var`` key. This is the overdispersion itself, not its
-            inverse: it is a reciprocal-of-size parameterization rather than a
-            ``size``/``theta`` one, so larger values mean more variance and
-            ``alpha=0`` is the Poisson limit. Must be nonnegative; values below
-            ``1e-8`` use the Poisson limit. Required only when
-            ``model="scaled_nb"``, and rejected otherwise.
+            ``adata.var`` key. It is a dispersion, not a size: larger values
+            mean more variance and ``alpha=0`` is the Poisson limit. An estimate
+            reported as a size (``theta``, ``r``) must be inverted first. Must
+            be nonnegative; values below ``1e-8`` use the Poisson limit.
+            Required only when ``model="scaled_nb"``, and rejected otherwise.
         check_values: When ``True``, reject floating-point input whose values
             are not within ``1e-8`` of integers. Set it to ``False`` to accept
             genuinely fractional input.
