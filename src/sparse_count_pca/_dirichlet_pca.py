@@ -105,9 +105,9 @@ def dirichlet_log_pca_matrix(
             prior. Values must be strictly positive and sum to one.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -176,9 +176,9 @@ def dirichlet_clr_pca_matrix(
             prior. Values must be strictly positive and sum to one.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -335,9 +335,9 @@ def dirichlet_log_pca(
             prior. Values must be strictly positive and sum to one.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -422,9 +422,9 @@ def dirichlet_clr_pca(
             prior. Values must be strictly positive and sum to one.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.

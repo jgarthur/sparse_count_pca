@@ -8,8 +8,8 @@ center_rows(log1p(4 * alpha * X))
 
 This is equivalent to `clr(X + 1 / (4 * alpha))`, so the package's `count_shift`
 corresponds to `1 / (4 * alpha)`. That `alpha` is a dataset-wide overdispersion
-under a common negative-binomial size-factor model, not the per-gene,
-depth-scaled `alpha` the package's residual transforms accept.
+under a negative-binomial size-factor model, not the per-gene, depth-scaled
+`alpha` the package's residual transforms accept.
 
 The formula and sparse implementation are documented by the upstream
 [`pachterlab/BHGP_2022`](https://github.com/pachterlab/BHGP_2022/tree/ddb3602120f7bc422cf68bd0e13cded6c1a2b0dc)

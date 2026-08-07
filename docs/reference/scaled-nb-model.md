@@ -149,7 +149,7 @@ expected value, so that mean and variance scale linearly with it. That paper
 obtains its size factors by the DESeq median-of-ratios method rather than the
 depth ratio \(s_i=n_i/\bar n\) used here.
 
-This differs from the common negative-binomial size-factor model considered by
+This differs from the negative-binomial size-factor model considered by
 [Lause, Berens, and Kobak (2021)](https://doi.org/10.1186/s13059-021-02451-7)
 in the context of Pearson residuals, where the overdispersion does not scale
 inversely with \(s_i\). Its NB probability parameter therefore varies across

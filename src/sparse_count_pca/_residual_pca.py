@@ -142,9 +142,9 @@ def residual_pca_matrix(
             when ``clip`` is ``None`` or ``clip_mode="upper"``.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -294,9 +294,9 @@ def residual_pca(
             when ``clip`` is ``None`` or ``clip_mode="upper"``.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.

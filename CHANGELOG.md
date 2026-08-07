@@ -7,7 +7,7 @@ All notable user-facing changes are recorded here.
 - Clarify parameter documentation across the public API: state each transform's
   formula where it is short, say that shifts are additive and on which scale,
   and record that `alpha` is the overdispersion itself rather than its inverse.
-- Describe PFlog's `alpha` as a dataset-wide overdispersion under a common
+- Describe PFlog's `alpha` as a dataset-wide overdispersion under a
   negative-binomial size-factor model, distinct from the per-gene `scaled_nb`
   `alpha`, and note that `cleartools/scclr` is built on the `runorm` crate,
   which expresses the shift as a proportional-fitting target rather than a

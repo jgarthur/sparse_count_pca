@@ -83,7 +83,7 @@ def shifted_clr_pca_matrix(
     ``log(x_ij + count_shift) - mean_k log(x_ik + count_shift)`` over all
     ``n_vars`` variables. The PFlog formulation in Booeshaghi et al. preprint v4
     is obtained with ``count_shift = 1 / (4 * alpha)``, for a dataset-wide
-    ``alpha`` under a common negative-binomial size-factor model rather than the
+    ``alpha`` under a negative-binomial size-factor model rather than the
     per-gene ``scaled_nb`` ``alpha`` of ``residual_pca``.
 
     Args:
@@ -94,13 +94,13 @@ def shifted_clr_pca_matrix(
         count_shift: Positive constant added to every raw count before taking logs. It
             is the same for every observation regardless of total count. The PFlog
             formulation in Booeshaghi et al. preprint v4 uses ``count_shift = 1 / (4 *
-            alpha)``, where ``alpha`` is the overdispersion of the common
-            negative-binomial size-factor model.
+            alpha)``, where ``alpha`` is the overdispersion of the negative-binomial
+            size-factor model.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -165,9 +165,9 @@ def proportion_shifted_clr_pca_matrix(
             differs per observation.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -275,8 +275,8 @@ def shifted_clr_pca(
         count_shift: Positive constant added to every raw count before taking logs. It
             is the same for every observation regardless of total count. The PFlog
             formulation in Booeshaghi et al. preprint v4 uses ``count_shift = 1 / (4 *
-            alpha)``, where ``alpha`` is the overdispersion of the common
-            negative-binomial size-factor model.
+            alpha)``, where ``alpha`` is the overdispersion of the negative-binomial
+            size-factor model.
         layer: AnnData count layer to use. If ``layer=None``, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
@@ -286,9 +286,9 @@ def shifted_clr_pca(
             to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -367,9 +367,9 @@ def proportion_shifted_clr_pca(
             to the conventional ``"X_pca"``, ``"PCs"``, and ``"pca"`` keys.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
-        dtype: Representation and ARPACK calculation dtype, either
-            ``"float64"`` or ``"float32"``. Normalization is always fitted in
-            float64 and cast afterwards.
+        dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
+            ``"float32"``. Normalization factors are always fitted in float64; the
+            representation built from them is cast to ``dtype`` afterwards.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.

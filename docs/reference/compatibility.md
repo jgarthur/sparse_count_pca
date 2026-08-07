@@ -99,7 +99,7 @@ The PFlog normalization proposed in
 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
 with `count_shift = 1 / (4 * alpha)`.
 
-That `alpha` is a dataset-wide overdispersion under a common negative-binomial
+That `alpha` is a dataset-wide overdispersion under a negative-binomial
 size-factor model, not the per-gene, depth-scaled `alpha` of
 [the scaled-NB null model](scaled-nb-model.md). Because the shift is its
 reciprocal, a more overdispersed dataset takes a smaller `count_shift`.

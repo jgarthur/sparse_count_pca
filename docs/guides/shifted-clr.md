@@ -44,10 +44,10 @@ result = scp.shifted_clr_pca_matrix(
 )
 ```
 
-That `alpha` is a dataset-wide overdispersion under a common negative-binomial
+That `alpha` is a dataset-wide overdispersion under a negative-binomial
 size-factor model, not the per-gene
-[`scaled_nb` `alpha`](../reference/scaled-nb-model.md) of the
-residual transforms in this package. Because the shift is its reciprocal, a more
+[`scaled_nb` `alpha`](../reference/scaled-nb-model.md) of the residual
+transforms in this package. Because the shift is its reciprocal, a more
 overdispersed dataset gets a smaller `count_shift`.
 
 The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr) package
