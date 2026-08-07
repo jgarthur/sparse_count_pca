@@ -54,7 +54,7 @@ The dedicated [`cleartools/scclr`](https://github.com/cleartools/scclr) package
 provides the same PFlog parameterization through Rust-backed Python tooling,
 built on the [`runorm`](https://github.com/cleartools/runorm) normalization
 crate. `runorm` selects the shift through a proportional-fitting target rather
-than a pseudocount argument, so its target choice decides whether it matches
+than a pseudocount argument; that target choice decides whether it matches
 this transform or `ProportionShiftedCLR`. See
 [compatibility](../reference/compatibility.md#shifted-clr-pflog-and-cleartools)
 for the scope of this relationship.

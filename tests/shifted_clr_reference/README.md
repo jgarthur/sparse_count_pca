@@ -16,9 +16,7 @@ The formula and sparse implementation are documented by the upstream
 repository at commit `ddb3602120f7bc422cf68bd0e13cded6c1a2b0dc` (June 24,
 2026) and by [`cleartools/scclr`](https://github.com/cleartools/scclr), which is
 built on the [`runorm`](https://github.com/cleartools/runorm) normalization
-crate. In `runorm` this is PFlog under an alpha proportional-fitting target,
-which holds the row scale constant across cells; a depth target gives the
-composition-scale shift instead.
+crate.
 
 The oracle is an independent dense implementation written for this test suite;
 no upstream source code is copied.
