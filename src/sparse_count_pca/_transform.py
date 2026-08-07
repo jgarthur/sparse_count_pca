@@ -232,7 +232,9 @@ class ShiftedCLR(Transform):
             multiplicative rescaling, and it is the same for every observation
             regardless of sequencing depth. Larger values shrink log-ratios
             toward zero. The PFlog formulation in Booeshaghi et al. preprint v4
-            uses ``count_shift = 1 / (4 * alpha)``.
+            uses ``count_shift = 1 / (4 * alpha)``, for a dataset-wide ``alpha``
+            under the standard NB2 model rather than the per-gene ``scaled_nb``
+            ``alpha`` of ``Residual``.
 
     Examples:
         >>> transformed = transform(counts, ShiftedCLR(count_shift=1.0))

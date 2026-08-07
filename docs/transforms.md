@@ -220,9 +220,12 @@ larger values shrink the resulting log ratios toward zero.
 
 The centered log-ratio transformation comes from compositional data analysis;
 see [Aitchison (1982)](https://doi.org/10.1111/j.2517-6161.1982.tb01195.x).
-The PFlog parameterization is documented by Booeshaghi et al. and the
-follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr)
-implementation.
+The PFlog parameterization is documented by Booeshaghi et al. and the follow-up
+[`cleartools/scclr`](https://github.com/cleartools/scclr) implementation, which
+is built on the [`runorm`](https://github.com/cleartools/runorm) crate. Its
+`alpha` is a dataset-wide overdispersion under the standard NB2 model, not the
+per-gene `alpha` of the residual transforms above; see
+[PFlog and cleartools compatibility](reference/compatibility.md#shifted-clr-pflog-and-cleartools).
 
 Its dense oracle follows the
 [pinned upstream count-scale PFlog formula](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/shifted_clr_reference).

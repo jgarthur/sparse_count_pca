@@ -97,11 +97,23 @@ clr(x + count_shift).
 The PFlog normalization proposed in
 [Booeshaghi et al., preprint version 4 (June 22,
 2026)](https://www.biorxiv.org/content/10.1101/2022.05.06.490859v4) is obtained
-with `count_shift = 1 / (4 * alpha)`. The follow-up
-[`cleartools/scclr`](https://github.com/cleartools/scclr) project describes the
-same PFlog formula and represents it as sparse values plus a per-cell mean
-before implicit PCA. It provides Rust-backed Python tooling; related
-`cleartools` projects provide other language interfaces.
+with `count_shift = 1 / (4 * alpha)`.
+
+That `alpha` is a dataset-wide overdispersion under the standard NB2 model, not
+the per-gene, depth-scaled `alpha` of
+[the scaled-NB null model](scaled-nb-model.md). Because the shift is its
+reciprocal, a more overdispersed dataset takes a smaller `count_shift`.
+
+The follow-up [`cleartools/scclr`](https://github.com/cleartools/scclr) package
+describes the same PFlog formula and represents it as sparse values plus a
+per-cell mean before implicit PCA. It provides Rust-backed Python tooling built
+on the [`runorm`](https://github.com/cleartools/runorm) normalization crate.
+
+`runorm` chooses its shift through a proportional-fitting target rather than a
+pseudocount argument, and only its `Alpha` and `EstimateAlpha` targets give
+PFlog. Its depth targets rescale each cell before the log, which is not the
+count-scale shift used here. Read `runorm`'s own documentation for the current
+target semantics rather than assuming a mapping onto these transforms.
 
 This package tests transformed values against a separately maintained dense
 PFlog oracle. That formula-level parity does not imply identical defaults,

@@ -137,8 +137,11 @@ to expose matrix-vector and matrix-matrix products to
 ## Related work
 
 The [`cleartools`](https://github.com/cleartools) projects provide sparse
-Rust-backed tooling for shifted CLR (PFlog) workflows, including the Python
-[`scclr`](https://github.com/cleartools/scclr) package.
+Rust-backed tooling for shifted CLR (PFlog) workflows: the Python
+[`scclr`](https://github.com/cleartools/scclr) package, built on the
+[`runorm`](https://github.com/cleartools/runorm) normalization crate. See the
+[compatibility reference][pflog-compatibility] for the scope of the
+relationship.
 
 [`10XGenomics/scan-rs`](https://github.com/10XGenomics/scan-rs) is a Rust
 library used by Cell Ranger and contains similar matrix-representation and
@@ -163,6 +166,7 @@ for project invariants and documentation expectations.
 [correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
 [omitted-transforms]: https://sparse-count-pca.readthedocs.io/en/latest/transforms/#what-this-package-does-not-do
+[pflog-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#shifted-clr-pflog-and-cleartools
 [scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
 [scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
 [sctransform-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#sctransform-v2

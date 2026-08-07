@@ -82,7 +82,9 @@ def shifted_clr_pca_matrix(
     The transform is ``clr(X + count_shift)``, that is
     ``log(x_ij + count_shift) - mean_k log(x_ik + count_shift)`` over all
     ``n_vars`` variables. The PFlog formulation in Booeshaghi et al. preprint v4
-    is obtained with ``count_shift = 1 / (4 * alpha)``.
+    is obtained with ``count_shift = 1 / (4 * alpha)``, for a dataset-wide
+    ``alpha`` under the standard NB2 model rather than the per-gene
+    ``scaled_nb`` ``alpha`` of ``residual_pca``.
 
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations
@@ -280,7 +282,9 @@ def shifted_clr_pca(
             multiplicative rescaling, and it is the same for every cell
             regardless of sequencing depth. Larger values shrink log-ratios
             toward zero. Use ``1 / (4 * alpha)`` for the PFlog formulation in
-            Booeshaghi et al. preprint v4.
+            Booeshaghi et al. preprint v4, for a dataset-wide ``alpha`` under the
+            standard NB2 model rather than the per-gene ``scaled_nb`` ``alpha``
+            of ``residual_pca``.
         layer: Count layer to use. By default, use ``adata.X``.
         mask_var: Boolean array or ``adata.var`` key selecting PCA variables.
             When omitted, use ``"highly_variable"`` if present; explicit
