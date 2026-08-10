@@ -6,7 +6,7 @@ from typing import TypeAlias
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy import sparse
+from scipy import sparse, stats
 from scipy.special import xlogy
 
 from sparse_count_pca._residuals import ALPHA_EPS
@@ -96,24 +96,20 @@ def _dense_correspondence(
     return standardized, row_masses, column_masses
 
 
-def _dense_relative_entropy(base: Float64Array, delta: Float64Array) -> Float64Array:
-    relative = delta / base
-    result = np.empty_like(relative)
-    boundary = delta == -base
-    result[boundary] = base[boundary]
-    series = (~boundary) & (np.abs(relative) <= 0.125)
-    r = relative[series]
-    power = r * r
-    total = power / 2.0
-    for order in range(3, 25):
-        power *= -r
-        total += power / (order * (order - 1))
-    result[series] = base[series] * total
-    direct = ~(boundary | series)
-    result[direct] = (base[direct] + delta[direct]) * np.log1p(
-        relative[direct]
-    ) - delta[direct]
-    return result
+# Deviance oracles use SciPy log-likelihood differences, as required by the
+# verification contracts in the package specification. They must not restate the
+# near-mean series in ``_residuals``: an oracle that shares production's algebra
+# agrees with it even when both are wrong. Precision near the mean at very large
+# means is established separately, against Decimal, in ``tests/test_deviance.py``.
+def _poisson_deviance_values(X: Float64Array, mu: Float64Array) -> Float64Array:
+    """Return Poisson deviance from SciPy log-likelihoods for aligned means."""
+    # The saturated Poisson mean is the observation itself; at zero counts the
+    # saturated log-likelihood is zero rather than logpmf(0, 0).
+    positive = X > 0
+    saturated = np.where(
+        positive, stats.poisson.logpmf(X, np.where(positive, X, 1.0)), 0.0
+    )
+    return 2.0 * (saturated - stats.poisson.logpmf(X, mu))
 
 
 def _dense_poisson_deviance(
@@ -121,13 +117,14 @@ def _dense_poisson_deviance(
     n: ArrayLike,
     p: ArrayLike,
 ) -> Float64Array:
+    """Evaluate Poisson deviance residuals from SciPy log-likelihoods."""
+    X = np.asarray(X, dtype=np.float64)
     mu = (
         np.asarray(n, dtype=np.float64)[:, None]
         * np.asarray(p, dtype=np.float64)[None, :]
     )
-    X = np.asarray(X, dtype=np.float64)
-    d = 2.0 * _dense_relative_entropy(mu, X - mu)
-    return np.sign(X - mu) * np.sqrt(np.maximum(d, 0.0))
+    deviance = _poisson_deviance_values(X, mu)
+    return np.sign(X - mu) * np.sqrt(np.maximum(deviance, 0.0))
 
 
 def _dense_binomial_deviance(
@@ -135,15 +132,22 @@ def _dense_binomial_deviance(
     n: ArrayLike,
     p: ArrayLike,
 ) -> Float64Array:
-    n = np.asarray(n, dtype=np.float64)[:, None]
-    p = np.asarray(p, dtype=np.float64)[None, :]
-    mu = n * p
+    """Evaluate binomial deviance residuals from SciPy log-likelihoods."""
     X = np.asarray(X, dtype=np.float64)
-    delta = X - mu
-    d = 2.0 * (
-        _dense_relative_entropy(mu, delta) + _dense_relative_entropy(n - mu, -delta)
+    trials = np.asarray(n, dtype=np.float64)[:, None]
+    proportions = np.asarray(p, dtype=np.float64)[None, :]
+    mu = trials * proportions
+    # The saturated binomial proportion is X / n. Both boundaries are exact
+    # successes or exact failures, where the saturated log-likelihood is zero.
+    observed = X / trials
+    boundary = (observed <= 0.0) | (observed >= 1.0)
+    saturated = np.where(
+        boundary,
+        0.0,
+        stats.binom.logpmf(X, trials, np.where(boundary, 0.5, observed)),
     )
-    return np.sign(X - mu) * np.sqrt(np.maximum(d, 0.0))
+    deviance = 2.0 * (saturated - stats.binom.logpmf(X, trials, proportions))
+    return np.sign(X - mu) * np.sqrt(np.maximum(deviance, 0.0))
 
 
 def _dense_scaled_nb_deviance(
@@ -162,7 +166,7 @@ def _dense_scaled_nb_deviance(
     poisson_genes = alpha < ALPHA_EPS
     poisson = np.broadcast_to(poisson_genes[None, :], mu.shape)
     d = np.empty_like(mu)
-    poisson_d = 2.0 * _dense_relative_entropy(mu, X - mu)
+    poisson_d = _poisson_deviance_values(X, mu)
     d[poisson] = poisson_d[poisson]
     a = alpha_tilde[~poisson]
     d[~poisson] = 2.0 * (

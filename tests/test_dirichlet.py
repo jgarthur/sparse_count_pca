@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy import sparse
 
 from sparse_count_pca import (
     dirichlet_clr_pca,
@@ -150,17 +149,8 @@ def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
     assert result.uns["dirichlet"]["params"]["prior_proportions"] == "prior"
 
 
-@pytest.mark.parametrize(
-    "pca",
-    [dirichlet_log_pca_matrix, dirichlet_clr_pca_matrix],
-)
-def test_dirichlet_rejects_zero_count_rows(pca, counts):
-    """Dirichlet transforms reject rows with zero total counts."""
-    with_empty = sparse.vstack(
-        [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
-    )
-    with pytest.raises(ValueError, match="zero total counts"):
-        pca(with_empty, n_comps=2, return_operator=True)
+# Empty-cell rejection for these APIs is covered once for every public entry point
+# by test_every_public_entry_point_rejects_empty_cells in tests/test_transform.py.
 
 
 @pytest.mark.parametrize(
@@ -220,6 +210,18 @@ def test_dirichlet_prior_sum_tolerance_has_explicit_boundary(direction):
     np.testing.assert_array_equal(normalized, np.array([1.0]))
     with pytest.raises(ValueError, match="sum to one"):
         validate_dirichlet_prior(1.0, outside, n_vars=1)
+
+
+@pytest.mark.parametrize("direction", [-1.0, 1.0])
+def test_dirichlet_prior_sum_tolerance_is_tight_at_an_absolute_scale(direction):
+    """A prior off by a thousandth is rejected whatever the tolerance constant is."""
+    # The test above derives its inputs from PRIOR_SUM_ATOL and PRIOR_SUM_RTOL, so
+    # it moves with them. This literal does not: the tolerance exists to absorb
+    # float64 summation noise, and a prior off by 1e-3 is a caller error.
+    assert PRIOR_SUM_ATOL + PRIOR_SUM_RTOL < 1e-4
+
+    with pytest.raises(ValueError, match="sum to one"):
+        validate_dirichlet_prior(1.0, np.array([1.0 + direction * 1e-3]), n_vars=1)
 
 
 def test_dirichlet_rejects_unrepresentable_prior_counts(counts):

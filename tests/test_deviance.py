@@ -85,6 +85,19 @@ def test_negative_deviance_rounding_boundary_is_inclusive():
         _check_deviance_rounding(outside)
 
 
+def test_materially_negative_deviance_is_rejected_at_an_absolute_scale():
+    """A materially negative deviance raises whatever the rounding tolerance is."""
+    # The test above builds its inputs from DEVIANCE_ROUNDING_TOLERANCE, so it
+    # pins the direction of the comparison but moves with the constant. These
+    # literals are independent of it: only final-rounding noise may be clamped,
+    # and a deviance this negative is a calculation failure at any tolerance.
+    assert DEVIANCE_ROUNDING_TOLERANCE < 1e-12
+
+    np.testing.assert_array_equal(_check_deviance_rounding(np.array([-1e-16])), [0.0])
+    with pytest.raises(FloatingPointError, match="negative value"):
+        _check_deviance_rounding(np.array([-1e-6]))
+
+
 @pytest.mark.parametrize(
     ("x", "mu"),
     [

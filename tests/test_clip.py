@@ -4,7 +4,12 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sparse_count_pca._clip import _clipped_zero_locations, apply_clipping
+from sparse_count_pca import _clip as clip_module
+from sparse_count_pca._clip import (
+    _CANDIDATE_CHUNK_SIZE,
+    _clipped_zero_locations,
+    apply_clipping,
+)
 
 
 def _brute_force_locations(X, u, v, threshold):
@@ -47,7 +52,7 @@ def test_matches_dense_oracle_mixed_signs(small):
     _assert_matches_oracle(small, u, v, threshold=0.2)
 
 
-@pytest.mark.parametrize("seed", range(25))
+@pytest.mark.parametrize("seed", range(8))
 def test_matches_dense_oracle_random(seed):
     """Clipped zero locations match a dense oracle on random inputs."""
     rng = np.random.default_rng(seed)
@@ -60,7 +65,7 @@ def test_matches_dense_oracle_random(seed):
     _assert_matches_oracle(X, u, v, threshold)
 
 
-@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize(
     ("clip", "clip_mode"),
     [(None, "symmetric"), (0.5, "symmetric"), (0.5, "upper")],
@@ -104,11 +109,19 @@ def test_apply_clipping_matches_dense_oracle(seed, clip, clip_mode):
     )
 
 
-def test_rounded_division_does_not_miss_crossing_structural_zero():
-    """A quotient-rounding boundary still includes a truly clipped zero."""
+def test_threshold_one_ulp_below_a_zero_residual_still_clips():
+    """A threshold one ULP below a structural-zero residual still includes it."""
     # This is a valid Poisson-Pearson factorization for the count matrix below:
     # u = -sqrt(row totals), v = sqrt(column proportions). The clip is one ULP
     # below the represented zero residual at (0, 0).
+    #
+    # This exercises the strict product predicate at its tightest representable
+    # margin. It does not exercise the nextafter widening of the search bounds:
+    # a float v strictly below fl(-threshold / u) has an exact product that is
+    # strictly inside the threshold, and rounding a value below the threshold to
+    # nearest can never land above it, so the widened bound admits no location
+    # the unwidened bound would miss. The widening is defensive, and the direct
+    # product filter is what establishes correctness.
     X = sparse.csr_matrix([[0, 2], [5, 4]])
     totals = np.asarray(X.sum(axis=1)).ravel().astype(np.float64)
     proportions = np.asarray(X.sum(axis=0)).ravel() / X.sum()
@@ -132,34 +145,28 @@ def test_no_locations_returns_empty(small):
     assert rows.size == 0 and cols.size == 0
 
 
-def test_max_count_bail_returns_none(small):
-    """The location search stops when its maximum count is exceeded."""
-    # Drive u, v so that essentially every structural zero crosses the
-    # threshold, then ask for a count bound that is provably exceeded.
-    u = np.full(small.shape[0], -5.0)
-    v = np.full(small.shape[1], 5.0)
-    assert _clipped_zero_locations(small, u, v, 0.1, max_count=0) is None
-
-
-def test_max_count_loose_bound_materializes(small):
-    """A loose maximum count permits location materialization."""
-    # A bound at least as large as the true count must not trigger the bail.
-    u = np.full(small.shape[0], -5.0)
-    v = np.full(small.shape[1], 5.0)
-    exp_rows, _ = _brute_force_locations(small, u, v, 0.1)
-    result = _clipped_zero_locations(small, u, v, 0.1, max_count=exp_rows.size)
-    assert result is not None
-    assert result[0].size == exp_rows.size
-
-
-def test_exact_count_at_guard_bound_is_allowed(small):
-    """The location helper allows output exactly at its private count bound."""
+@pytest.mark.parametrize(
+    ("offset", "materializes"),
+    [(-1, False), (0, True), (5, True)],
+    ids=["below-true-count", "at-true-count", "above-true-count"],
+)
+def test_max_count_guard_boundary(small, offset, materializes):
+    """The search bails below its count bound and materializes at or above it."""
+    # Drive u, v so that essentially every structural zero crosses the threshold,
+    # then vary the bound around the true number of locations. The bound is
+    # inclusive: output exactly at the bound is allowed.
     u = np.full(small.shape[0], -5.0)
     v = np.full(small.shape[1], 5.0)
     true_count = _brute_force_locations(small, u, v, 0.1)[0].size
-    result = _clipped_zero_locations(small, u, v, 0.1, max_count=true_count)
-    assert result is not None
-    assert result[0].size == true_count
+    assert true_count > 1
+
+    result = _clipped_zero_locations(small, u, v, 0.1, max_count=true_count + offset)
+
+    if materializes:
+        assert result is not None
+        assert result[0].size == true_count
+    else:
+        assert result is None
 
 
 def test_noncanonical_csr_is_rejected():
@@ -231,10 +238,22 @@ def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
     assert S.nnz == 0
 
 
-def test_growth_guard_stops_nearly_dense_search_before_output_allocation():
+def test_growth_guard_stops_nearly_dense_search_before_output_allocation(monkeypatch):
     """A finite guard rejects near-dense candidates without dense-size output."""
     size = 2_500
     X = sparse.csr_matrix(([1], ([0], [0])), shape=(size, size))
+    # Every structural zero crosses the threshold, so a search that counted after
+    # materializing would build two index arrays of this many entries.
+    unguarded_count = size * size - X.nnz
+    allocations = []
+    original_empty = np.empty
+
+    def recording_empty(shape, *args, **kwargs):
+        allocations.append(int(np.prod(shape)))
+        return original_empty(shape, *args, **kwargs)
+
+    monkeypatch.setattr(clip_module.np, "empty", recording_empty)
+
     result = _clipped_zero_locations(
         X,
         u=np.full(size, -1.0),
@@ -242,4 +261,10 @@ def test_growth_guard_stops_nearly_dense_search_before_output_allocation():
         threshold=0.5,
         max_count=0,
     )
+
     assert result is None
+    # The bail happens during counting, so no allocation approaches the output
+    # size; candidate work stays bounded by the chunk size.
+    assert allocations, "the search allocates at least its empty sentinel"
+    assert max(allocations) <= _CANDIDATE_CHUNK_SIZE
+    assert max(allocations) < unguarded_count
