@@ -174,6 +174,12 @@ the other one — mass weighting — and makes the comparison concrete.
 
 None of these change public behavior:
 
+- Explore a fully lazy residual operator that reads the caller's canonical CSR
+  counts and computes normalized values during matrix products, avoiding a
+  second matrix with duplicated support. This requires an explicit
+  borrowed-input mutation contract; exact symmetric clipping may need an eager
+  fallback or a hybrid correction matrix because it can add support at
+  zero-count entries.
 - For heavily masked log and Dirichlet PCA, make a two-pass builder that computes
   normalization statistics over all genes but allocates sparse transformed
   values and support only for PCA-selected genes.
