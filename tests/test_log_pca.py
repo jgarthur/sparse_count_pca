@@ -170,10 +170,6 @@ def test_log_pca_mask_is_applied_after_full_transform(
     assert np.isnan(result.varm["log_pca"][~mask]).all()
 
 
-# Empty-cell rejection for these APIs is covered once for every public entry point
-# by test_every_public_entry_point_rejects_empty_cells in tests/test_transform.py.
-
-
 def test_proportion_shifted_clr_is_row_scale_invariant(counts):
     """Composition-scale shifted CLR is invariant to row-wise count scaling."""
     scales = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
@@ -240,8 +236,6 @@ def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
         (proportion_shifted_clr_pca_matrix, "composition_shift"),
     ],
 )
-# Zero and negative land on the same comparison, as do inf and NaN; one of each
-# pair plus the two non-scalar forms covers every rejection branch.
 @pytest.mark.parametrize("value", [0.0, np.inf, [1.0], "1"])
 def test_log_pca_rejects_invalid_shifts(counts, pca, parameter, value):
     """Log PCA rejects shifts that are nonpositive, nonfinite, or non-scalar."""

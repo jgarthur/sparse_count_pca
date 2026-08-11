@@ -95,12 +95,8 @@ def _dense_correspondence(
     return standardized, row_masses, column_masses
 
 
-# Every deviance oracle uses SciPy log-likelihood differences, as required by the
-# verification contracts in the package specification. None may restate the algebra
-# in ``_residuals``, whether that is the near-mean series or the direct closed form:
+# Deviance oracles must not restate the algebra in ``_residuals``, in any grouping:
 # an oracle sharing production's derivation agrees with it even when both are wrong.
-# Precision near the mean at very large means is established separately, against
-# Decimal, in ``tests/test_deviance.py``.
 def _poisson_deviance_values(X: Float64Array, mu: Float64Array) -> Float64Array:
     """Return Poisson deviance from SciPy log-likelihoods for aligned means."""
     # The saturated Poisson mean is the observation itself; at zero counts the
@@ -170,19 +166,10 @@ def _dense_scaled_nb_deviance(
     d = np.empty_like(mu)
     d[poisson] = _poisson_deviance_values(X, mu)[poisson]
 
-    # Genes above the threshold use the negative binomial. SciPy parameterizes it
-    # by a number of successes r and a success probability q, not by a mean, so
-    # both have to be derived. For nbinom(r, q):
-    #
-    #     mean     = r (1 - q) / q
-    #     variance = r (1 - q) / q**2 = mean + mean**2 / r
-    #
-    # Solving the first for a target mean m gives q = r / (r + m), which is the
-    # expression below. The variance is then m + m**2 / r, and this model wants
-    # mu + alpha_tilde * mu**2, so r = 1 / alpha_tilde.
-    #
-    # The saturated fit holds r fixed and moves the mean onto the observation, so
-    # its q is the same expression with X in place of mu.
+    # SciPy parameterizes nbinom by successes r and success probability q, not by
+    # a mean: mean = r(1-q)/q and variance = mean + mean**2 / r. So a target mean m
+    # needs q = r / (r + m), and matching variance mu + alpha_tilde * mu**2 gives
+    # r = 1 / alpha_tilde. The saturated fit holds r and puts the mean on X.
     nb = ~poisson
     shape = 1.0 / np.where(nb, alpha_tilde, 1.0)
     log_likelihood_null = stats.nbinom.logpmf(X, shape, shape / (shape + mu))

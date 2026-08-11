@@ -127,9 +127,6 @@ def test_residual_rejects_n_comps_beyond_the_nonempty_column_count(
         scp.residual_pca_matrix(with_zero, n_comps=counts.shape[1])
 
 
-# The interaction under test is clip mode against the sign of the structural-zero
-# residual, which the clipping path treats identically for every model. One Pearson
-# and one deviance case cover it; the full model sweep is in the unclipped test above.
 @pytest.mark.parametrize("clip_mode", ["upper", "symmetric"])
 @pytest.mark.parametrize(
     ("model", "residual", "alpha"),
@@ -195,11 +192,6 @@ def test_residual_ignores_overdispersion_of_an_empty_gene(
         scp.residual_pca_matrix(
             with_zero, n_comps=2, model="scaled_nb", alpha=np.full(3, 0.1)
         )
-
-
-# Empty-cell rejection for the residual entry points is covered once for every
-# public entry point by test_every_public_entry_point_rejects_empty_cells in
-# tests/test_transform.py.
 
 
 @pytest.mark.parametrize(

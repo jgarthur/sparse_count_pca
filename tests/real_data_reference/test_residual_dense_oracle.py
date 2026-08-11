@@ -17,13 +17,8 @@ SCALED_NB_ALPHA_PATTERN = np.array([0.02, 0.05, 0.1, 0.2])
 UPPER_CLIP = 2.5
 SYMMETRIC_CLIP = 1.25
 DEFAULT_ORACLE_ATOL = 2e-14
-# Every deviance oracle differences SciPy log-likelihoods, so none shares a
-# derivation with production. That independence costs precision: differencing two
-# large, nearby log-likelihoods loses several digits, worst case about 5.6e-11 on
-# this fixture. The looser bound is what buys the independence, and a tighter
-# comparison against a copy of production's own algebra would not be worth more.
-# Production's near-mean precision is established against Decimal in
-# tests/test_deviance.py.
+# Differencing two large, nearby SciPy log-likelihoods costs several digits, worst
+# case about 5.6e-11 here. Production's own precision is checked in test_deviance.py.
 DEVIANCE_ORACLE_ATOL = 1e-10
 
 

@@ -10,7 +10,6 @@ from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
 
 def test_default_outputs_and_copy(adata):
     """AnnData residual PCA honors default output keys, dtype, and copy semantics."""
-    # No dtype is passed, so this also pins the float64 default.
     copied = residual_pca(adata, n_comps=2, copy=True)
     assert copied is not adata
     assert "X_pca" in copied.obsm
@@ -109,7 +108,6 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
         assert params["check_values"] is False
         assert params["dtype"] == "float64"
         assert params["package_version"] == __version__
-        # Both writers record the clipping parameters identically.
         assert params["clip"] == 1.0
         assert params["clip_mode"] == "upper"
         assert params["clip_max_nnz_ratio"] is None
@@ -262,8 +260,3 @@ def test_scaled_nb_alpha_from_var_and_array_shape(adata):
             alpha=np.array([0.1, 0.2, 0.3]),
             mask_var=np.array([True, True, True, False]),
         )
-
-
-# Zero-dimensional NumPy alpha is covered for both the matrix and AnnData entry
-# points by test_scaled_nb_accepts_zero_dimensional_numpy_alpha in
-# tests/test_residual_pca.py.

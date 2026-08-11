@@ -96,10 +96,8 @@ def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
         alpha=alpha,
         center=True,
     )
-    # This fixture's million-count row drives the SciPy log-likelihood oracle into
-    # its own cancellation regime, so the oracle rather than production sets the
-    # bound here. The contract under test is which probability family each gene
-    # uses, and a wrong family moves these values by whole units.
+    # The million-count row pushes r = 1 / alpha_tilde to 4e8, where production's
+    # own conditioning costs ~6e-8. A wrong family moves these values by whole units.
     np.testing.assert_allclose(
         result.operator @ np.eye(counts.shape[1]), expected, rtol=1e-6, atol=1e-6
     )
@@ -298,10 +296,6 @@ def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     assert result.total_variance == pytest.approx(expected, rel=rtol, abs=0.0)
 
 
-# apply_clipping consumes residual values and the two rank-one factors, so it is
-# independent of the model that produced them; the full model sweep lives in
-# test_operator_and_svd_match_dense. One Pearson and one deviance case keep the
-# residual-shape coverage without re-testing one code path six times.
 @pytest.mark.parametrize(
     ("model", "residual", "alpha"),
     [
@@ -405,9 +399,6 @@ def test_symmetric_clipping_support_growth_guard(counts):
     )
 
 
-# Upper clipping asserts the production invariant that u < 0 and v >= 0, which is
-# the one model-dependent part of the clipping path, so all three models stay
-# represented across the two residual types.
 @pytest.mark.parametrize(
     ("model", "residual", "alpha"),
     [
@@ -459,14 +450,11 @@ def test_upper_clipping_leaves_negative_tail_unchanged(counts):
     ).materialize()
     lower_tail = unclipped < -clip
 
-    # Both tails must actually be exercised, or the assertions below are vacuous.
     assert lower_tail.any()
     assert (unclipped > clip).any()
 
-    # Unclipped Poisson Pearson takes the fast representation path and clipping
-    # takes the general one, so the two agree to float64 rounding rather than
-    # bit-for-bit. Symmetric clipping would move these entries to -clip instead,
-    # which is many orders of magnitude outside this tolerance.
+    # Unclipped takes the fast Pearson path and clipping the general one, so these
+    # agree to rounding, not bit-for-bit. Symmetric clipping would move them to -clip.
     np.testing.assert_allclose(
         clipped[lower_tail], unclipped[lower_tail], rtol=1e-15, atol=0.0
     )
@@ -509,7 +497,6 @@ def test_dtype_contract(counts, requested):
     assert (result.operator @ np.ones(counts.shape[1])).dtype == expected
     assert result.params["dtype"] == str(expected)
     assert not hasattr(result, "loadings")
-    # Summary statistics stay float64 whatever the representation dtype is.
     assert result.singular_values.dtype == np.float64
     assert result.explained_variance.dtype == np.float64
 

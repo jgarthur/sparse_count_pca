@@ -232,7 +232,6 @@ def test_ca_keeps_zero_mass_columns_and_reports_undefined_coordinates():
         atol=1e-12,
     )
 
-    # The AnnData writer projects the same convention into varm.
     annotated = correspondence_analysis(AnnData(padded), n_comps=1, copy=True)
     assert np.isnan(annotated.varm["CA"][1]).all()
     assert np.isfinite(annotated.varm["CA"][[0, 2]]).all()

@@ -49,8 +49,6 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
     np.testing.assert_allclose(transformed.materialize(), expected, rtol=0.0, atol=0.0)
 
 
-# Empty-cell rejection is a package-wide input policy, so it is asserted once here
-# across every public entry point rather than per transform in each test module.
 @pytest.mark.parametrize(
     "entry_point",
     [

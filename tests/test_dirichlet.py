@@ -149,10 +149,6 @@ def test_dirichlet_anndata_resolves_prior_proportions_from_var(adata):
     assert result.uns["dirichlet"]["params"]["prior_proportions"] == "prior"
 
 
-# Empty-cell rejection for these APIs is covered once for every public entry point
-# by test_every_public_entry_point_rejects_empty_cells in tests/test_transform.py.
-
-
 @pytest.mark.parametrize(
     "builder",
     [build_dirichlet_log_representation, build_dirichlet_clr_representation],
@@ -215,9 +211,7 @@ def test_dirichlet_prior_sum_tolerance_has_explicit_boundary(direction):
 @pytest.mark.parametrize("direction", [-1.0, 1.0])
 def test_dirichlet_prior_sum_tolerance_is_tight_at_an_absolute_scale(direction):
     """A prior off by a thousandth is rejected whatever the tolerance constant is."""
-    # The test above derives its inputs from PRIOR_SUM_ATOL and PRIOR_SUM_RTOL, so
-    # it moves with them. This literal does not: the tolerance exists to absorb
-    # float64 summation noise, and a prior off by 1e-3 is a caller error.
+    # A literal offset, so this holds whatever the tolerance constants become.
     assert PRIOR_SUM_ATOL + PRIOR_SUM_RTOL < 1e-4
 
     with pytest.raises(ValueError, match="sum to one"):
