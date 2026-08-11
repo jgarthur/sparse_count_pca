@@ -99,13 +99,8 @@ def _dense_correspondence(
 # an oracle sharing production's derivation agrees with it even when both are wrong.
 def _poisson_deviance_values(X: Float64Array, mu: Float64Array) -> Float64Array:
     """Return Poisson deviance from SciPy log-likelihoods for aligned means."""
-    # The saturated Poisson mean is the observation itself; at zero counts the
-    # saturated log-likelihood is zero rather than logpmf(0, 0).
-    positive = X > 0
-    saturated = np.where(
-        positive, stats.poisson.logpmf(X, np.where(positive, X, 1.0)), 0.0
-    )
-    return 2.0 * (saturated - stats.poisson.logpmf(X, mu))
+    # The saturated Poisson mean is the observation itself.
+    return 2.0 * (stats.poisson.logpmf(X, X) - stats.poisson.logpmf(X, mu))
 
 
 def _dense_poisson_deviance(
@@ -133,16 +128,12 @@ def _dense_binomial_deviance(
     trials = np.asarray(n, dtype=np.float64)[:, None]
     proportions = np.asarray(p, dtype=np.float64)[None, :]
     mu = trials * proportions
-    # The saturated binomial proportion is X / n. Both boundaries are exact
-    # successes or exact failures, where the saturated log-likelihood is zero.
+    # The saturated binomial proportion is X / n.
     observed = X / trials
-    boundary = (observed <= 0.0) | (observed >= 1.0)
-    saturated = np.where(
-        boundary,
-        0.0,
-        stats.binom.logpmf(X, trials, np.where(boundary, 0.5, observed)),
+    deviance = 2.0 * (
+        stats.binom.logpmf(X, trials, observed)
+        - stats.binom.logpmf(X, trials, proportions)
     )
-    deviance = 2.0 * (saturated - stats.binom.logpmf(X, trials, proportions))
     return np.sign(X - mu) * np.sqrt(np.maximum(deviance, 0.0))
 
 
