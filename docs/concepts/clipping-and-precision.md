@@ -3,33 +3,30 @@
 ## Clipping is opt-in and exact
 
 Residual transforms do not clip outliers by default. Set a positive finite
-`clip` threshold to enable clipping before PCA centering. The threshold is in
-residual units, not counts, and applies to the uncentered residual values.
+`clip` threshold to enable clipping. The threshold applies to the computed
+residual values before column centering.
 
-Two modes are available:
+Two clipping modes are available:
 
-- `clip_mode="symmetric"` clips to `[-clip, clip]`;
-- `clip_mode="upper"` clips only values above `clip`, leaving the negative residuals
+- `clip_mode="symmetric"` (the default, when `clip` is set) clips to
+  `[-clip, clip]`;
+- `clip_mode="upper"` clips to `(-inf, clip]`, leaving the negative residuals
   untouched.
 
-The implementation represents the clipped residual matrix exactly.
+## Symmetric clipping may expand the sparse matrix support
 
-## Why symmetric clipping may grow support
-
-Zero-count residuals are negative for the supported residual models. Symmetric
-clipping can therefore change an entry that was represented by the low-rank
-zero baseline. The changed entries must move into the sparse correction, which
-can expand its support.
+For every supported model and residual type, residuals at zero-count entries
+are negative (except for all-zero genes). Clipping those zero-count residuals
+that fall below `-clip` cannot be done using the low-rank zero baseline alone.
+Instead, clipping is performed by adjusting the sparse correction term, which
+expands its support.
 
 `clip_max_nnz_ratio` bounds that expansion. It is a multiple of the input count
-matrix's stored nonzeros, so `2.0`, the default, permits the sparse part to grow
-to just under twice that. The operation raises `RuntimeError` before
-constructing a correction that meets or exceeds the limit. Use `1.0` to reject
-any support growth, `clip_mode="upper"` to avoid it by construction, or `None` to
-allow unlimited exact expansion.
-
-Upper-only clipping leaves negative zero-count residuals unchanged and cannot
-expand support for the implemented models.
+matrix's stored nonzeros, so the default value `2.0` permits the sparse part to
+grow to just under twice that. The operation raises `RuntimeError` if the
+correction would meet or exceed the limit. Use `1.0` to reject any support
+growth, `clip_mode="upper"` to avoid it by construction, or `None` to disable
+the guard and allow unlimited exact expansion.
 
 ## Calculation dtype
 
