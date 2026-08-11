@@ -7,7 +7,6 @@ from typing import TypeAlias
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse, stats
-from scipy.special import xlogy
 
 from sparse_count_pca._residuals import ALPHA_EPS
 from tests.proportion_shifted_clr_reference.oracle import proportion_shifted_clr
@@ -96,11 +95,12 @@ def _dense_correspondence(
     return standardized, row_masses, column_masses
 
 
-# Deviance oracles use SciPy log-likelihood differences, as required by the
-# verification contracts in the package specification. They must not restate the
-# near-mean series in ``_residuals``: an oracle that shares production's algebra
-# agrees with it even when both are wrong. Precision near the mean at very large
-# means is established separately, against Decimal, in ``tests/test_deviance.py``.
+# Every deviance oracle uses SciPy log-likelihood differences, as required by the
+# verification contracts in the package specification. None may restate the algebra
+# in ``_residuals``, whether that is the near-mean series or the direct closed form:
+# an oracle sharing production's derivation agrees with it even when both are wrong.
+# Precision near the mean at very large means is established separately, against
+# Decimal, in ``tests/test_deviance.py``.
 def _poisson_deviance_values(X: Float64Array, mu: Float64Array) -> Float64Array:
     """Return Poisson deviance from SciPy log-likelihoods for aligned means."""
     # The saturated Poisson mean is the observation itself; at zero counts the
@@ -156,6 +156,7 @@ def _dense_scaled_nb_deviance(
     p: ArrayLike,
     alpha: ArrayLike,
 ) -> Float64Array:
+    """Evaluate scaled-NB deviance residuals from SciPy log-likelihoods."""
     X = np.asarray(X, dtype=np.float64)
     n = np.asarray(n, dtype=np.float64)
     p = np.asarray(p, dtype=np.float64)
@@ -165,15 +166,28 @@ def _dense_scaled_nb_deviance(
     alpha_tilde = alpha[None, :] / scale[:, None]
     poisson_genes = alpha < ALPHA_EPS
     poisson = np.broadcast_to(poisson_genes[None, :], mu.shape)
+
     d = np.empty_like(mu)
-    poisson_d = _poisson_deviance_values(X, mu)
-    d[poisson] = poisson_d[poisson]
-    a = alpha_tilde[~poisson]
-    d[~poisson] = 2.0 * (
-        xlogy(X[~poisson], X[~poisson] / mu[~poisson])
-        - (X[~poisson] + 1.0 / a)
-        * (np.log1p(a * X[~poisson]) - np.log1p(a * mu[~poisson]))
-    )
+    d[poisson] = _poisson_deviance_values(X, mu)[poisson]
+
+    # Genes above the threshold use the negative binomial. SciPy parameterizes it
+    # by a number of successes r and a success probability q, not by a mean, so
+    # both have to be derived. For nbinom(r, q):
+    #
+    #     mean     = r (1 - q) / q
+    #     variance = r (1 - q) / q**2 = mean + mean**2 / r
+    #
+    # Solving the first for a target mean m gives q = r / (r + m), which is the
+    # expression below. The variance is then m + m**2 / r, and this model wants
+    # mu + alpha_tilde * mu**2, so r = 1 / alpha_tilde.
+    #
+    # The saturated fit holds r fixed and moves the mean onto the observation, so
+    # its q is the same expression with X in place of mu.
+    nb = ~poisson
+    shape = 1.0 / np.where(nb, alpha_tilde, 1.0)
+    log_likelihood_null = stats.nbinom.logpmf(X, shape, shape / (shape + mu))
+    log_likelihood_saturated = stats.nbinom.logpmf(X, shape, shape / (shape + X))
+    d[nb] = (2.0 * (log_likelihood_saturated - log_likelihood_null))[nb]
     return np.sign(X - mu) * np.sqrt(np.maximum(d, 0.0))
 
 
