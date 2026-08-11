@@ -60,11 +60,21 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         lambda X: scp.residual_pca_matrix(X, n_comps=2),
         lambda X: scp.residual_pca(AnnData(X), n_comps=2, copy=True),
         lambda X: scp.shifted_clr_pca_matrix(X, n_comps=2, count_shift=1.0),
+        lambda X: scp.shifted_clr_pca(
+            AnnData(X), n_comps=2, count_shift=1.0, copy=True
+        ),
         lambda X: scp.proportion_shifted_clr_pca_matrix(
             X, n_comps=2, composition_shift=1.0
         ),
+        lambda X: scp.proportion_shifted_clr_pca(
+            AnnData(X), n_comps=2, composition_shift=1.0, copy=True
+        ),
         lambda X: scp.dirichlet_log_pca_matrix(X, n_comps=2),
+        lambda X: scp.dirichlet_log_pca(AnnData(X), n_comps=2, copy=True),
         lambda X: scp.dirichlet_clr_pca_matrix(X, n_comps=2),
+        lambda X: scp.dirichlet_clr_pca(AnnData(X), n_comps=2, copy=True),
+        lambda X: scp.correspondence_analysis_matrix(X, n_comps=2),
+        lambda X: scp.correspondence_analysis(AnnData(X), n_comps=2, copy=True),
     ],
     ids=[
         "transform-residual",
@@ -75,9 +85,15 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         "residual-pca-matrix",
         "residual-pca-anndata",
         "shifted-clr-pca-matrix",
+        "shifted-clr-pca-anndata",
         "proportion-shifted-clr-pca-matrix",
+        "proportion-shifted-clr-pca-anndata",
         "dirichlet-log-pca-matrix",
+        "dirichlet-log-pca-anndata",
         "dirichlet-clr-pca-matrix",
+        "dirichlet-clr-pca-anndata",
+        "correspondence-analysis-matrix",
+        "correspondence-analysis-anndata",
     ],
 )
 def test_every_public_entry_point_rejects_empty_cells(counts, entry_point):

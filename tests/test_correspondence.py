@@ -197,15 +197,6 @@ def test_experimental_scaled_nb_ca_resolves_anndata_alpha_after_masking(adata):
     assert result.uns["nb_coords"]["params"]["experimental"] is True
 
 
-def test_ca_rejects_zero_mass_rows():
-    """Correspondence analysis rejects rows with zero mass."""
-    with pytest.raises(ValueError, match="zero total counts"):
-        correspondence_analysis_matrix(
-            sparse.csr_matrix([[1, 2, 3], [0, 0, 0], [2, 1, 3]]),
-            n_comps=2,
-        )
-
-
 def test_ca_keeps_zero_mass_columns_and_reports_undefined_coordinates():
     """A zero-mass column stays in the table with NaN principal coordinates."""
     values = [[1, 3], [2, 1], [3, 2]]
