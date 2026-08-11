@@ -1,5 +1,7 @@
 # sparse-count-pca
 
+## [Read the documentation →](https://sparse-count-pca.readthedocs.io/en/latest/)
+
 Single-cell transcriptomics data reaches the user as a large, very sparse
 matrix of integer counts. Many normalization methods assign nonzero values to
 observed zeros, making the transformed matrix dense and potentially increasing
