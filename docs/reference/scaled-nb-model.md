@@ -84,6 +84,10 @@ does not fit per batch.
 Conditional on the size factors and fixed overdispersion, `scaled_nb` has the
 same maximum-likelihood mean as the Poisson model.
 
+The derivation justifies using \(\mu_{ij}=n_i p_j\) as the fitted mean in the
+[Pearson residual formula](../transforms.md#pearson-and-deviance-residuals) for
+`scaled_nb`, rather than only for Poisson.
+
 All observations share the same NB probability parameter \(q_j\) (distinct from
 the variable proportion \(p_j\) above). Because independent negative-binomial
 variables with common \(q_j\) are closed under addition,
