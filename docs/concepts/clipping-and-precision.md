@@ -13,6 +13,14 @@ Two clipping modes are available:
 - `clip_mode="upper"` clips to `(-inf, clip]`, leaving the negative residuals
   untouched.
 
+For comparison,
+[SCTransform](https://satijalab.org/seurat/reference/sctransform) defaults to a
+symmetric threshold of \(\sqrt{n_\mathrm{obs}/30}\), and
+[Scanpy](https://scanpy.readthedocs.io/en/stable/generated/scanpy.experimental.pp.normalize_pearson_residuals_pca.html)
+to \(\sqrt{n_\mathrm{obs}}\), where \(n_\mathrm{obs}\) is the number of cells;
+this package applies neither automatically, so pass the desired threshold as
+`clip`.
+
 ## Symmetric clipping may expand the sparse matrix support
 
 For every supported model and residual type, residuals at zero-count entries
