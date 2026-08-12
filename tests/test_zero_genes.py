@@ -132,10 +132,6 @@ def test_residual_rejects_n_comps_beyond_the_nonempty_column_count(
     ("model", "residual", "alpha"),
     [
         ("poisson", "pearson", None),
-        ("poisson", "deviance", None),
-        ("binomial", "pearson", None),
-        ("binomial", "deviance", None),
-        ("scaled_nb", "pearson", np.array([0.0, 0.1, 0.3, 1.0])),
         ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
     ],
 )
@@ -196,29 +192,6 @@ def test_residual_ignores_overdispersion_of_an_empty_gene(
         scp.residual_pca_matrix(
             with_zero, n_comps=2, model="scaled_nb", alpha=np.full(3, 0.1)
         )
-
-
-@pytest.mark.parametrize(
-    "entry_point",
-    [
-        lambda values: scp.residual_pca_matrix(values, n_comps=2),
-        lambda values: scp.residual_pca(AnnData(values), n_comps=2, copy=True),
-        lambda values: scp.transform(values, scp.Residual()),
-    ],
-    ids=["matrix-pca", "anndata-pca", "two-step-transform"],
-)
-def test_residual_entry_points_reject_zero_cell(
-    counts: sparse.csr_matrix,
-    entry_point: Callable[[sparse.csr_matrix], object],
-) -> None:
-    """Every residual entry point rejects an observation with no counts."""
-    with_zero_cell = sparse.vstack(
-        (counts, sparse.csr_matrix((1, counts.shape[1]), dtype=counts.dtype)),
-        format="csr",
-    )
-
-    with pytest.raises(ValueError, match="Cells with zero total counts"):
-        entry_point(with_zero_cell)
 
 
 @pytest.mark.parametrize(

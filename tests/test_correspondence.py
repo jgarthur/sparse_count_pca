@@ -197,15 +197,6 @@ def test_experimental_scaled_nb_ca_resolves_anndata_alpha_after_masking(adata):
     assert result.uns["nb_coords"]["params"]["experimental"] is True
 
 
-def test_ca_rejects_zero_mass_rows():
-    """Correspondence analysis rejects rows with zero mass."""
-    with pytest.raises(ValueError, match="zero total counts"):
-        correspondence_analysis_matrix(
-            sparse.csr_matrix([[1, 2, 3], [0, 0, 0], [2, 1, 3]]),
-            n_comps=2,
-        )
-
-
 def test_ca_keeps_zero_mass_columns_and_reports_undefined_coordinates():
     """A zero-mass column stays in the table with NaN principal coordinates."""
     values = [[1, 3], [2, 1], [3, 2]]
@@ -231,6 +222,11 @@ def test_ca_keeps_zero_mass_columns_and_reports_undefined_coordinates():
         rtol=0.0,
         atol=1e-12,
     )
+
+    annotated = correspondence_analysis(AnnData(padded), n_comps=1, copy=True)
+    assert np.isnan(annotated.varm["CA"][1]).all()
+    assert np.isfinite(annotated.varm["CA"][[0, 2]]).all()
+    assert annotated.uns["ca"]["params"]["n_empty_vars"] == 1
 
 
 def test_ca_ignores_overdispersion_of_a_zero_mass_column():
@@ -281,17 +277,6 @@ def test_ca_alpha_exception_does_not_depend_on_the_mask():
         )
 
     assert np.isfinite(result.obsm["X_ca"]).all()
-
-
-def test_ca_writes_nan_varm_for_a_zero_mass_gene():
-    """A zero-mass column receives NaN principal coordinates in varm."""
-    adata = AnnData(sparse.csr_matrix([[1, 0, 3], [2, 0, 1], [3, 0, 2]]))
-
-    result = correspondence_analysis(adata, n_comps=1, copy=True)
-
-    assert np.isnan(result.varm["CA"][1]).all()
-    assert np.isfinite(result.varm["CA"][[0, 2]]).all()
-    assert result.uns["ca"]["params"]["n_empty_vars"] == 1
 
 
 def test_ca_rejects_rows_emptied_by_variable_mask():

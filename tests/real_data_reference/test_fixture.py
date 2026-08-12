@@ -39,18 +39,13 @@ def matrices(manifest: dict[str, Any]) -> dict[str, sparse.csr_matrix]:
     }
 
 
-def test_manifest_names_only_the_expected_count_artifacts(
-    manifest: dict[str, Any],
-) -> None:
-    """The compact manifest has the current schema and exactly two artifacts."""
-    assert manifest["schema_version"] == 2
-    assert set(manifest["artifacts"]) == EXPECTED_ARTIFACTS
-
-
 def test_count_artifacts_match_compact_integrity_records(
     manifest: dict[str, Any], matrices: dict[str, sparse.csr_matrix]
 ) -> None:
-    """Checksums, sparse layout, and count totals match the pinned records."""
+    """Manifest schema, checksums, sparse layout, and count totals are pinned."""
+    assert manifest["schema_version"] == 2
+    assert set(manifest["artifacts"]) == EXPECTED_ARTIFACTS
+
     for label, matrix in matrices.items():
         record = manifest["artifacts"][label]
         path = FIXTURE_DIR / record["filename"]

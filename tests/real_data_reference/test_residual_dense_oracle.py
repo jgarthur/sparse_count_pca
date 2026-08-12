@@ -17,10 +17,9 @@ SCALED_NB_ALPHA_PATTERN = np.array([0.02, 0.05, 0.1, 0.2])
 UPPER_CLIP = 2.5
 SYMMETRIC_CLIP = 1.25
 DEFAULT_ORACLE_ATOL = 2e-14
-# The independent dense NB-deviance formula evaluates a difference of large,
-# nearby terms. Its worst real-data cancellation error is about 3.6e-11; the
-# production path is separately checked against Decimal at near-mean inputs.
-SCALED_NB_DEVIANCE_ATOL = 1e-10
+# Differencing two large, nearby SciPy log-likelihoods costs several digits, worst
+# case about 5.6e-11 here. Production's own precision is checked in test_deviance.py.
+DEVIANCE_ORACLE_ATOL = 1e-10
 
 
 @pytest.fixture(scope="module")
@@ -41,11 +40,11 @@ def scaled_nb_alpha(raw_counts: sparse.csr_matrix) -> np.ndarray:
     ("model", "residual", "atol"),
     [
         ("poisson", "pearson", DEFAULT_ORACLE_ATOL),
-        ("poisson", "deviance", DEFAULT_ORACLE_ATOL),
+        ("poisson", "deviance", DEVIANCE_ORACLE_ATOL),
         ("binomial", "pearson", DEFAULT_ORACLE_ATOL),
-        ("binomial", "deviance", DEFAULT_ORACLE_ATOL),
+        ("binomial", "deviance", DEVIANCE_ORACLE_ATOL),
         ("scaled_nb", "pearson", DEFAULT_ORACLE_ATOL),
-        ("scaled_nb", "deviance", SCALED_NB_DEVIANCE_ATOL),
+        ("scaled_nb", "deviance", DEVIANCE_ORACLE_ATOL),
     ],
 )
 def test_unclipped_residuals_match_dense_oracle_on_real_counts(
@@ -146,4 +145,4 @@ def test_symmetric_clipping_expands_zero_support_and_matches_dense_oracle(
     assert np.count_nonzero(unclipped > SYMMETRIC_CLIP) > 1_000
     np.testing.assert_array_equal(expected[structural_zero_clipped], -SYMMETRIC_CLIP)
     assert transformed._sparse.nnz == raw_counts.nnz + added_support
-    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=SCALED_NB_DEVIANCE_ATOL)
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=DEVIANCE_ORACLE_ATOL)

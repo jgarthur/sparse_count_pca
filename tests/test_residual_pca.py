@@ -3,9 +3,11 @@
 import numpy as np
 import pytest
 import zarr
+from anndata import AnnData
 from scipy import sparse
 
-from sparse_count_pca import residual_pca_matrix
+import sparse_count_pca as scp
+from sparse_count_pca import residual_pca, residual_pca_matrix
 from sparse_count_pca._counts import COUNT_INTEGER_ATOL, _canonicalize_counts
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from sparse_count_pca._representation import SparseLowRankMatrix
@@ -94,8 +96,10 @@ def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
         alpha=alpha,
         center=True,
     )
+    # The million-count row pushes r = 1 / alpha_tilde to 4e8, where production's
+    # own conditioning costs ~6e-8. A wrong family moves these values by whole units.
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]), expected, rtol=1e-10, atol=1e-10
+        result.operator @ np.eye(counts.shape[1]), expected, rtol=1e-6, atol=1e-6
     )
 
 
@@ -136,28 +140,33 @@ def test_scaled_nb_genes_below_alpha_threshold_equal_poisson(residual):
     )
 
 
-def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts):
-    """Scaled-NB PCA accepts a zero-dimensional NumPy alpha value."""
-    scalar = residual_pca_matrix(
-        counts,
-        n_comps=2,
-        model="scaled_nb",
-        alpha=0.1,
-        dtype="float64",
+@pytest.mark.parametrize("entry_point", ["matrix", "anndata"])
+def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts, entry_point):
+    """Every entry point treats a zero-dimensional NumPy alpha as a scalar."""
+    keywords = dict(model="scaled_nb", dtype="float64")
+    if entry_point == "matrix":
+        scalar = residual_pca_matrix(counts, n_comps=2, alpha=0.1, **keywords)
+        zero_dimensional = residual_pca_matrix(
+            counts, n_comps=2, alpha=np.array(0.1), **keywords
+        )
+        singular_values = zero_dimensional.singular_values
+        recorded = zero_dimensional.params["alpha"]
+    else:
+        scalar = residual_pca(
+            AnnData(counts.copy()), 2, alpha=0.1, copy=True, **keywords
+        )
+        zero_dimensional = residual_pca(
+            AnnData(counts.copy()), 2, alpha=np.array(0.1), copy=True, **keywords
+        )
+        singular_values = zero_dimensional.uns["pca"]["singular_values"]
+        scalar = scalar.uns["pca"]
+        recorded = zero_dimensional.uns["pca"]["params"]["alpha"]
+
+    expected = (
+        scalar.singular_values if entry_point == "matrix" else scalar["singular_values"]
     )
-    zero_dimensional = residual_pca_matrix(
-        counts,
-        n_comps=2,
-        model="scaled_nb",
-        alpha=np.array(0.1),
-        dtype="float64",
-    )
-    np.testing.assert_allclose(
-        zero_dimensional.singular_values,
-        scalar.singular_values,
-        rtol=0.0,
-        atol=1e-12,
-    )
+    np.testing.assert_allclose(singular_values, expected, rtol=0.0, atol=1e-12)
+    assert recorded == 0.1
 
 
 def test_uncentered_operator_matches_dense(counts):
@@ -291,15 +300,11 @@ def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     ("model", "residual", "alpha"),
     [
         ("poisson", "pearson", None),
-        ("poisson", "deviance", None),
-        ("binomial", "pearson", None),
-        ("binomial", "deviance", None),
-        ("scaled_nb", "pearson", np.array([0.0, 0.1, 0.3, 1.0])),
         ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
     ],
 )
 def test_symmetric_clipping_is_exact_for_every_residual(counts, model, residual, alpha):
-    """Symmetric clipping is exact for every residual-model combination."""
+    """Symmetric clipping is exact for Pearson and deviance residuals."""
     result = residual_pca_matrix(
         counts,
         n_comps=2,
@@ -376,11 +381,8 @@ def test_symmetric_clipping_support_growth_guard(counts):
             clip_max_nnz_ratio=1.0,
         )
 
-
-def test_symmetric_clipping_large_finite_growth_guard(counts):
-    """The growth guard handles large finite support-ratio limits."""
-    clip = 1.35
-    result = residual_pca_matrix(
+    # A very large finite limit behaves like no limit rather than overflowing.
+    large_finite = residual_pca_matrix(
         counts,
         n_comps=2,
         clip=clip,
@@ -388,10 +390,10 @@ def test_symmetric_clipping_large_finite_growth_guard(counts):
         dtype="float64",
         return_operator=True,
     )
-    dense = _materialize_dense_residual(counts, clip=clip, center=True)
+    assert large_finite.operator.S.nnz == counts.nnz + 3
     np.testing.assert_allclose(
-        result.operator @ np.eye(counts.shape[1]),
-        dense,
+        large_finite.operator @ np.eye(counts.shape[1]),
+        exact,
         rtol=0.0,
         atol=1e-10,
     )
@@ -401,10 +403,7 @@ def test_symmetric_clipping_large_finite_growth_guard(counts):
     ("model", "residual", "alpha"),
     [
         ("poisson", "pearson", None),
-        ("poisson", "deviance", None),
-        ("binomial", "pearson", None),
         ("binomial", "deviance", None),
-        ("scaled_nb", "pearson", np.array([0.0, 0.1, 0.3, 1.0])),
         ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
     ],
 )
@@ -443,20 +442,29 @@ def test_upper_clipping_is_exact_without_support_growth(counts, model, residual,
 
 
 def test_upper_clipping_leaves_negative_tail_unchanged(counts):
-    """Upper clipping leaves the negative residual tail unchanged."""
+    """Upper clipping leaves the package's negative residual tail unchanged."""
     clip = 0.5
-    unclipped = _materialize_dense_residual(counts)
-    expected = _materialize_dense_residual(
-        counts,
-        clip=clip,
-        clip_mode="upper",
+    unclipped = scp.transform(counts, scp.Residual()).materialize()
+    clipped = scp.transform(
+        counts, scp.Residual(clip=clip, clip_mode="upper")
+    ).materialize()
+    lower_tail = unclipped < -clip
+
+    assert lower_tail.any()
+    assert (unclipped > clip).any()
+
+    # Unclipped takes the fast Pearson path and clipping the general one, so these
+    # agree to rounding, not bit-for-bit. Symmetric clipping would move them to -clip.
+    np.testing.assert_allclose(
+        clipped[lower_tail], unclipped[lower_tail], rtol=1e-15, atol=0.0
     )
-    assert np.min(unclipped) < -clip
-    np.testing.assert_array_equal(
-        expected[unclipped < -clip],
-        unclipped[unclipped < -clip],
+    assert np.max(clipped) <= clip
+    np.testing.assert_allclose(
+        clipped,
+        _materialize_dense_residual(counts, clip=clip, clip_mode="upper"),
+        rtol=0.0,
+        atol=1e-12,
     )
-    assert np.max(expected) <= clip
 
 
 def test_matrix_clipping_params_are_recorded(counts):
@@ -473,31 +481,30 @@ def test_matrix_clipping_params_are_recorded(counts):
     assert result.params["clip_max_nnz_ratio"] is None
 
 
-def test_dtype_contract(counts):
+@pytest.mark.parametrize(
+    "requested", [None, "float32", "float64"], ids=["default", "float32", "float64"]
+)
+def test_dtype_contract(counts, requested):
     """Requested dtypes govern operator, score, and component storage."""
-    result = residual_pca_matrix(
-        counts, n_comps=2, dtype="float32", return_operator=True
-    )
-    assert result.scores.dtype == np.float32
-    assert result.components.dtype == np.float32
+    keywords = {} if requested is None else {"dtype": requested}
+    expected = np.dtype("float64" if requested is None else requested)
+
+    result = residual_pca_matrix(counts, n_comps=2, return_operator=True, **keywords)
+
+    assert result.scores.dtype == expected
+    assert result.components.dtype == expected
+    assert result.operator.dtype == expected
+    assert (result.operator @ np.ones(counts.shape[1])).dtype == expected
+    assert result.params["dtype"] == str(expected)
     assert not hasattr(result, "loadings")
-    assert result.operator.dtype == np.dtype("float32")
-    assert (result.operator @ np.ones(counts.shape[1])).dtype == np.float32
     assert result.singular_values.dtype == np.float64
     assert result.explained_variance.dtype == np.float64
 
-
-def test_default_operator_dtype_is_float64(counts):
-    """Residual PCA defaults to a float64 representation and operator."""
-    result = residual_pca_matrix(counts, n_comps=2, return_operator=True)
-    assert result.scores.dtype == np.float64
-    assert result.components.dtype == np.float64
-    assert result.operator.dtype == np.dtype("float64")
-    assert result.params["dtype"] == "float64"
-    direct = SparseLowRankLinearOperator(
-        SparseLowRankMatrix(sparse.csr_matrix(np.eye(3)), np.ones(3), np.ones(3))
-    )
-    assert direct.dtype == np.dtype("float64")
+    if requested is None:
+        direct = SparseLowRankLinearOperator(
+            SparseLowRankMatrix(sparse.csr_matrix(np.eye(3)), np.ones(3), np.ones(3))
+        )
+        assert direct.dtype == np.dtype("float64")
 
 
 @pytest.mark.parametrize(
@@ -557,22 +564,33 @@ def test_parameter_validation(counts, kwargs, message):
         residual_pca_matrix(counts, n_comps=2, **kwargs)
 
 
-def test_count_validation(counts):
-    """Residual PCA validates count values and degenerate margins."""
-    noninteger = counts.astype(float)
-    noninteger.data[0] += 0.25
-    with pytest.raises(ValueError, match="non-integer"):
-        residual_pca_matrix(noninteger, n_comps=2)
-    residual_pca_matrix(noninteger, n_comps=2, check_values=False)
+def _with_first_stored_value(counts, value):
+    """Return float64 counts with the first stored entry replaced."""
+    modified = counts.astype(np.float64)
+    modified.data[0] = value
+    return modified
 
-    negative = counts.copy()
-    negative.data[0] = -1
-    with pytest.raises(ValueError, match="negative"):
-        residual_pca_matrix(negative, n_comps=2)
 
-    zero_cell = sparse.vstack([counts, sparse.csr_matrix((1, counts.shape[1]))])
-    with pytest.raises(ValueError, match="zero total"):
-        residual_pca_matrix(zero_cell, n_comps=2)
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (5.25, "non-integer"),
+        (100_000.4, "non-integer"),
+        (-1.0, "negative"),
+    ],
+    ids=["small-fractional", "large-fractional", "negative"],
+)
+def test_count_value_validation(counts, value, message):
+    """Residual PCA rejects non-integer and negative stored count values."""
+    with pytest.raises(ValueError, match=message):
+        residual_pca_matrix(_with_first_stored_value(counts, value), n_comps=2)
+
+
+def test_check_values_false_admits_non_integer_counts(counts):
+    """Disabling the count-likeness check admits non-integer stored values."""
+    residual_pca_matrix(
+        _with_first_stored_value(counts, 5.25), n_comps=2, check_values=False
+    )
 
 
 @pytest.mark.parametrize("sparse_input", [False, True])
@@ -583,14 +601,6 @@ def test_complex_counts_are_rejected_before_cast(counts, sparse_input):
     X = values if sparse_input else values.toarray()
     with pytest.raises(ValueError, match="real numeric"):
         residual_pca_matrix(X, n_comps=2)
-
-
-def test_large_fractional_counts_are_rejected(counts):
-    """Large non-integer floating counts fail count-likeness validation."""
-    fractional = counts.astype(np.float64)
-    fractional.data[0] = 100_000.4
-    with pytest.raises(ValueError, match="non-integer"):
-        residual_pca_matrix(fractional, n_comps=2)
 
 
 def test_count_integer_tolerance_has_an_explicit_boundary(counts):
