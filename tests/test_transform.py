@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from anndata import AnnData
 from scipy import sparse
 from scipy.sparse.linalg import LinearOperator
 
@@ -10,17 +11,29 @@ from sparse_count_pca._operator import SparseLowRankLinearOperator
 from tests._oracles import _dense_count_shifted_clr, _materialize_dense_residual
 
 
-def test_transformed_matrix_is_linear_operator_and_materializes_exactly(counts):
+@pytest.mark.parametrize(
+    ("method", "dense_oracle", "atol"),
+    [
+        (
+            scp.ShiftedCLR(count_shift=0.7),
+            lambda X: _dense_count_shifted_clr(X, 0.7),
+            1e-14,
+        ),
+        (scp.Residual(), _materialize_dense_residual, 1e-12),
+    ],
+    ids=["shifted-clr", "residual"],
+)
+def test_transformed_matrix_is_linear_operator_and_materializes_exactly(
+    counts, method, dense_oracle, atol
+):
     """A transformed matrix is an exact uncentered SciPy linear operator."""
-    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
-    expected = _dense_count_shifted_clr(counts, 0.7)
+    transformed = scp.transform(counts, method)
+    expected = dense_oracle(counts)
 
     assert isinstance(transformed, LinearOperator)
+    np.testing.assert_allclose(transformed.materialize(), expected, rtol=0.0, atol=atol)
     np.testing.assert_allclose(
-        transformed.materialize(), expected, rtol=1e-14, atol=1e-14
-    )
-    np.testing.assert_allclose(
-        transformed @ np.eye(counts.shape[1]), expected, rtol=1e-14, atol=1e-14
+        transformed @ np.eye(counts.shape[1]), expected, rtol=0.0, atol=atol
     )
 
 
@@ -37,23 +50,61 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
 
 
 @pytest.mark.parametrize(
-    "method",
+    "entry_point",
     [
-        scp.Residual(),
-        scp.ShiftedCLR(count_shift=1.0),
-        scp.ProportionShiftedCLR(composition_shift=1.0),
-        scp.DirichletLog(),
-        scp.DirichletCLR(),
+        lambda X: scp.transform(X, scp.Residual()),
+        lambda X: scp.transform(X, scp.ShiftedCLR(count_shift=1.0)),
+        lambda X: scp.transform(X, scp.ProportionShiftedCLR(composition_shift=1.0)),
+        lambda X: scp.transform(X, scp.DirichletLog()),
+        lambda X: scp.transform(X, scp.DirichletCLR()),
+        lambda X: scp.residual_pca_matrix(X, n_comps=2),
+        lambda X: scp.residual_pca(AnnData(X), n_comps=2, copy=True),
+        lambda X: scp.shifted_clr_pca_matrix(X, n_comps=2, count_shift=1.0),
+        lambda X: scp.shifted_clr_pca(
+            AnnData(X), n_comps=2, count_shift=1.0, copy=True
+        ),
+        lambda X: scp.proportion_shifted_clr_pca_matrix(
+            X, n_comps=2, composition_shift=1.0
+        ),
+        lambda X: scp.proportion_shifted_clr_pca(
+            AnnData(X), n_comps=2, composition_shift=1.0, copy=True
+        ),
+        lambda X: scp.dirichlet_log_pca_matrix(X, n_comps=2),
+        lambda X: scp.dirichlet_log_pca(AnnData(X), n_comps=2, copy=True),
+        lambda X: scp.dirichlet_clr_pca_matrix(X, n_comps=2),
+        lambda X: scp.dirichlet_clr_pca(AnnData(X), n_comps=2, copy=True),
+        lambda X: scp.correspondence_analysis_matrix(X, n_comps=2),
+        lambda X: scp.correspondence_analysis(AnnData(X), n_comps=2, copy=True),
+    ],
+    ids=[
+        "transform-residual",
+        "transform-shifted-clr",
+        "transform-proportion-shifted-clr",
+        "transform-dirichlet-log",
+        "transform-dirichlet-clr",
+        "residual-pca-matrix",
+        "residual-pca-anndata",
+        "shifted-clr-pca-matrix",
+        "shifted-clr-pca-anndata",
+        "proportion-shifted-clr-pca-matrix",
+        "proportion-shifted-clr-pca-anndata",
+        "dirichlet-log-pca-matrix",
+        "dirichlet-log-pca-anndata",
+        "dirichlet-clr-pca-matrix",
+        "dirichlet-clr-pca-anndata",
+        "correspondence-analysis-matrix",
+        "correspondence-analysis-anndata",
     ],
 )
-def test_every_public_transform_rejects_empty_cells(counts, method):
-    """The package-wide transform boundary rejects empty observations."""
+def test_every_public_entry_point_rejects_empty_cells(counts, entry_point):
+    """Every public entry point rejects an observation with no counts."""
     with_empty = sparse.vstack(
-        [counts, sparse.csr_matrix((1, counts.shape[1]))], format="csr"
+        [counts, sparse.csr_matrix((1, counts.shape[1]), dtype=counts.dtype)],
+        format="csr",
     )
 
-    with pytest.raises(ValueError, match="zero total counts"):
-        scp.transform(with_empty, method)
+    with pytest.raises(ValueError, match="Cells with zero total counts"):
+        entry_point(with_empty)
 
 
 def test_returned_operator_is_isolated_from_fitted_transform(counts):
@@ -227,18 +278,6 @@ def test_materialize_validates_out_and_block_size(counts):
         transformed.materialize(out=np.empty(counts.shape, dtype=np.int64))
     with pytest.raises(ValueError, match="positive integer"):
         transformed.materialize(block_size=0)
-
-
-def test_residual_transform_matches_dense_oracle(counts):
-    """The two-step residual transform matches the independent dense oracle."""
-    transformed = scp.transform(counts, scp.Residual())
-
-    np.testing.assert_allclose(
-        transformed.materialize(),
-        _materialize_dense_residual(counts),
-        rtol=0.0,
-        atol=1e-12,
-    )
 
 
 def test_transformed_pca_matches_one_step_matrix_api(counts):

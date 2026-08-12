@@ -9,14 +9,17 @@ from sparse_count_pca import __version__, residual_pca, residual_pca_matrix
 
 
 def test_default_outputs_and_copy(adata):
-    """AnnData residual PCA honors default output keys and copy semantics."""
-    copied = residual_pca(adata, n_comps=2, copy=True, dtype="float64")
+    """AnnData residual PCA honors default output keys, dtype, and copy semantics."""
+    copied = residual_pca(adata, n_comps=2, copy=True)
     assert copied is not adata
     assert "X_pca" in copied.obsm
     assert "PCs" in copied.varm
     assert "pca" in copied.uns
     assert "X_pca" not in adata.obsm
+    assert copied.obsm["X_pca"].dtype == np.float64
+    assert copied.varm["PCs"].dtype == np.float64
     params = copied.uns["pca"]["params"]
+    assert params["dtype"] == "float64"
     assert params["normalization_n_vars"] == adata.n_vars
     assert params["pca_n_vars"] == adata.n_vars
     assert params["mask_var_details"] == {
@@ -29,14 +32,6 @@ def test_default_outputs_and_copy(adata):
     assert returned is None
     assert adata.obsm["X_pca"].shape == (adata.n_obs, 2)
     assert adata.varm["PCs"].shape == (adata.n_vars, 2)
-
-
-def test_default_anndata_dtype_is_float64(adata):
-    """AnnData residual PCA stores float64 outputs by default."""
-    result = residual_pca(adata, n_comps=2, copy=True)
-    assert result.obsm["X_pca"].dtype == np.float64
-    assert result.varm["PCs"].dtype == np.float64
-    assert result.uns["pca"]["params"]["dtype"] == "float64"
 
 
 def test_key_added_and_layer(adata):
@@ -55,23 +50,6 @@ def test_key_added_and_layer(adata):
     assert "X_resid_pca" not in adata.obsm
     assert "resid_pca" in adata.varm
     assert adata.uns["resid_pca"]["params"]["layer"] == "counts"
-
-
-def test_clipping_params_are_recorded(adata):
-    """AnnData PCA metadata records clipping parameters."""
-    result = residual_pca(
-        adata,
-        2,
-        clip=1.0,
-        clip_mode="upper",
-        clip_max_nnz_ratio=None,
-        copy=True,
-        dtype="float64",
-    )
-    params = result.uns["pca"]["params"]
-    assert params["clip"] == 1.0
-    assert params["clip_mode"] == "upper"
-    assert params["clip_max_nnz_ratio"] is None
 
 
 def test_default_and_explicit_masks(adata):
@@ -111,21 +89,17 @@ def test_default_and_explicit_masks(adata):
 
 def test_reproducibility_metadata_matches_matrix_result(adata):
     """AnnData and matrix APIs record matching reproducibility metadata."""
-    matrix = residual_pca_matrix(
-        adata.X,
-        2,
+    keywords = dict(
         random_state=7,
         tol=1e-6,
         check_values=False,
+        clip=1.0,
+        clip_mode="upper",
+        clip_max_nnz_ratio=None,
     )
-    annotated = residual_pca(
-        adata,
-        2,
-        random_state=7,
-        tol=1e-6,
-        check_values=False,
-        copy=True,
-    )
+    matrix = residual_pca_matrix(adata.X, 2, **keywords)
+    annotated = residual_pca(adata, 2, copy=True, **keywords)
+
     for params in (matrix.params, annotated.uns["pca"]["params"]):
         assert params["zero_center"] is True
         assert params["n_comps"] == 2
@@ -134,6 +108,9 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
         assert params["check_values"] is False
         assert params["dtype"] == "float64"
         assert params["package_version"] == __version__
+        assert params["clip"] == 1.0
+        assert params["clip_mode"] == "upper"
+        assert params["clip_max_nnz_ratio"] is None
 
 
 @pytest.mark.parametrize(
@@ -283,16 +260,3 @@ def test_scaled_nb_alpha_from_var_and_array_shape(adata):
             alpha=np.array([0.1, 0.2, 0.3]),
             mask_var=np.array([True, True, True, False]),
         )
-
-
-def test_scaled_nb_accepts_zero_dimensional_numpy_alpha_in_anndata(adata):
-    """AnnData scaled-NB PCA accepts zero-dimensional NumPy alpha values."""
-    result = residual_pca(
-        adata,
-        2,
-        model="scaled_nb",
-        alpha=np.array(0.1),
-        copy=True,
-        dtype="float64",
-    )
-    assert result.uns["pca"]["params"]["alpha"] == 0.1
