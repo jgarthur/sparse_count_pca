@@ -129,7 +129,10 @@ Transform builders return an exact `SparseLowRankMatrix`. They do not run PCA.
 [`_residuals.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_residuals.py) contains Poisson,
 binomial, and size-factor-scaled negative-binomial Pearson and deviance
 residual builders. For structural zeros, the residual baseline factorizes;
-nonzero-count corrections are stored sparsely.
+nonzero-count corrections are stored sparsely. Every residual builder evaluates
+count support in bounded blocks and writes directly into the requested
+representation dtype, so temporary float64 calculation arrays do not scale as
+multiple copies of the full sparse support.
 
 [`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the

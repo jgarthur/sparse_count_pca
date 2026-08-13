@@ -7,6 +7,7 @@ from anndata import AnnData
 from scipy import sparse
 
 import sparse_count_pca as scp
+from sparse_count_pca import _residuals as residuals_module
 from sparse_count_pca import residual_pca, residual_pca_matrix
 from sparse_count_pca._counts import COUNT_INTEGER_ATOL, _canonicalize_counts
 from sparse_count_pca._operator import SparseLowRankLinearOperator
@@ -277,6 +278,100 @@ def test_exact_symmetric_clipping_matches_dense(counts):
     assert result.total_variance == pytest.approx(
         np.sum(dense**2) / (counts.shape[0] - 1), rel=1e-10, abs=0.0
     )
+
+
+@pytest.mark.parametrize(
+    ("model", "residual", "alpha"),
+    [
+        ("poisson", "pearson", None),
+        ("poisson", "deviance", None),
+        ("binomial", "pearson", None),
+        ("binomial", "deviance", None),
+        ("scaled_nb", "pearson", np.array([0.0, 0.1, 0.3, 1.0])),
+        ("scaled_nb", "deviance", np.array([0.0, 0.1, 0.3, 1.0])),
+    ],
+)
+@pytest.mark.parametrize(
+    ("clip", "clip_mode"),
+    [(None, "symmetric"), (0.5, "symmetric"), (0.5, "upper")],
+    ids=["unclipped", "symmetric", "upper"],
+)
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_blocked_residual_build_matches_single_block_and_dense_oracle(
+    counts,
+    monkeypatch,
+    model,
+    residual,
+    alpha,
+    clip,
+    clip_mode,
+    dtype,
+):
+    """Every blocked residual family exactly matches one block and its oracle."""
+    n = np.asarray(counts.sum(axis=1, dtype=np.float64)).ravel()
+    column_totals = np.asarray(counts.sum(axis=0, dtype=np.float64)).ravel()
+    p = column_totals / column_totals.sum(dtype=np.float64)
+    keywords = {
+        "model": model,
+        "residual": residual,
+        "alpha": alpha,
+        "clip": clip,
+        "clip_mode": clip_mode,
+        "clip_max_nnz_ratio": None,
+        "dtype": dtype,
+    }
+
+    monkeypatch.setattr(
+        residuals_module,
+        "_RESIDUAL_SUPPORT_BLOCK_SIZE",
+        counts.nnz + 1,
+    )
+    single = residuals_module.build_residual_representation(counts, n, p, **keywords)
+
+    monkeypatch.setattr(residuals_module, "_RESIDUAL_SUPPORT_BLOCK_SIZE", 4)
+    assert len(list(residuals_module._support_row_blocks(counts))) >= 3
+    blocked = residuals_module.build_residual_representation(counts, n, p, **keywords)
+
+    assert blocked.sparse.dtype == np.dtype(dtype)
+    assert blocked.left.dtype == np.dtype(dtype)
+    assert blocked.right.dtype == np.dtype(dtype)
+    np.testing.assert_array_equal(blocked.sparse.data, single.sparse.data)
+    np.testing.assert_array_equal(blocked.sparse.indices, single.sparse.indices)
+    np.testing.assert_array_equal(blocked.sparse.indptr, single.sparse.indptr)
+    np.testing.assert_array_equal(blocked.left, single.left)
+    np.testing.assert_array_equal(blocked.right, single.right)
+
+    actual = blocked.sparse.toarray() + blocked.left @ blocked.right.T
+    expected = _materialize_dense_residual(
+        counts,
+        model=model,
+        residual=residual,
+        alpha=alpha,
+        clip=clip,
+        clip_mode=clip_mode,
+    )
+    atol = 2e-6 if dtype == "float32" else (1e-10 if residual == "deviance" else 1e-12)
+    np.testing.assert_allclose(
+        actual.astype(np.float64),
+        expected,
+        rtol=0.0,
+        atol=atol,
+    )
+
+
+def test_residual_builder_skips_zero_elimination_when_data_are_nonzero(
+    counts, monkeypatch
+):
+    """A nonzero sparse correction avoids a redundant full-support prune pass."""
+
+    def fail_if_called(self):
+        pytest.fail("eliminate_zeros was called for entirely nonzero data")
+
+    monkeypatch.setattr(sparse.csr_matrix, "eliminate_zeros", fail_if_called)
+
+    transformed = scp.transform(counts, scp.Residual(), dtype="float32")
+
+    assert transformed._sparse.nnz == counts.nnz
 
 
 @pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])

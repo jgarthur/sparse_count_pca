@@ -147,6 +147,53 @@ def _clipped_zero_locations(
     return rows, cols
 
 
+def _guarded_clipped_zero_locations(
+    X: CSRMatrix,
+    u: Float64Array,
+    v: Float64Array,
+    threshold: float,
+    *,
+    clip_max_nnz_ratio: float | None,
+) -> tuple[IndexArray, IndexArray]:
+    """Find clipped structural zeros while enforcing the support-growth limit."""
+    max_count = None
+    if clip_max_nnz_ratio is not None:
+        max_possible_ratio = (X.shape[0] * X.shape[1]) / X.nnz
+        if clip_max_nnz_ratio <= max_possible_ratio:
+            max_count = max(
+                0,
+                int(np.ceil(clip_max_nnz_ratio * X.nnz)) - X.nnz - 1,
+            )
+
+    locations = _clipped_zero_locations(
+        X,
+        u,
+        v,
+        threshold,
+        max_count=max_count,
+    )
+    if locations is None:
+        raise RuntimeError(
+            "Exact symmetric clipping would increase sparse support by a factor "
+            f"meeting or exceeding clip_max_nnz_ratio={clip_max_nnz_ratio}. "
+            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
+            "leaves zero-count residuals unchanged and cannot expand support."
+        )
+    correction_rows, correction_cols = locations
+    if correction_rows.size == 0:
+        return correction_rows, correction_cols
+    growth_ratio = (X.nnz + correction_rows.size) / X.nnz
+    if clip_max_nnz_ratio is not None and growth_ratio >= clip_max_nnz_ratio:
+        raise RuntimeError(
+            "Exact symmetric clipping would increase sparse support by a factor of "
+            f"{growth_ratio:.3g}, meeting or exceeding "
+            f"clip_max_nnz_ratio={clip_max_nnz_ratio}. "
+            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
+            "leaves zero-count residuals unchanged and cannot expand support."
+        )
+    return correction_rows, correction_cols
+
+
 def apply_clipping(
     X: CSRMatrix,
     residual_nonzero: Float64Array,
@@ -196,50 +243,24 @@ def apply_clipping(
     if clip_mode == "upper":
         data = np.minimum(residual_nonzero, clip) - uv_nonzero
         S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
-        S.eliminate_zeros()
+        if not data.all():
+            S.eliminate_zeros()
         return S
 
     data = np.clip(residual_nonzero, -clip, clip) - uv_nonzero
-    # Bound clipped-zero growth before constructing the expanded sparse result.
-    max_count = None
-    if clip_max_nnz_ratio is not None:
-        max_possible_ratio = (X.shape[0] * X.shape[1]) / X.nnz
-        if clip_max_nnz_ratio <= max_possible_ratio:
-            max_count = max(
-                0,
-                int(np.ceil(clip_max_nnz_ratio * X.nnz)) - X.nnz - 1,
-            )
-
-    locations = _clipped_zero_locations(
+    correction_rows, correction_cols = _guarded_clipped_zero_locations(
         X,
         u,
         v,
         clip,
-        max_count=max_count,
+        clip_max_nnz_ratio=clip_max_nnz_ratio,
     )
-    if locations is None:
-        raise RuntimeError(
-            "Exact symmetric clipping would increase sparse support by a factor "
-            f"meeting or exceeding clip_max_nnz_ratio={clip_max_nnz_ratio}. "
-            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
-            "leaves zero-count residuals unchanged and cannot expand support."
-        )
-    correction_rows, correction_cols = locations
     count = correction_rows.size
     if count == 0:
         S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
-        S.eliminate_zeros()
+        if not data.all():
+            S.eliminate_zeros()
         return S
-    growth_ratio = (X.nnz + count) / X.nnz
-    if clip_max_nnz_ratio is not None and growth_ratio >= clip_max_nnz_ratio:
-        raise RuntimeError(
-            "Exact symmetric clipping would increase sparse support by a factor of "
-            f"{growth_ratio:.3g}, meeting or exceeding "
-            f"clip_max_nnz_ratio={clip_max_nnz_ratio}. "
-            "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
-            "leaves zero-count residuals unchanged and cannot expand support."
-        )
-
     # At clipped zeros the residual is u_i v_j < -clip, so the clipped value
     # is exactly -clip and the correction is -clip - u_i v_j.
     correction_data = -clip - u[correction_rows] * v[correction_cols]
@@ -256,5 +277,6 @@ def apply_clipping(
         ),
         shape=X.shape,
     ).tocsr()
-    S.eliminate_zeros()
+    if not S.data.all():
+        S.eliminate_zeros()
     return S

@@ -143,8 +143,9 @@ def residual_pca_matrix(
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
-            ``"float32"``. Normalization factors are always fitted in float64; the
-            representation built from them is cast to ``dtype`` afterwards.
+            ``"float32"``. Normalization factors and bounded support intermediates
+            are evaluated in float64; sparse corrections, low-rank factors, and
+            arrays passed to ARPACK use ``dtype``.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.
@@ -295,8 +296,9 @@ def residual_pca(
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
-            ``"float32"``. Normalization factors are always fitted in float64; the
-            representation built from them is cast to ``dtype`` afterwards.
+            ``"float32"``. Normalization factors and bounded support intermediates
+            are evaluated in float64; sparse corrections, low-rank factors, and
+            arrays passed to ARPACK use ``dtype``.
         solver: SVD solver. Only ``"arpack"`` is supported.
         random_state: Seed for the random starting vector handed to ARPACK. ``None``
             breaks bit-for-bit reproducibility.

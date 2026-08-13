@@ -60,12 +60,14 @@ class Transform(ABC):
         *,
         var: Any | None,
         columns: BoolArray | None,
+        dtype: DTypeLike,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         """Build a representation and its reproducibility metadata.
 
         ``var`` is available only for AnnData-derived transforms. ``columns``
         is either ``None`` for all variables or the PCA-only variable mask;
         builders must fit normalization state before applying that mask.
+        ``dtype`` is the validated floating-point calculation dtype.
         """
 
 
@@ -104,6 +106,10 @@ class Residual(Transform):
     share of the grand total. Pearson residuals are
     ``(x_ij - mu_ij) / sqrt(V_ij)`` and deviance residuals are
     ``sign(x_ij - mu_ij) * sqrt(d(x_ij, mu_ij))``.
+
+    The calculation dtype passed to a transform or PCA entry point controls the
+    stored sparse correction and low-rank factors. Normalization factors and
+    bounded support intermediates are evaluated in float64.
 
     Attributes:
         model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses ``mu_ij``,
@@ -146,6 +152,7 @@ class Residual(Transform):
         *,
         var: Any | None,
         columns: BoolArray | None,
+        dtype: DTypeLike,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
         n_vars = counts.shape[1]
@@ -193,6 +200,7 @@ class Residual(Transform):
             clip=self.clip,
             clip_mode=self.clip_mode,
             clip_max_nnz_ratio=self.clip_max_nnz_ratio,
+            dtype=dtype,
         )
         return (
             representation,
@@ -233,7 +241,7 @@ class ShiftedCLR(Transform):
 
     count_shift: float
 
-    def _build(self, counts, *, var, columns):
+    def _build(self, counts, *, var, columns, dtype):
         count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
         representation = build_shifted_clr_representation(
             counts, count_shift=count_shift
@@ -274,7 +282,7 @@ class ProportionShiftedCLR(Transform):
 
     composition_shift: float
 
-    def _build(self, counts, *, var, columns):
+    def _build(self, counts, *, var, columns, dtype):
         composition_shift = validate_positive_scalar(
             self.composition_shift, name="composition_shift"
         )
@@ -319,7 +327,7 @@ class DirichletLog(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, var, columns):
+    def _build(self, counts, *, var, columns, dtype):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -373,7 +381,7 @@ class DirichletCLR(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, var, columns):
+    def _build(self, counts, *, var, columns, dtype):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -718,6 +726,7 @@ def _transform(
     """Build a public transform, optionally restricted for a PCA wrapper."""
     if not isinstance(method, Transform):
         raise TypeError("method must be a Transform instance")
+    operator_dtype = _normalize_operator_dtype(dtype)
     if isinstance(data, AnnData):
         X = _get_count_matrix(data, layer=layer)
         var = data.var
@@ -739,7 +748,12 @@ def _transform(
             raise ValueError("columns selected zero genes")
         if _columns.all():
             _columns = None
-    representation, label, params = method._build(counts, var=var, columns=_columns)
+    representation, label, params = method._build(
+        counts,
+        var=var,
+        columns=_columns,
+        dtype=operator_dtype,
+    )
     # Empty variables are never dropped: every transform gives them a defined
     # value, so the fitted matrix always keeps the caller's variable universe.
     params = {**params, "n_empty_vars": int(_empty_columns(counts).sum())}
@@ -751,7 +765,7 @@ def _transform(
         transform_label=label,
         params=params,
         check_values=check_values,
-        dtype=dtype,
+        dtype=operator_dtype,
         obs_names=obs_names,
         var_names=var_names,
         var=var,
@@ -781,8 +795,9 @@ def transform(
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and operator dtype, either ``"float64"`` or ``"float32"``.
-            Normalization factors are always fitted in float64; the representation built
-            from them is cast to ``dtype`` afterwards.
+            Normalization factors and numerically sensitive intermediates are evaluated
+            in float64; stored sparse corrections, low-rank factors, and operator arrays
+            use ``dtype``.
 
     Returns:
         An uncentered implicit transformed matrix that supports matrix products,
