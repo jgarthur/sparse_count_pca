@@ -7,6 +7,60 @@ documentation; do not leave completed work described as a wish.
 
 ## After 1.0
 
+### Named residual-clipping thresholds and a clipped default
+
+Accept named `clip` values for the two established cell-count-dependent
+thresholds:
+
+```python
+clip="seurat"  # sqrt(n_obs / 30)
+clip="scanpy"  # sqrt(n_obs)
+```
+
+Here, `n_obs` is the number of observations in the count matrix when the
+transform is fitted. It therefore reflects cell filtering performed by the
+caller, but is independent of gene masking or later PCA variable selection.
+Continue to accept a positive finite float as an explicit threshold and
+`None` to disable clipping.
+
+The aliases must resolve only the numeric threshold. They must have no effect
+on `clip_mode`: `clip_mode="symmetric"` and `clip_mode="upper"` retain their
+existing meanings for named and numeric thresholds alike. In particular,
+`clip="seurat", clip_mode="upper"` means upper-only clipping at
+`sqrt(n_obs / 30)`; the `"seurat"` name must not silently select symmetric
+clipping. Make this orthogonality explicit in the API reference, clipping
+concept page, docstrings, and examples. The existing `clip_max_nnz_ratio`
+guard likewise continues to depend on `clip_mode`, not on how the threshold
+was specified.
+
+Probably change the default from `clip=None` to `clip="seurat"`, while keeping
+the default `clip_mode="symmetric"`. The lower Seurat threshold is the more
+useful general default because extreme residuals do need control; the Scanpy
+threshold remains available for compatibility. Treat this as a deliberate
+behavior change and document that callers can recover the current unclipped
+behavior with `clip=None`.
+
+The implementation and tests should:
+
+- resolve the alias after the input observation axis is finalized and before
+  constructing the residual representation;
+- record both the requested alias and resolved numeric threshold in result
+  metadata so a fitted analysis is reproducible without reinterpreting the
+  alias;
+- apply the same resolution in the matrix, AnnData, one-step, and two-step
+  entry points;
+- test both aliases with both clipping modes, explicit numeric thresholds,
+  `None`, cell-subset inputs, support-growth guards, and invalid strings; and
+- update compatibility documentation that currently says clipping is opt-in.
+
+As a scale check, the combined four-donor PBMC matrix after filtering to cells
+with at least 100 detected genes and genes detected in at least three cells has
+22,111 observations. Its Seurat threshold is approximately `27.148`; symmetric
+Poisson Pearson clipping changes 157,739 positive and 84 negative residuals in
+that dataset without adding structural-zero entries to the sparse correction.
+That absence of support growth is dataset-specific and must not become an API
+assumption.
+
 ### Block-wise inverse reconstruction to count space
 
 Provide native reconstruction from a `PCAResult` without materializing the
