@@ -98,8 +98,10 @@ def build_correspondence_representation(
     alpha: Float64Array | None = None,
     row_totals: Float64Array | None = None,
     column_totals: Float64Array | None = None,
+    dtype: DTypeLike = "float64",
 ) -> tuple[SparseLowRankMatrix, Float64Array, Float64Array]:
     """Build a total-scaled Pearson-residual representation."""
+    calculation_dtype = _normalize_operator_dtype(dtype)
     if row_totals is None:
         row_totals = _sum_counts(X, axis=1)
     if column_totals is None:
@@ -120,8 +122,10 @@ def build_correspondence_representation(
         column_masses,
         model=model,
         alpha=alpha,
+        dtype=calculation_dtype,
     )
-    return pearson.scaled(1.0 / np.sqrt(total)), row_masses, column_masses
+    scale = calculation_dtype.type(1.0 / np.sqrt(total))
+    return pearson.scaled(scale), row_masses, column_masses
 
 
 def _compute_correspondence_analysis(
@@ -205,6 +209,7 @@ def _compute_correspondence_analysis(
         alpha=alpha_full,
         row_totals=row_totals,
         column_totals=column_totals,
+        dtype=dtype,
     )
     operator = SparseLowRankLinearOperator(
         representation,

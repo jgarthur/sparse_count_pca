@@ -359,21 +359,6 @@ def test_blocked_residual_build_matches_single_block_and_dense_oracle(
     )
 
 
-def test_residual_builder_skips_zero_elimination_when_data_are_nonzero(
-    counts, monkeypatch
-):
-    """A nonzero sparse correction avoids a redundant full-support prune pass."""
-
-    def fail_if_called(self):
-        pytest.fail("eliminate_zeros was called for entirely nonzero data")
-
-    monkeypatch.setattr(sparse.csr_matrix, "eliminate_zeros", fail_if_called)
-
-    transformed = scp.transform(counts, scp.Residual(), dtype="float32")
-
-    assert transformed._sparse.nnz == counts.nnz
-
-
 @pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     """Clipped total variance matches the stored implicit operator."""

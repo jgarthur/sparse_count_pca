@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Literal, TypeAlias
 
 import numpy as np
@@ -11,6 +12,7 @@ from scipy.special import xlogy
 
 from ._clip import ClipMode, _guarded_clipped_zero_locations
 from ._counts import BoolArray
+from ._operator import _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
 
 ALPHA_EPS = 1e-8
@@ -34,17 +36,9 @@ SUPPORTED: set[tuple[Model, ResidualType]] = {
 }
 
 
-def _normalize_residual_dtype(dtype: DTypeLike) -> np.dtype[np.floating]:
-    """Normalize the floating-point dtype used by a residual representation."""
-    result = np.dtype(dtype)
-    if result not in {np.dtype(np.float32), np.dtype(np.float64)}:
-        raise ValueError("dtype must be float32 or float64")
-    return result
-
-
 def _support_row_blocks(
     X: sparse.csr_matrix,
-):
+) -> Iterator[tuple[int, int, int, int]]:
     """Yield whole-row blocks containing about the configured number of values."""
     row_start = 0
     while row_start < X.shape[0]:
@@ -92,6 +86,7 @@ def _finalize_residual_representation(
     *,
     clip: float | None,
     dtype: np.dtype[np.floating],
+    eliminate_zeros: bool,
 ) -> SparseLowRankMatrix:
     """Own CSR support, add clipped zeros, and cast factors for final storage."""
     sparse_part = sparse.csr_matrix(
@@ -104,7 +99,7 @@ def _finalize_residual_representation(
         ),
         shape=X.shape,
     )
-    if not data.all():
+    if eliminate_zeros:
         sparse_part.eliminate_zeros()
     if correction_rows.size:
         assert clip is not None
@@ -117,7 +112,7 @@ def _finalize_residual_representation(
             shape=X.shape,
         )
         sparse_part = (sparse_part + corrections).tocsr()
-        if not sparse_part.data.all():
+        if eliminate_zeros:
             sparse_part.eliminate_zeros()
     return SparseLowRankMatrix(
         sparse_part,
@@ -139,7 +134,7 @@ def build_pearson_residual_representation(
     dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Build a bounded-memory Poisson or scaled-NB Pearson representation."""
-    calculation_dtype = _normalize_residual_dtype(dtype)
+    calculation_dtype = _normalize_operator_dtype(dtype)
     if model == "poisson":
         if alpha is not None:
             raise ValueError("alpha is only used for model='scaled_nb'")
@@ -156,6 +151,8 @@ def build_pearson_residual_representation(
 
     left = -np.sqrt(n)
     right = np.sqrt(p / variance_scale)
+    if clip is not None and clip_mode == "upper":
+        assert (left < 0).all() and (right >= 0).all()
     correction_rows, correction_cols = _clipped_zero_corrections(
         X,
         left,
@@ -195,6 +192,7 @@ def build_pearson_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
+        eliminate_zeros=clip is not None,
     )
 
 
@@ -443,7 +441,7 @@ def build_residual_representation(
             dtype=dtype,
         )
 
-    calculation_dtype = _normalize_residual_dtype(dtype)
+    calculation_dtype = _normalize_operator_dtype(dtype)
     mean_n = float(np.mean(n))
     left = -np.sqrt(n)
     poisson = None
@@ -530,4 +528,5 @@ def build_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
+        eliminate_zeros=True,
     )

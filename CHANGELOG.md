@@ -5,10 +5,9 @@ All notable user-facing changes are recorded here.
 ## Unreleased
 
 - Build every residual family's sparse correction in bounded support blocks
-  and write it directly in the requested calculation dtype. On a clipped
-  Poisson-Pearson PBMC benchmark with 22,111 cells, 29,157 genes, and 71.8
-  million nonzeros, peak RSS fell from 5.13--5.30 GiB to 2.10 GiB for float32
-  and from 4.70--4.97 GiB to 3.16 GiB for float64.
+  and write it directly in the requested calculation dtype, substantially
+  reducing construction peak RSS in preliminary PBMC measurements. Replicated
+  benchmark results will be reported separately.
 - Clarify parameter documentation across the public API: state each transform's
   formula where it is short, say that shifts are additive and on which scale,
   and record that `alpha` is the overdispersion itself rather than its inverse.

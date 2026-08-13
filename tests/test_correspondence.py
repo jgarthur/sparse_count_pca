@@ -9,6 +9,7 @@ from sparse_count_pca import (
     correspondence_analysis,
     correspondence_analysis_matrix,
 )
+from sparse_count_pca._correspondence import build_correspondence_representation
 from tests._oracles import _dense_correspondence
 
 
@@ -47,6 +48,18 @@ def test_correspondence_analysis_matches_dense_oracle(counts):
         rtol=1e-9,
         atol=1e-9,
     )
+
+
+def test_correspondence_representation_uses_requested_dtype(counts):
+    """Correspondence construction stores its representation in the chosen dtype."""
+    representation, _, _ = build_correspondence_representation(
+        counts,
+        dtype="float32",
+    )
+
+    assert representation.sparse.dtype == np.float32
+    assert representation.left.dtype == np.float32
+    assert representation.right.dtype == np.float32
 
 
 def test_total_inertia_equals_pearson_chi_squared_over_total(counts):
