@@ -44,7 +44,10 @@ The output reports sampled incremental peak RSS and the process-lifetime high
 water mark as a cross-check. It intentionally has no machine-independent pass
 threshold: compare the candidate with the baseline and with its own unclipped
 configuration. Increase `--repeats` or the matrix dimensions when a change
-needs a stronger signal.
+needs a stronger signal. The high-water-mark delta is zero when the residual
+build does not exceed the earlier import/load high-water mark; in that case,
+use the sampled peak. Each worker has a five-minute timeout by default; adjust
+it with `--timeout` for unusually large inputs.
 
 ## Executable documentation examples
 

@@ -14,11 +14,13 @@ import inspect
 import json
 import math
 import os
+import queue
 import resource
 import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -154,6 +156,7 @@ def _run_worker(
     dtype: str,
     clip: float | None,
     poll_seconds: float,
+    timeout_seconds: float,
 ) -> dict[str, Any]:
     """Measure one isolated residual build after its input-load baseline."""
     command = [
@@ -174,56 +177,105 @@ def _run_worker(
     environment = os.environ.copy()
     environment.update(THREAD_ENV)
     environment["PYTHONPATH"] = str(source)
-    process = subprocess.Popen(
-        command,
-        cwd=matrix.parent,
-        env=environment,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
-    assert process.stdin is not None
-    assert process.stdout is not None
-    ready_line = process.stdout.readline()
-    if not ready_line:
-        _, stderr = process.communicate()
-        raise RuntimeError(f"{label} worker exited before its baseline:\n{stderr}")
-    ready = _parse_message(ready_line, "MEMORY_READY ")
-    module_path = Path(ready["module_path"])
-    if not module_path.is_relative_to(source):
-        process.kill()
-        process.communicate()
-        raise RuntimeError(f"{label} imported {module_path}, not code under {source}")
-
-    baseline = _current_rss_bytes(process.pid)
-    if baseline is None:
-        process.kill()
-        process.communicate()
-        raise RuntimeError(f"Could not read baseline RSS for {label} worker")
-    sampled_peak = baseline
-    process.stdin.write("go\n")
-    process.stdin.flush()
-    while process.poll() is None:
-        current = _current_rss_bytes(process.pid)
-        if current is not None:
-            sampled_peak = max(sampled_peak, current)
-        time.sleep(poll_seconds)
-
-    stdout_tail, stderr = process.communicate()
-    if process.returncode != 0:
-        raise RuntimeError(
-            f"{label} {model}/{residual}/{dtype} worker failed:\n"
-            f"{stderr}\n{stdout_tail}"
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
+        process = subprocess.Popen(
+            command,
+            cwd=matrix.parent,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            text=True,
+            bufsize=1,
         )
-    done_lines = [
-        line for line in stdout_tail.splitlines() if line.startswith("MEMORY_DONE ")
-    ]
-    if len(done_lines) != 1:
-        raise RuntimeError(f"Expected one completion message, received:\n{stdout_tail}")
-    done = _parse_message(done_lines[0], "MEMORY_DONE ")
-    lifetime_peak = int(done["ru_maxrss_bytes"])
+        assert process.stdin is not None
+        assert process.stdout is not None
+        stdout_lines = []
+        ready_lines = queue.Queue()
+
+        def drain_stdout() -> None:
+            for line in process.stdout:
+                stdout_lines.append(line)
+                if line.startswith("MEMORY_READY "):
+                    ready_lines.put(line)
+            ready_lines.put(None)
+
+        stdout_reader = threading.Thread(target=drain_stdout, daemon=True)
+        stdout_reader.start()
+        deadline = time.monotonic() + timeout_seconds
+
+        def collect_output(*, kill: bool) -> tuple[str, str]:
+            if kill and process.poll() is None:
+                process.kill()
+            process.wait()
+            stdout_reader.join()
+            stderr_file.flush()
+            stderr_file.seek(0)
+            return "".join(stdout_lines), stderr_file.read()
+
+        try:
+            ready_line = ready_lines.get(timeout=timeout_seconds)
+        except queue.Empty:
+            stdout, stderr = collect_output(kill=True)
+            raise TimeoutError(
+                f"{label} worker did not become ready within "
+                f"{timeout_seconds:g} seconds:\n{stderr}\n{stdout}"
+            ) from None
+        if ready_line is None:
+            stdout, stderr = collect_output(kill=False)
+            raise RuntimeError(
+                f"{label} worker exited before its baseline:\n{stderr}\n{stdout}"
+            )
+        ready = _parse_message(ready_line, "MEMORY_READY ")
+        module_path = Path(ready["module_path"])
+        if not module_path.is_relative_to(source):
+            stdout, stderr = collect_output(kill=True)
+            raise RuntimeError(
+                f"{label} imported {module_path}, not code under {source}:\n"
+                f"{stderr}\n{stdout}"
+            )
+
+        baseline = _current_rss_bytes(process.pid)
+        if baseline is None:
+            stdout, stderr = collect_output(kill=True)
+            raise RuntimeError(
+                f"Could not read baseline RSS for {label} worker:\n{stderr}\n{stdout}"
+            )
+        sampled_peak = baseline
+        try:
+            process.stdin.write("go\n")
+            process.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            stdout, stderr = collect_output(kill=True)
+            raise RuntimeError(
+                f"{label} worker exited during its start handshake:\n{stderr}\n{stdout}"
+            ) from error
+        while process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                stdout, stderr = collect_output(kill=True)
+                raise TimeoutError(
+                    f"{label} {model}/{residual}/{dtype} worker exceeded "
+                    f"{timeout_seconds:g} seconds:\n{stderr}\n{stdout}"
+                )
+            current = _current_rss_bytes(process.pid)
+            if current is not None:
+                sampled_peak = max(sampled_peak, current)
+            time.sleep(min(poll_seconds, remaining))
+
+        stdout, stderr = collect_output(kill=False)
+        if process.returncode != 0:
+            raise RuntimeError(
+                f"{label} {model}/{residual}/{dtype} worker failed:\n{stderr}\n{stdout}"
+            )
+        done_lines = [
+            line for line in stdout.splitlines() if line.startswith("MEMORY_DONE ")
+        ]
+        if len(done_lines) != 1:
+            raise RuntimeError(f"Expected one completion message, received:\n{stdout}")
+        done = _parse_message(done_lines[0], "MEMORY_DONE ")
+        lifetime_peak = int(done["ru_maxrss_bytes"])
+        ready_lifetime_peak = int(ready["ru_maxrss_bytes"])
     return {
         "source": label,
         "model": model,
@@ -235,7 +287,7 @@ def _run_worker(
         "sampled_peak_bytes": sampled_peak,
         "incremental_peak_bytes": max(0, sampled_peak - baseline),
         "lifetime_peak_bytes": lifetime_peak,
-        "incremental_hwm_bytes": max(0, lifetime_peak - baseline),
+        "incremental_hwm_bytes": max(0, lifetime_peak - ready_lifetime_peak),
         "output_nnz": int(done["output_nnz"]),
         "output_dtype": done["output_dtype"],
     }
@@ -310,6 +362,7 @@ def _main(arguments: list[str]) -> int:
     parser.add_argument("--density", type=float, default=0.16)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--poll-ms", type=float, default=5.0)
+    parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--clip", type=float)
     args = parser.parse_args(arguments)
     if args.n_obs <= 0 or args.n_vars <= 0 or args.repeats <= 0:
@@ -318,6 +371,8 @@ def _main(arguments: list[str]) -> int:
         parser.error("density must be in (0, 1]")
     if args.poll_ms <= 0:
         parser.error("poll-ms must be positive")
+    if args.timeout <= 0:
+        parser.error("timeout must be positive")
     if args.clip is not None and args.clip <= 0:
         parser.error("clip must be positive")
 
@@ -356,7 +411,10 @@ def _main(arguments: list[str]) -> int:
         f"density={counts.nnz / math.prod(counts.shape):.4f}, "
         f"clip={clip_value:.6g}"
     )
-    print(f"Runs: {total_runs}; polling every {args.poll_ms:g} ms\n")
+    print(
+        f"Runs: {total_runs}; polling every {args.poll_ms:g} ms; "
+        f"worker timeout={args.timeout:g} s\n"
+    )
 
     with tempfile.TemporaryDirectory(prefix="scp-memory-probe-") as temp_name:
         matrix = Path(temp_name) / "counts.npz"
@@ -377,6 +435,7 @@ def _main(arguments: list[str]) -> int:
                         dtype=dtype,
                         clip=clip,
                         poll_seconds=args.poll_ms / 1000,
+                        timeout_seconds=args.timeout,
                     )
                     records.append(record)
                     _print_run(record, repeat)
