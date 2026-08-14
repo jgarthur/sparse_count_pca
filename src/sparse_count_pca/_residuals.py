@@ -86,9 +86,9 @@ def _finalize_residual_representation(
     *,
     clip: float | None,
     dtype: np.dtype[np.floating],
-    eliminate_zeros: bool,
+    prune_zero_corrections: bool,
 ) -> SparseLowRankMatrix:
-    """Own CSR support, add clipped zeros, and cast factors for final storage."""
+    """Own CSR support, prune computed zeros, and add clipped-zero corrections."""
     sparse_part = sparse.csr_matrix(
         (
             data,
@@ -99,7 +99,7 @@ def _finalize_residual_representation(
         ),
         shape=X.shape,
     )
-    if eliminate_zeros:
+    if prune_zero_corrections:
         sparse_part.eliminate_zeros()
     if correction_rows.size:
         assert clip is not None
@@ -112,7 +112,7 @@ def _finalize_residual_representation(
             shape=X.shape,
         )
         sparse_part = (sparse_part + corrections).tocsr()
-        if eliminate_zeros:
+        if prune_zero_corrections:
             sparse_part.eliminate_zeros()
     return SparseLowRankMatrix(
         sparse_part,
@@ -126,19 +126,23 @@ def build_pearson_residual_representation(
     n: Float64Array,
     p: Float64Array,
     *,
-    model: Literal["poisson", "scaled_nb"],
+    model: Model,
     alpha: Float64Array | None,
     clip: float | None = None,
     clip_mode: ClipMode = "symmetric",
     clip_max_nnz_ratio: float | None = None,
     dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
-    """Build a bounded-memory Poisson or scaled-NB Pearson representation."""
+    """Build a bounded-memory Pearson residual representation."""
     calculation_dtype = _normalize_operator_dtype(dtype)
     if model == "poisson":
         if alpha is not None:
             raise ValueError("alpha is only used for model='scaled_nb'")
         variance_scale = np.ones_like(p)
+    elif model == "binomial":
+        if alpha is not None:
+            raise ValueError("alpha is only used for model='scaled_nb'")
+        variance_scale = 1.0 - p
     elif model == "scaled_nb":
         if alpha is None:
             raise ValueError("alpha is required for model='scaled_nb'")
@@ -192,7 +196,7 @@ def build_pearson_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
-        eliminate_zeros=clip is not None,
+        prune_zero_corrections=clip is not None,
     )
 
 
@@ -428,7 +432,7 @@ def build_residual_representation(
         A rank-one sparse-plus-low-rank representation.
     """
     alpha_array = None if alpha is None else np.asarray(alpha, dtype=np.float64)
-    if residual == "pearson" and model in {"poisson", "scaled_nb"}:
+    if residual == "pearson":
         return build_pearson_residual_representation(
             X,
             n,
@@ -528,5 +532,5 @@ def build_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
-        eliminate_zeros=True,
+        prune_zero_corrections=True,
     )

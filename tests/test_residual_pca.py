@@ -280,6 +280,53 @@ def test_exact_symmetric_clipping_matches_dense(counts):
     )
 
 
+def _support_row_blocks_oracle(matrix, block_size):
+    """Partition CSR support by trying complete rows one at a time."""
+    row_nnz = np.asarray((matrix != 0).sum(axis=1)).ravel()
+    blocks = []
+    row_start = 0
+    value_start = 0
+    while row_start < matrix.shape[0]:
+        row_stop = row_start + 1
+        block_nnz = int(row_nnz[row_start])
+        while (
+            row_stop < matrix.shape[0] and block_nnz + row_nnz[row_stop] <= block_size
+        ):
+            block_nnz += int(row_nnz[row_stop])
+            row_stop += 1
+        value_stop = value_start + block_nnz
+        blocks.append((row_start, row_stop, value_start, value_stop))
+        row_start = row_stop
+        value_start = value_stop
+    return blocks
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_support_row_blocks_matches_explicit_row_oracle(monkeypatch, seed):
+    """Support blocks match a simple row-by-row partition on random CSR matrices."""
+    rng = np.random.default_rng(seed)
+    n_rows = int(rng.integers(1, 20))
+    n_columns = int(rng.integers(1, 20))
+    density = float(rng.choice([0.0, 0.05, 0.2, 0.8]))
+    matrix = sparse.random(
+        n_rows,
+        n_columns,
+        density=density,
+        format="csr",
+        random_state=rng,
+    )
+
+    for block_size in [1, 2, 3, 7, max(1, matrix.nnz), matrix.nnz + 1]:
+        monkeypatch.setattr(
+            residuals_module,
+            "_RESIDUAL_SUPPORT_BLOCK_SIZE",
+            block_size,
+        )
+        assert list(residuals_module._support_row_blocks(matrix)) == (
+            _support_row_blocks_oracle(matrix, block_size)
+        )
+
+
 @pytest.mark.parametrize(
     ("model", "residual", "alpha"),
     [
@@ -328,6 +375,7 @@ def test_blocked_residual_build_matches_single_block_and_dense_oracle(
     )
     single = residuals_module.build_residual_representation(counts, n, p, **keywords)
 
+    # Four stored values force at least three whole-row blocks for this fixture.
     monkeypatch.setattr(residuals_module, "_RESIDUAL_SUPPORT_BLOCK_SIZE", 4)
     assert len(list(residuals_module._support_row_blocks(counts))) >= 3
     blocked = residuals_module.build_residual_representation(counts, n, p, **keywords)

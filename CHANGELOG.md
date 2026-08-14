@@ -6,8 +6,7 @@ All notable user-facing changes are recorded here.
 
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially
-  reducing construction peak RSS in preliminary PBMC measurements. Replicated
-  benchmark results will be reported separately.
+  reducing construction peak RSS when clipping is enabled.
 - Clarify parameter documentation across the public API: state each transform's
   formula where it is short, say that shifts are additive and on which scale,
   and record that `alpha` is the overdispersion itself rather than its inverse.

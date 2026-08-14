@@ -109,7 +109,7 @@ class Residual(Transform):
 
     The calculation dtype passed to a transform or PCA entry point controls the
     stored sparse correction and low-rank factors. Normalization factors and
-    bounded support intermediates are evaluated in float64.
+    intermediates are evaluated in float64.
 
     Attributes:
         model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses ``mu_ij``,

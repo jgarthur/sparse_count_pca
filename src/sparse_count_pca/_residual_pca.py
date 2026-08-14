@@ -143,7 +143,7 @@ def residual_pca_matrix(
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
-            ``"float32"``. Normalization factors and bounded support intermediates
+            ``"float32"``. Normalization factors and intermediates
             are evaluated in float64; sparse corrections, low-rank factors, and
             arrays passed to ARPACK use ``dtype``.
         solver: SVD solver. Only ``"arpack"`` is supported.
@@ -296,7 +296,7 @@ def residual_pca(
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
-            ``"float32"``. Normalization factors and bounded support intermediates
+            ``"float32"``. Normalization factors and intermediates
             are evaluated in float64; sparse corrections, low-rank factors, and
             arrays passed to ARPACK use ``dtype``.
         solver: SVD solver. Only ``"arpack"`` is supported.
