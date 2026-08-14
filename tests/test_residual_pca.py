@@ -398,6 +398,14 @@ def test_blocked_residual_build_matches_single_block_and_dense_oracle(
         clip=clip,
         clip_mode=clip_mode,
     )
+    if clip is not None:
+        unclipped = _materialize_dense_residual(
+            counts,
+            model=model,
+            residual=residual,
+            alpha=alpha,
+        )
+        assert np.any(expected != unclipped)
     atol = 2e-6 if dtype == "float32" else (1e-10 if residual == "deviance" else 1e-12)
     np.testing.assert_allclose(
         actual.astype(np.float64),
