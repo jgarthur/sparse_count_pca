@@ -19,6 +19,36 @@ apply it rather than wrapping lines by hand.
 Normal tests are offline. External R and Python tooling used to regenerate
 pinned reference artifacts is provenance, not a runtime test dependency.
 
+## Manual residual-memory probe
+
+Memory-sensitive residual-construction changes should be checked with the
+paired subprocess probe before merge. Point it at a baseline checkout and the
+candidate checkout:
+
+```bash
+uv run python benchmarks/residual_memory.py \
+  --baseline-source ../sparse_count_pca-main \
+  --candidate-source .
+```
+
+The probe creates one deterministic sparse count matrix, saves it once, and
+uses fresh workers for every residual family, clipping state, and calculation
+dtype. Each worker loads that saved CSR and imports its selected source tree
+before the parent establishes the RSS baseline. The timed and sampled boundary
+is residual-representation construction alone. BLAS-related thread variables
+are fixed at one for every worker. Clipped cases use
+`clip=sqrt(n_obs / 30)` and `clip_max_nnz_ratio=1.0`; `--clip` can override the
+threshold for a custom synthetic input.
+
+The output reports sampled incremental peak RSS and the process-lifetime high
+water mark as a cross-check. It intentionally has no machine-independent pass
+threshold: compare the candidate with the baseline and with its own unclipped
+configuration. Increase `--repeats` or the matrix dimensions when a change
+needs a stronger signal. The high-water-mark delta is zero when the residual
+build does not exceed the earlier import/load high-water mark; in that case,
+use the sampled peak. Each worker has a five-minute timeout by default; adjust
+it with `--timeout` for unusually large inputs.
+
 ## Executable documentation examples
 
 Each user guide has a companion script under `examples/`, named after the guide

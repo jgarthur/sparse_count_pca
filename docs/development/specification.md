@@ -587,6 +587,9 @@ precision rather than merely downcasting returned arrays.
 
 - Validation and computation of `n_i`, `p_j`, `mean`, total variance, and
   Frobenius norms are performed in `float64`.
+- Residual support values are evaluated in bounded `float64` blocks and written
+  directly into `S.data` in the requested dtype; fitting must not construct a
+  full-`nnz` float64 intermediate for each term.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
@@ -1517,9 +1520,9 @@ guard, filter candidates with the direct strict predicate:
 u[rows] * v[cols] < -clip
 ```
 
-Equality therefore does not clip. Reuse the CSR row-support vector already
-constructed during residual evaluation when applying clipping and excluding
-stored count locations.
+Equality therefore does not clip. Exclude stored count locations through each
+row's sorted CSR support. Residual evaluation may generate support-aligned row
+indices only in bounded blocks; it must not require one full-`nnz` row vector.
 
 The defaults are:
 

@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Literal, TypeAlias
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike, DTypeLike, NDArray
 from scipy import sparse
 from scipy.special import xlogy
 
-from ._clip import ClipMode, apply_clipping
+from ._clip import ClipMode, _guarded_clipped_zero_locations
 from ._counts import BoolArray
+from ._operator import _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
 
 ALPHA_EPS = 1e-8
 RELATIVE_DEVIANCE_SERIES_THRESHOLD = 0.125
 DEVIANCE_ROUNDING_TOLERANCE = 64.0 * np.finfo(np.float64).eps
 _SERIES_TERMS = 24
+_RESIDUAL_SUPPORT_BLOCK_SIZE = 1_000_000
 
 Model: TypeAlias = Literal["poisson", "binomial", "scaled_nb"]
 ResidualType: TypeAlias = Literal["pearson", "deviance"]
@@ -33,20 +36,113 @@ SUPPORTED: set[tuple[Model, ResidualType]] = {
 }
 
 
+def _support_row_blocks(
+    X: sparse.csr_matrix,
+) -> Iterator[tuple[int, int, int, int]]:
+    """Yield whole-row blocks containing about the configured number of values."""
+    row_start = 0
+    while row_start < X.shape[0]:
+        target = min(
+            int(X.indptr[row_start]) + _RESIDUAL_SUPPORT_BLOCK_SIZE,
+            X.nnz,
+        )
+        row_stop = int(np.searchsorted(X.indptr, target, side="right")) - 1
+        row_stop = min(X.shape[0], max(row_start + 1, row_stop))
+        value_start = int(X.indptr[row_start])
+        value_stop = int(X.indptr[row_stop])
+        yield row_start, row_stop, value_start, value_stop
+        row_start = row_stop
+
+
+def _clipped_zero_corrections(
+    X: sparse.csr_matrix,
+    left: Float64Array,
+    right: Float64Array,
+    *,
+    clip: float | None,
+    clip_mode: ClipMode,
+    clip_max_nnz_ratio: float | None,
+) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
+    """Return exact structural-zero corrections required by symmetric clipping."""
+    empty = np.empty(0, dtype=np.intp)
+    if clip is None or clip_mode != "symmetric" or X.nnz == 0:
+        return empty, empty
+    return _guarded_clipped_zero_locations(
+        X,
+        left,
+        right,
+        clip,
+        clip_max_nnz_ratio=clip_max_nnz_ratio,
+    )
+
+
+def _finalize_residual_representation(
+    X: sparse.csr_matrix,
+    data: NDArray[np.floating],
+    left: Float64Array,
+    right: Float64Array,
+    correction_rows: NDArray[np.intp],
+    correction_cols: NDArray[np.intp],
+    *,
+    clip: float | None,
+    dtype: np.dtype[np.floating],
+    prune_zero_corrections: bool,
+) -> SparseLowRankMatrix:
+    """Own CSR support, prune computed zeros, and add clipped-zero corrections."""
+    sparse_part = sparse.csr_matrix(
+        (
+            data,
+            # The persistent representation owns its support so later caller
+            # mutation of X cannot change the fitted transform.
+            X.indices.copy(),
+            X.indptr.copy(),
+        ),
+        shape=X.shape,
+    )
+    if prune_zero_corrections:
+        sparse_part.eliminate_zeros()
+    if correction_rows.size:
+        assert clip is not None
+        correction_data = np.asarray(
+            -clip - left[correction_rows] * right[correction_cols],
+            dtype=dtype,
+        )
+        corrections = sparse.csr_matrix(
+            (correction_data, (correction_rows, correction_cols)),
+            shape=X.shape,
+        )
+        sparse_part = (sparse_part + corrections).tocsr()
+        if prune_zero_corrections:
+            sparse_part.eliminate_zeros()
+    return SparseLowRankMatrix(
+        sparse_part,
+        left.astype(dtype, copy=False),
+        right.astype(dtype, copy=False),
+    )
+
+
 def build_pearson_residual_representation(
     X: sparse.csr_matrix,
     n: Float64Array,
     p: Float64Array,
     *,
-    model: Literal["poisson", "scaled_nb"],
+    model: Model,
     alpha: Float64Array | None,
+    clip: float | None = None,
+    clip_mode: ClipMode = "symmetric",
+    clip_max_nnz_ratio: float | None = None,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
-    """Build an unclipped Poisson or scaled-NB Pearson representation."""
-    rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
+    """Build a bounded-memory Pearson residual representation."""
+    calculation_dtype = _normalize_operator_dtype(dtype)
     if model == "poisson":
         if alpha is not None:
             raise ValueError("alpha is only used for model='scaled_nb'")
         variance_scale = np.ones_like(p)
+    elif model == "binomial":
+        if alpha is not None:
+            raise ValueError("alpha is only used for model='scaled_nb'")
+        variance_scale = 1.0 - p
     elif model == "scaled_nb":
         if alpha is None:
             raise ValueError("alpha is required for model='scaled_nb'")
@@ -57,20 +153,51 @@ def build_pearson_residual_representation(
     else:
         raise ValueError(f"Unsupported Pearson residual model: {model!r}")
 
-    denominator = np.sqrt(n[rows] * p[X.indices] * variance_scale[X.indices])
-    sparse_part = sparse.csr_matrix(
-        (
-            X.data.astype(np.float64, copy=False) / denominator,
-            # The persistent representation owns its support so later caller
-            # mutation of X cannot change the fitted transform.
-            X.indices.copy(),
-            X.indptr.copy(),
-        ),
-        shape=X.shape,
-    )
     left = -np.sqrt(n)
     right = np.sqrt(p / variance_scale)
-    return SparseLowRankMatrix(sparse_part, left, right)
+    if clip is not None and clip_mode == "upper":
+        assert (left < 0).all() and (right >= 0).all()
+    correction_rows, correction_cols = _clipped_zero_corrections(
+        X,
+        left,
+        right,
+        clip=clip,
+        clip_mode=clip_mode,
+        clip_max_nnz_ratio=clip_max_nnz_ratio,
+    )
+
+    data = np.empty(X.nnz, dtype=calculation_dtype)
+    for row_start, row_stop, value_start, value_stop in _support_row_blocks(X):
+        rows = np.repeat(
+            np.arange(row_start, row_stop, dtype=np.intp),
+            np.diff(X.indptr[row_start : row_stop + 1]),
+        )
+        columns = X.indices[value_start:value_stop]
+        x = X.data[value_start:value_stop].astype(np.float64, copy=False)
+        denominator = np.sqrt(n[rows] * p[columns] * variance_scale[columns])
+        if clip is None:
+            values = x / denominator
+        else:
+            mu = n[rows] * p[columns]
+            values = (x - mu) / denominator
+            if clip_mode == "upper":
+                np.minimum(values, clip, out=values)
+            else:
+                np.clip(values, -clip, clip, out=values)
+            values -= left[rows] * right[columns]
+        data[value_start:value_stop] = values
+
+    return _finalize_residual_representation(
+        X,
+        data,
+        left,
+        right,
+        correction_rows,
+        correction_cols,
+        clip=clip,
+        dtype=calculation_dtype,
+        prune_zero_corrections=clip is not None,
+    )
 
 
 def _validate_model(
@@ -279,6 +406,7 @@ def build_residual_representation(
     clip: float | None,
     clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Build a sparse-plus-rank-one residual representation.
 
@@ -298,77 +426,111 @@ def build_residual_representation(
         clip_mode: Whether to clip symmetrically or only the upper tail.
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
+        dtype: Floating-point storage dtype for the returned representation.
 
     Returns:
         A rank-one sparse-plus-low-rank representation.
     """
     alpha_array = None if alpha is None else np.asarray(alpha, dtype=np.float64)
-    if residual == "pearson" and clip is None and model in {"poisson", "scaled_nb"}:
+    if residual == "pearson":
         return build_pearson_residual_representation(
             X,
             n,
             p,
             model=model,
             alpha=alpha_array,
+            clip=clip,
+            clip_mode=clip_mode,
+            clip_max_nnz_ratio=clip_max_nnz_ratio,
+            dtype=dtype,
         )
 
-    rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
-    cols = X.indices
-    x = X.data.astype(np.float64, copy=False)
-    n_support = n[rows]
-    p_support = p[cols]
-    mu = n_support * p_support
+    calculation_dtype = _normalize_operator_dtype(dtype)
     mean_n = float(np.mean(n))
-
-    u = -np.sqrt(n)
+    left = -np.sqrt(n)
+    poisson = None
+    scale_i = None
     if residual == "pearson":
-        if model == "poisson":
-            v = np.sqrt(p)
-            variance = mu
-        elif model == "binomial":
-            v = np.sqrt(p / (1.0 - p))
-            variance = mu * (1.0 - p_support)
-        else:
-            assert alpha_array is not None
-            poisson = alpha_array < ALPHA_EPS
-            effective_alpha = np.where(poisson, 0.0, alpha_array)
-            scale = 1.0 + effective_alpha * mean_n * p
-            v = np.sqrt(p / scale)
-            variance = mu * scale[cols]
-        residual_nonzero = (x - mu) / np.sqrt(variance)
+        assert model == "binomial"
+        right = np.sqrt(p / (1.0 - p))
+    elif model == "poisson":
+        right = np.sqrt(2.0 * p)
+    elif model == "binomial":
+        right = np.sqrt(2.0 * (-np.log1p(-p)))
     else:
-        if model == "poisson":
-            v = np.sqrt(2.0 * p)
-            deviance = _poisson_deviance(x, mu)
-        elif model == "binomial":
-            v = np.sqrt(2.0 * (-np.log1p(-p)))
-            deviance = _binomial_deviance(x, n_support, mu)
-        else:
-            assert alpha_array is not None
-            poisson = alpha_array < ALPHA_EPS
-            v = np.empty_like(p)
-            v[poisson] = np.sqrt(2.0 * p[poisson])
-            nb = ~poisson
-            z = alpha_array[nb] * mean_n
-            v[nb] = np.sqrt(2.0 * np.log1p(z * p[nb]) / z)
-            scale_i = n / mean_n
-            alpha_tilde = alpha_array[cols] / scale_i[rows]
-            deviance = _scaled_nb_deviance(x, mu, alpha_tilde, poisson[cols])
-        residual_nonzero = np.sign(x - mu) * np.sqrt(deviance)
+        assert alpha_array is not None
+        poisson = alpha_array < ALPHA_EPS
+        right = np.empty_like(p)
+        right[poisson] = np.sqrt(2.0 * p[poisson])
+        nb = ~poisson
+        z = alpha_array[nb] * mean_n
+        right[nb] = np.sqrt(2.0 * np.log1p(z * p[nb]) / z)
+        scale_i = n / mean_n
 
     if clip is not None and clip_mode == "upper":
         # ``v_j`` is zero exactly for a gene with no counts, whose structural
         # zeros are already zero rather than negative. Upper clipping still
         # leaves them alone, so the invariant only needs ``v >= 0``.
-        assert (u < 0).all() and (v >= 0).all()
-    S = apply_clipping(
+        assert (left < 0).all() and (right >= 0).all()
+    correction_rows, correction_cols = _clipped_zero_corrections(
         X,
-        residual_nonzero,
-        u,
-        v,
-        rows,
+        left,
+        right,
         clip=clip,
         clip_mode=clip_mode,
         clip_max_nnz_ratio=clip_max_nnz_ratio,
     )
-    return SparseLowRankMatrix(S, u, v)
+
+    data = np.empty(X.nnz, dtype=calculation_dtype)
+    for row_start, row_stop, value_start, value_stop in _support_row_blocks(X):
+        rows = np.repeat(
+            np.arange(row_start, row_stop, dtype=np.intp),
+            np.diff(X.indptr[row_start : row_stop + 1]),
+        )
+        columns = X.indices[value_start:value_stop]
+        x = X.data[value_start:value_stop].astype(np.float64, copy=False)
+        n_support = n[rows]
+        p_support = p[columns]
+        mu = n_support * p_support
+
+        if residual == "pearson":
+            variance = mu * (1.0 - p_support)
+            residual_nonzero = (x - mu) / np.sqrt(variance)
+        else:
+            if model == "poisson":
+                deviance = _poisson_deviance(x, mu)
+            elif model == "binomial":
+                deviance = _binomial_deviance(x, n_support, mu)
+            else:
+                assert alpha_array is not None
+                assert poisson is not None
+                assert scale_i is not None
+                alpha_tilde = alpha_array[columns] / scale_i[rows]
+                deviance = _scaled_nb_deviance(
+                    x,
+                    mu,
+                    alpha_tilde,
+                    poisson[columns],
+                )
+            residual_nonzero = np.sign(x - mu) * np.sqrt(deviance)
+
+        baseline = left[rows] * right[columns]
+        if clip is None:
+            values = residual_nonzero - baseline
+        elif clip_mode == "upper":
+            values = np.minimum(residual_nonzero, clip) - baseline
+        else:
+            values = np.clip(residual_nonzero, -clip, clip) - baseline
+        data[value_start:value_stop] = values
+
+    return _finalize_residual_representation(
+        X,
+        data,
+        left,
+        right,
+        correction_rows,
+        correction_cols,
+        clip=clip,
+        dtype=calculation_dtype,
+        prune_zero_corrections=True,
+    )
