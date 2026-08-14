@@ -8,7 +8,7 @@ from sparse_count_pca import _clip as clip_module
 from sparse_count_pca._clip import (
     _CANDIDATE_CHUNK_SIZE,
     _clipped_zero_locations,
-    apply_clipping,
+    _guarded_clipped_zero_locations,
 )
 
 
@@ -63,50 +63,6 @@ def test_matches_dense_oracle_random(seed):
     v = rng.normal(size=n)
     threshold = float(rng.uniform(0.05, 1.5))
     _assert_matches_oracle(X, u, v, threshold)
-
-
-@pytest.mark.parametrize("seed", range(5))
-@pytest.mark.parametrize(
-    ("clip", "clip_mode"),
-    [(None, "symmetric"), (0.5, "symmetric"), (0.5, "upper")],
-)
-def test_apply_clipping_matches_dense_oracle(seed, clip, clip_mode):
-    """Sparse corrections reconstruct the requested clipped residual matrix."""
-    rng = np.random.default_rng(seed)
-    m, n = rng.integers(1, 10, size=2)
-    dense = rng.integers(0, 3, size=(m, n))
-    if not dense.any():
-        dense[0, 0] = 1
-    X = sparse.csr_matrix(dense)
-    rows = np.repeat(np.arange(m, dtype=np.intp), np.diff(X.indptr))
-    residual_nonzero = rng.normal(size=X.nnz)
-    # These signs are the residual-builder domain invariant: every structural-
-    # zero residual supplied by u v.T is negative.
-    u = -rng.uniform(0.1, 3.0, size=m)
-    v = rng.uniform(0.1, 3.0, size=n)
-
-    full = np.outer(u, v)
-    full[rows, X.indices] = residual_nonzero
-    if clip is None:
-        expected = full
-    elif clip_mode == "upper":
-        expected = np.minimum(full, clip)
-    else:
-        expected = np.clip(full, -clip, clip)
-
-    S = apply_clipping(
-        X,
-        residual_nonzero,
-        u,
-        v,
-        rows,
-        clip=clip,
-        clip_mode=clip_mode,
-        clip_max_nnz_ratio=None,
-    )
-    np.testing.assert_allclose(
-        S.toarray() + np.outer(u, v), expected, rtol=0.0, atol=1e-14
-    )
 
 
 def test_threshold_one_ulp_below_a_zero_residual_still_clips():
@@ -175,17 +131,6 @@ def test_noncanonical_csr_is_rejected():
     v = np.array([2.0, 2.0, 2.0, 2.0])
     with pytest.raises(AssertionError, match="canonical CSR"):
         _clipped_zero_locations(X, u, v, threshold=0.5)
-    with pytest.raises(AssertionError, match="canonical CSR"):
-        apply_clipping(
-            X,
-            residual_nonzero=np.ones(X.nnz),
-            u=u,
-            v=v,
-            rows=np.zeros(X.nnz, dtype=np.intp),
-            clip=None,
-            clip_mode="symmetric",
-            clip_max_nnz_ratio=None,
-        )
 
 
 def test_canonical_csr_array_is_accepted():
@@ -214,19 +159,14 @@ def test_exact_clip_equality_does_not_grow_support_or_trigger_guard():
     clip = 0.004299612420077357
     assert u[0] * equality_v == -clip
     X = sparse.csr_matrix([[1, 0]])
-    rows = np.array([0], dtype=np.intp)
-
-    S = apply_clipping(
+    rows, columns = _guarded_clipped_zero_locations(
         X,
-        residual_nonzero=np.array([0.0]),
-        u=u,
-        v=np.array([0.0, equality_v]),
-        rows=rows,
-        clip=clip,
-        clip_mode="symmetric",
+        u,
+        np.array([0.0, equality_v]),
+        clip,
         clip_max_nnz_ratio=1.0,
     )
-    assert S.nnz == 0
+    assert rows.size == 0 and columns.size == 0
 
 
 def test_growth_guard_stops_nearly_dense_search_before_output_allocation(monkeypatch):

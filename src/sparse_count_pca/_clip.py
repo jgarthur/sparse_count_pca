@@ -147,60 +147,15 @@ def _clipped_zero_locations(
     return rows, cols
 
 
-def apply_clipping(
+def _guarded_clipped_zero_locations(
     X: CSRMatrix,
-    residual_nonzero: Float64Array,
     u: Float64Array,
     v: Float64Array,
-    rows: IndexArray,
+    threshold: float,
     *,
-    clip: float | None,
-    clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
-) -> sparse.csr_matrix:
-    """Construct the sparse residual correction after clipping.
-
-    Args:
-        X: Canonical CSR count matrix defining the original nonempty sparse
-            support. Explicitly stored zeros must already have been removed.
-        residual_nonzero: Residual values aligned with ``X.data``.
-        u: Rank-one row factor.
-        v: Rank-one column factor.
-        rows: Precomputed row index aligned with ``X.data``.
-        clip: Positive clipping threshold, or ``None``.
-        clip_mode: Whether to clip symmetrically or only the upper tail.
-        clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
-            symmetric clipping, or ``None`` for no limit.
-
-    Returns:
-        A CSR matrix ``S`` such that ``S + u v.T`` equals the requested
-        clipped residual matrix.
-
-    Raises:
-        RuntimeError: If exact symmetric clipping would meet or exceed the
-            configured sparse support-growth limit.
-    """
-    assert sparse.issparse(X) and X.format == "csr", "X must use CSR format"
-    assert X.has_canonical_format, "X must be in canonical CSR format"
-    assert X.nnz > 0, "X must have nonempty sparse support"
-    uv_nonzero = u[rows] * v[X.indices]
-    if clip is None:
-        data = residual_nonzero - uv_nonzero
-        return sparse.csr_matrix(
-            (data, X.indices.copy(), X.indptr.copy()), shape=X.shape
-        )
-    # Residual construction guarantees u < 0 and v >= 0, so every structural-
-    # zero residual u_i v_j is negative, or zero for a gene with no counts.
-    # Upper clipping therefore cannot alter structural zeros; symmetric
-    # clipping only needs lower-tail corrections.
-    if clip_mode == "upper":
-        data = np.minimum(residual_nonzero, clip) - uv_nonzero
-        S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
-        S.eliminate_zeros()
-        return S
-
-    data = np.clip(residual_nonzero, -clip, clip) - uv_nonzero
-    # Bound clipped-zero growth before constructing the expanded sparse result.
+) -> tuple[IndexArray, IndexArray]:
+    """Find clipped structural zeros while enforcing the support-growth limit."""
     max_count = None
     if clip_max_nnz_ratio is not None:
         max_possible_ratio = (X.shape[0] * X.shape[1]) / X.nnz
@@ -214,7 +169,7 @@ def apply_clipping(
         X,
         u,
         v,
-        clip,
+        threshold,
         max_count=max_count,
     )
     if locations is None:
@@ -225,12 +180,9 @@ def apply_clipping(
             "leaves zero-count residuals unchanged and cannot expand support."
         )
     correction_rows, correction_cols = locations
-    count = correction_rows.size
-    if count == 0:
-        S = sparse.csr_matrix((data, X.indices.copy(), X.indptr.copy()), shape=X.shape)
-        S.eliminate_zeros()
-        return S
-    growth_ratio = (X.nnz + count) / X.nnz
+    if correction_rows.size == 0:
+        return correction_rows, correction_cols
+    growth_ratio = (X.nnz + correction_rows.size) / X.nnz
     if clip_max_nnz_ratio is not None and growth_ratio >= clip_max_nnz_ratio:
         raise RuntimeError(
             "Exact symmetric clipping would increase sparse support by a factor of "
@@ -239,22 +191,4 @@ def apply_clipping(
             "Raise clip_max_nnz_ratio or switch to clip_mode='upper', which "
             "leaves zero-count residuals unchanged and cannot expand support."
         )
-
-    # At clipped zeros the residual is u_i v_j < -clip, so the clipped value
-    # is exactly -clip and the correction is -clip - u_i v_j.
-    correction_data = -clip - u[correction_rows] * v[correction_cols]
-
-    # The correction support is disjoint from X's support, so build the
-    # result in one COO -> CSR conversion instead of a sparse add.
-    S = sparse.coo_matrix(
-        (
-            np.concatenate([data, correction_data]),
-            (
-                np.concatenate([rows, correction_rows]),
-                np.concatenate([X.indices, correction_cols]),
-            ),
-        ),
-        shape=X.shape,
-    ).tocsr()
-    S.eliminate_zeros()
-    return S
+    return correction_rows, correction_cols
