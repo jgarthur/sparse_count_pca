@@ -21,6 +21,7 @@ transformed = scp.transform(
 
 Other primary transform specifications are `ShiftedCLR` and
 `ProportionShiftedCLR`.
+<!-- TODO(log1p): Include Log1pNormalized in the reusable-transform overview and examples. -->
 Correspondence analysis remains a separate one-step API because its variable
 selection changes the fitted table margins.
 

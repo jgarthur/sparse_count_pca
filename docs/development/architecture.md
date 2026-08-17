@@ -140,6 +140,8 @@ lower threshold, so it has an explicit support-growth guard.
 
 ### Log and CLR family
 
+<!-- TODO(log1p): Describe the rank-zero normalized-log builder and add it to the representation-rank table. -->
+
 [`_log_transforms.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_transforms.py) contains the
 shared algebra. Its primitive sparse correction is
 

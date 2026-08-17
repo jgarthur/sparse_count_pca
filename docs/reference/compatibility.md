@@ -9,6 +9,8 @@ interchangeable.
 Scanpy ships its own Pearson-residual preprocessing, so the first practical
 question is which call this package replaces.
 
+<!-- TODO(log1p): Replace the normalize_total + log1p + pca exclusion with log1p_norm_pca parity and parameter differences. -->
+
 | If you currently call | Closest equivalent here | What differs |
 | --- | --- | --- |
 | `sc.experimental.pp.normalize_pearson_residuals_pca` | `scp.residual_pca(model="poisson")` | Scanpy uses a negative-binomial variance with one shared `theta`; `model="poisson"` is its `theta → ∞` limit. See below. |

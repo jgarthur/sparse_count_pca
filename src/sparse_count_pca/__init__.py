@@ -12,6 +12,8 @@ from ._dirichlet_pca import (
     dirichlet_log_pca_matrix,
 )
 from ._log_pca import (
+    log1p_norm_pca,
+    log1p_norm_pca_matrix,
     proportion_shifted_clr_pca,
     proportion_shifted_clr_pca_matrix,
     shifted_clr_pca,
@@ -22,6 +24,7 @@ from ._residual_pca import residual_pca, residual_pca_matrix
 from ._transform import (
     DirichletCLR,
     DirichletLog,
+    Log1pNormalized,
     ProportionShiftedCLR,
     Residual,
     ShiftedCLR,
@@ -35,6 +38,7 @@ __all__ = [
     "CorrespondenceAnalysisResult",
     "DirichletCLR",
     "DirichletLog",
+    "Log1pNormalized",
     "PCAResult",
     "ProportionShiftedCLR",
     "Residual",
@@ -48,6 +52,8 @@ __all__ = [
     "dirichlet_clr_pca_matrix",
     "dirichlet_log_pca",
     "dirichlet_log_pca_matrix",
+    "log1p_norm_pca",
+    "log1p_norm_pca_matrix",
     "proportion_shifted_clr_pca",
     "proportion_shifted_clr_pca_matrix",
     "residual_pca",

@@ -10,6 +10,7 @@ generally dense even when the count matrix is very sparse.
 Other normalizations, including the common library-size normalization followed
 by `log1p`, map zero to zero and remain sparse before PCA. PCA nevertheless
 subtracts each column mean, which generally makes the centered matrix dense.
+<!-- TODO(log1p): Recast this discussion now that library-size log1p is exposed as a rank-zero representation. -->
 PCA implementations using iterative solvers such as IRLBA or ARPACK can already
 apply this rank-one centering correction implicitly in matrix-vector products.
 This package uses the same pattern and extends it to methods whose normalized

@@ -13,6 +13,7 @@ import sparse_count_pca as scp
 from tests._oracles import (
     _dense_count_shifted_clr,
     _dense_dirichlet,
+    _dense_log1p_norm,
     _dense_proportion_shifted_clr,
 )
 
@@ -206,6 +207,13 @@ def test_residual_ignores_overdispersion_of_an_empty_gene(
             lambda values, prior: _dense_proportion_shifted_clr(values, 0.05),
         ),
         (
+            lambda prior: scp.Log1pNormalized(),
+            lambda values, prior: _dense_log1p_norm(
+                values,
+                values.sum(axis=1) / np.median(values.sum(axis=1)),
+            ),
+        ),
+        (
             lambda prior: scp.DirichletLog(concentration=2.5, prior_proportions=prior),
             lambda values, prior: _dense_dirichlet(values, 2.5, prior, clr=False),
         ),
@@ -217,6 +225,7 @@ def test_residual_ignores_overdispersion_of_an_empty_gene(
     ids=[
         "shifted-clr",
         "proportion-shifted-clr",
+        "log1p-normalized",
         "dirichlet-log",
         "dirichlet-clr",
     ],
@@ -226,7 +235,7 @@ def test_log_and_dirichlet_transforms_accept_zero_genes(
     method_factory: Callable[[np.ndarray], scp.Transform],
     dense_transform: Callable[[np.ndarray, np.ndarray], np.ndarray],
 ) -> None:
-    """Every shifted-CLR and Dirichlet transform matches its zero-gene formula."""
+    """Every logarithmic transform matches its formula with a zero gene."""
     with_zero = _with_zero_gene(counts)
     dense = with_zero.toarray().astype(np.float64)
     prior_weights = np.arange(1, with_zero.shape[1] + 1, dtype=np.float64)

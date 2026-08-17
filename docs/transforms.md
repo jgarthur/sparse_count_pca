@@ -9,6 +9,8 @@ input validation, masking, dtype, and output contracts, see the
 
 ## At a glance
 
+<!-- TODO(log1p): Add the Scanpy-validated log1p-normalized family to the catalog table. -->
+
 | Transform | AnnData function | Matrix function | Two-step specification | Status |
 | --- | --- | --- | --- | --- |
 | Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; see notes on `scaled_nb` |
@@ -40,6 +42,8 @@ The [testing guide](development/testing.md) describes the oracle hierarchy and
 tolerances.
 
 ## What this package does not do
+
+<!-- TODO(log1p): Rewrite this scope exclusion now that rank-zero log1p normalization is supported for API consistency and Scanpy parity. -->
 
 The table above is the complete set of transforms. In particular, there is no
 library-size-normalized log transform.
@@ -188,6 +192,8 @@ Clipping is optional, occurs before PCA centering, and can increase sparse
 support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
+
+<!-- TODO(log1p): Add a formula, interfaces, Scanpy validation, size-factor scale, and caveats section for log1p normalization. -->
 
 ## Count-scale shifted CLR
 

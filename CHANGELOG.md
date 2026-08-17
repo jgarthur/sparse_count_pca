@@ -4,6 +4,11 @@ All notable user-facing changes are recorded here.
 
 ## Unreleased
 
+- Add size-factor-normalized `log1p` PCA with median-depth or explicit target
+  totals, supplied size factors, AnnData observation-key alignment, and an
+  exact rank-zero sparse representation verified against Scanpy. Composition-
+  scale shifted CLR now also rejects row-divisor overflow instead of silently
+  collapsing transformed nonzero counts to zero.
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially
   reducing construction peak RSS when clipping is enabled.

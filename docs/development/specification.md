@@ -15,6 +15,8 @@ non-AnnData use.
 
 This version supports:
 
+<!-- TODO(log1p): Add size-factor-normalized log1p PCA to the normative supported-transform list. -->
+
 * Poisson Pearson residuals
 * Poisson deviance residuals
 * Binomial Pearson residuals
@@ -73,6 +75,8 @@ scale the reported coordinates, but the full chi-square and barycentric
 interpretations of classical CA are not claimed.
 
 ## Public API
+
+<!-- TODO(log1p): Add Log1pNormalized and both log1p_norm_pca entry points to the normative public API. -->
 
 ```python
 import sparse_count_pca as scp
@@ -181,6 +185,8 @@ ambiguous.
 
 For the same reason, every log-family result records `shift_domain` in its
 `params` metadata, naming the scale on which the shift is fixed:
+
+<!-- TODO(log1p): Add log1p_norm with shift_domain="normalized_count" and specify target_sum and supplied-factor recipes. -->
 
 | Transform | `shift_domain` |
 | --- | --- |

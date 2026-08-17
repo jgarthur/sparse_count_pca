@@ -53,6 +53,8 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 
 ## Supported transforms
 
+<!-- TODO(log1p): Add log1p-normalized PCA to this table and revise the omitted-transform wording and link below. -->
+
 | Transform | AnnData function | Main use |
 | --- | --- | --- |
 | Residual PCA | `residual_pca(...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB (see note below) |

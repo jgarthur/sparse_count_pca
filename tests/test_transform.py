@@ -8,7 +8,11 @@ from scipy.sparse.linalg import LinearOperator
 
 import sparse_count_pca as scp
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-from tests._oracles import _dense_count_shifted_clr, _materialize_dense_residual
+from tests._oracles import (
+    _dense_count_shifted_clr,
+    _dense_log1p_norm,
+    _materialize_dense_residual,
+)
 
 
 @pytest.mark.parametrize(
@@ -19,9 +23,14 @@ from tests._oracles import _dense_count_shifted_clr, _materialize_dense_residual
             lambda X: _dense_count_shifted_clr(X, 0.7),
             1e-14,
         ),
+        (
+            scp.Log1pNormalized(size_factors=np.arange(1.0, 7.0)),
+            lambda X: _dense_log1p_norm(X, np.arange(1.0, 7.0)),
+            1e-14,
+        ),
         (scp.Residual(), _materialize_dense_residual, 1e-12),
     ],
-    ids=["shifted-clr", "residual"],
+    ids=["shifted-clr", "log1p-normalized", "residual"],
 )
 def test_transformed_matrix_is_linear_operator_and_materializes_exactly(
     counts, method, dense_oracle, atol
@@ -55,6 +64,7 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         lambda X: scp.transform(X, scp.Residual()),
         lambda X: scp.transform(X, scp.ShiftedCLR(count_shift=1.0)),
         lambda X: scp.transform(X, scp.ProportionShiftedCLR(composition_shift=1.0)),
+        lambda X: scp.transform(X, scp.Log1pNormalized()),
         lambda X: scp.transform(X, scp.DirichletLog()),
         lambda X: scp.transform(X, scp.DirichletCLR()),
         lambda X: scp.residual_pca_matrix(X, n_comps=2),
@@ -69,6 +79,8 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         lambda X: scp.proportion_shifted_clr_pca(
             AnnData(X), n_comps=2, composition_shift=1.0, copy=True
         ),
+        lambda X: scp.log1p_norm_pca_matrix(X, n_comps=2),
+        lambda X: scp.log1p_norm_pca(AnnData(X), n_comps=2, copy=True),
         lambda X: scp.dirichlet_log_pca_matrix(X, n_comps=2),
         lambda X: scp.dirichlet_log_pca(AnnData(X), n_comps=2, copy=True),
         lambda X: scp.dirichlet_clr_pca_matrix(X, n_comps=2),
@@ -80,6 +92,7 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         "transform-residual",
         "transform-shifted-clr",
         "transform-proportion-shifted-clr",
+        "transform-log1p-normalized",
         "transform-dirichlet-log",
         "transform-dirichlet-clr",
         "residual-pca-matrix",
@@ -88,6 +101,8 @@ def test_transformed_matrix_is_isolated_from_later_input_mutation(counts):
         "shifted-clr-pca-anndata",
         "proportion-shifted-clr-pca-matrix",
         "proportion-shifted-clr-pca-anndata",
+        "log1p-norm-pca-matrix",
+        "log1p-norm-pca-anndata",
         "dirichlet-log-pca-matrix",
         "dirichlet-log-pca-anndata",
         "dirichlet-clr-pca-matrix",
@@ -128,7 +143,7 @@ def test_returned_operator_is_isolated_from_fitted_transform(counts):
 
 @pytest.mark.parametrize(
     "analysis",
-    ["residual", "shifted_clr", "dirichlet", "correspondence"],
+    ["residual", "shifted_clr", "log1p_norm", "dirichlet", "correspondence"],
 )
 def test_one_step_returned_operator_takes_ownership_without_copy(
     counts, monkeypatch, analysis
@@ -155,6 +170,12 @@ def test_one_step_returned_operator_takes_ownership_without_copy(
     elif analysis == "shifted_clr":
         result = scp.shifted_clr_pca_matrix(
             counts, n_comps=2, count_shift=1.0, return_operator=True
+        )
+    elif analysis == "log1p_norm":
+        result = scp.log1p_norm_pca_matrix(
+            counts,
+            n_comps=2,
+            return_operator=True,
         )
     elif analysis == "dirichlet":
         result = scp.dirichlet_clr_pca_matrix(counts, n_comps=2, return_operator=True)
