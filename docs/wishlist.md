@@ -40,6 +40,29 @@ threshold remains available for compatibility. Treat this as a deliberate
 behavior change and document that callers can recover the current unclipped
 behavior with `clip=None`.
 
+The default change makes the support-growth guard reachable by default: with
+`clip=None`, symmetric clipping never runs, so support never grows and
+`clip_max_nnz_ratio` never binds. A clipped symmetric default means a dataset
+with large negative zero-count residuals can grow sparse support — or raise on
+the `clip_max_nnz_ratio` guard — on a call that never mentioned clipping.
+Decide deliberately whether to accept and document that, or pair the clipped
+default with `clip_mode="upper"` instead; do not let the outcome fall out of
+the implementation.
+
+The aliases resolve the same numeric threshold for every residual family and
+model: they are named numbers, not Pearson-specific behavior, even though both
+formulas originate in Pearson-residual practice. Decide explicitly whether the
+clipped *default* applies uniformly to Pearson and deviance residuals or only
+to Pearson; an inconsistent default across families must not arise by
+accident.
+
+A transform specification holding an alias is symbolic: a reused
+`Residual(clip="seurat")` re-resolves against each dataset's `n_obs` at fit
+time, so two fits can use two numeric thresholds. The fitted result and any
+retained operator carry the frozen resolved value from their own fit. The
+`Residual` dataclass can validate the alias string at construction but cannot
+resolve it there, because `n_obs` is unknown until fit.
+
 The implementation and tests should:
 
 - resolve the alias after the input observation axis is finalized and before
