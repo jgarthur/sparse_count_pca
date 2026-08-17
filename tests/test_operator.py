@@ -1,14 +1,75 @@
 """Tests for sparse-plus-low-rank matrix and operator behavior."""
 
+from fractions import Fraction
+
 import numpy as np
 import pytest
 from scipy import sparse
 
+from sparse_count_pca import _operator as operator_module
+from sparse_count_pca import residual_pca_matrix
 from sparse_count_pca._operator import (
     SparseLowRankLinearOperator,
     _squared_norm_is_numerically_zero,
 )
 from sparse_count_pca._representation import SparseLowRankMatrix
+from sparse_count_pca._sparse import _support_row_blocks
+
+
+def _statistics_fixture():
+    """Build a representation with empty, sparse, boundary, and dense columns."""
+    sparse_part = sparse.csr_matrix(
+        np.array(
+            [
+                [0.0, 8.0, -4.0, 2.0, 1.0],
+                [0.0, 0.0, 0.0, -3.0, 2.0],
+                [0.0, -7.0, 5.0, 4.0, -1.0],
+                [0.0, 0.0, -6.0, 0.0, 3.0],
+                [0.0, 0.0, 0.0, 5.0, -2.0],
+                [0.0, 0.0, 0.0, -6.0, 4.0],
+                [0.0, 0.0, 0.0, 0.0, -5.0],
+            ]
+        )
+    )
+    left = np.array(
+        [
+            [1024.0, 0.5],
+            [1024.25, -0.75],
+            [1023.5, 1.25],
+            [1025.0, -1.5],
+            [1023.75, 0.25],
+            [1024.5, 1.0],
+            [1023.0, -0.25],
+        ]
+    )
+    right = np.array(
+        [
+            [1.0, -0.5],
+            [-0.75, 1.5],
+            [0.5, 0.25],
+            [-1.25, -0.75],
+            [0.25, 2.0],
+        ]
+    )
+    return SparseLowRankMatrix(sparse_part, left, right)
+
+
+def _fraction_matrix(operator):
+    """Return the operator's uncentered represented values as exact fractions."""
+    sparse_values = operator.S.toarray()
+    values = []
+    for row in range(operator.shape[0]):
+        represented_row = []
+        for column in range(operator.shape[1]):
+            value = Fraction.from_float(float(sparse_values[row, column]))
+            value += sum(
+                Fraction.from_float(float(operator.left[row, component]))
+                * Fraction.from_float(float(operator.right[column, component]))
+                for component in range(operator.left.shape[1])
+            )
+            represented_row.append(value)
+        values.append(represented_row)
+    return values
 
 
 @pytest.mark.parametrize("rank", [0, 1, 3])
@@ -67,6 +128,143 @@ def test_representation_selection_and_scaling():
     actual = scalar_scaled.sparse.toarray()
     actual += scalar_scaled.left @ scalar_scaled.right.T
     np.testing.assert_allclose(actual, 0.25 * expected, rtol=0.0, atol=1e-14)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_blocked_statistics_match_fraction_oracle(monkeypatch, dtype):
+    """Blocked means and norms remain close to exact represented arithmetic."""
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
+    representation = _statistics_fixture()
+    assert np.array_equal(
+        np.bincount(representation.sparse.indices, minlength=5),
+        [0, 2, 3, 5, 7],
+    )
+    operator = SparseLowRankLinearOperator(
+        representation,
+        center=True,
+        dtype=dtype,
+    )
+    exact = _fraction_matrix(operator)
+    n_obs, n_vars = operator.shape
+    exact_means = [
+        sum(exact[row][column] for row in range(n_obs)) / n_obs
+        for column in range(n_vars)
+    ]
+    eps = np.finfo(dtype).eps
+
+    assert operator.mean is not None
+    for column, expected in enumerate(exact_means):
+        scale = sum(abs(exact[row][column]) for row in range(n_obs)) / n_obs
+        tolerance = 64.0 * eps * max(float(scale), 1.0)
+        assert abs(float(operator.mean[column]) - float(expected)) <= tolerance
+
+    centers = [
+        [Fraction(0) for _ in range(n_vars)],
+        [Fraction.from_float(float(value)) for value in operator.mean],
+    ]
+    actual_norms = [
+        operator.frobenius_squared_uncentered(),
+        operator.frobenius_squared_centered(),
+    ]
+    for center, actual in zip(centers, actual_norms):
+        expected = sum(
+            (exact[row][column] - center[column]) ** 2
+            for row in range(n_obs)
+            for column in range(n_vars)
+        )
+        tolerance = 256.0 * eps * max(float(expected), 1.0)
+        assert abs(actual - float(expected)) <= tolerance
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_statistics_are_stable_across_row_block_sizes(monkeypatch, dtype):
+    """Changing row-block granularity preserves statistics within roundoff."""
+    representation = _statistics_fixture()
+    monkeypatch.setattr(
+        operator_module,
+        "_STATS_MEAN_BLOCK_NNZ",
+        representation.sparse.nnz,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "_STATS_NORM_BLOCK_NNZ",
+        representation.sparse.nnz,
+    )
+    single = SparseLowRankLinearOperator(
+        representation,
+        center=True,
+        dtype=dtype,
+    )
+
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
+    assert len(list(_support_row_blocks(representation.sparse, 4))) >= 4
+    blocked = SparseLowRankLinearOperator(
+        representation,
+        center=True,
+        dtype=dtype,
+    )
+
+    tolerance = 2e-6 if dtype == "float32" else 1e-12
+    np.testing.assert_allclose(blocked.mean, single.mean, rtol=tolerance, atol=0.0)
+    assert blocked.frobenius_squared_uncentered() == pytest.approx(
+        single.frobenius_squared_uncentered(),
+        rel=tolerance,
+        abs=0.0,
+    )
+    assert blocked.frobenius_squared_centered() == pytest.approx(
+        single.frobenius_squared_centered(),
+        rel=tolerance,
+        abs=0.0,
+    )
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_residual_pca_is_stable_across_statistics_blocks(monkeypatch, dtype):
+    """Row-block granularity preserves PCA variances and principal subspaces."""
+    rng = np.random.default_rng(11)
+    counts = sparse.csr_matrix(rng.poisson(0.4, size=(24, 15)).astype(np.float64))
+    keywords = {
+        "n_comps": 3,
+        "clip": 2.0,
+        "clip_mode": "symmetric",
+        "dtype": dtype,
+        "solver": "arpack",
+        "random_state": 0,
+    }
+
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", counts.nnz + 1)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", counts.nnz + 1)
+    single = residual_pca_matrix(counts, **keywords)
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
+    blocked = residual_pca_matrix(counts, **keywords)
+
+    tolerance = 2e-5 if dtype == "float32" else 1e-11
+    np.testing.assert_allclose(
+        blocked.singular_values,
+        single.singular_values,
+        rtol=tolerance,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        blocked.components.T @ blocked.components,
+        single.components.T @ single.components,
+        rtol=tolerance,
+        atol=tolerance,
+    )
+    np.testing.assert_allclose(
+        blocked.explained_variance_ratio,
+        single.explained_variance_ratio,
+        rtol=tolerance,
+        atol=0.0,
+    )
+    assert blocked.total_variance == pytest.approx(
+        single.total_variance,
+        rel=tolerance,
+        abs=0.0,
+    )
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])

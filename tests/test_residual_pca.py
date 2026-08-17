@@ -214,8 +214,13 @@ def test_stable_variance_sparse_support_matches_stored_operator(dtype, rtol):
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_total_variance_high_count_near_constant_matches_stored_operator(dtype):
+def test_total_variance_high_count_near_constant_matches_stored_operator(
+    dtype,
+    monkeypatch,
+):
     """Variance remains accurate for high-count, nearly constant matrices."""
+    monkeypatch.setattr("sparse_count_pca._operator._STATS_MEAN_BLOCK_NNZ", 5)
+    monkeypatch.setattr("sparse_count_pca._operator._STATS_NORM_BLOCK_NNZ", 5)
     baseline = 10**6
     counts = np.tile([baseline, 2 * baseline, 3 * baseline, 4 * baseline], (1000, 1))
     counts[0, 0] += 1

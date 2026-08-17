@@ -235,6 +235,27 @@ can be individually large and nearly cancel. The implementation therefore
 computes actual represented values on stored support and treats sparse and
 nearly dense columns differently instead of subtracting large component norms.
 
+For a low-rank baseline column `b = U @ v` and scalar center `c`, its full
+squared deviation is available without traversing sparse support:
+
+```text
+sum((b - c) ** 2) = v.T @ G @ v + n_obs * (mean(b) - c) ** 2
+```
+
+Here `G` is the centered Gram matrix of `U`. The represented column norm then
+starts from that baseline total, subtracts baseline squares on stored support,
+and adds actual represented squares there. Nearly dense columns instead sum
+their actual values directly, avoiding an ill-conditioned subtraction.
+
+The support terms are accumulated from bounded blocks of complete CSR rows.
+Mixed-sign mean corrections use a temporary block-local CSC for accurate
+per-column sums; nonnegative squared terms reduce directly from the CSR support.
+The source is therefore traversed only once per statistical sweep, and
+compensated per-column accumulators merge block-local results. Centered
+operators require one sweep for means followed by one sweep that computes both
+uncentered and centered norms; expanding centered squares from raw moments
+would save a pass but reintroduce cancellation.
+
 Pay particular attention to:
 
 - operator dtype versus float64 summary-statistic dtype;
