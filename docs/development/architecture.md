@@ -225,6 +225,16 @@ can be individually large and nearly cancel. The implementation therefore
 computes actual represented values on stored support and treats sparse and
 nearly dense columns differently instead of subtracting large component norms.
 
+Those per-column statistics need each column's stored rows and values, which
+CSR does not provide directly. Rather than converting the whole sparse part,
+the operator walks column-major stripes of whole columns sized by a target
+stored-value count, computing the mean sweep and then both squared-norm centers
+in a single second sweep. Because stripes never split a column, every `fsum`
+sees the same operands in the same order as a full conversion would, so the
+statistics are bitwise identical to a single-stripe traversal regardless of
+stripe size. Preserve that property in any change here: it is what lets the
+tests assert exact equality instead of a tolerance.
+
 Pay particular attention to:
 
 - operator dtype versus float64 summary-statistic dtype;

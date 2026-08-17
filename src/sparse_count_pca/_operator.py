@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator, Sequence
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -14,6 +15,8 @@ from ._representation import SparseLowRankMatrix
 
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
+_STATS_CHUNK_NNZ = 8_000_000
+
 
 def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
     """Normalize and validate the supported representation dtypes."""
@@ -24,6 +27,24 @@ def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
     if result not in {np.dtype(np.float32), np.dtype(np.float64)}:
         raise ValueError("dtype must be float32 or float64")
     return result
+
+
+def _stripe_bounds(
+    counts: NDArray[np.integer[Any]], target: int
+) -> Iterator[tuple[int, int]]:
+    """Group consecutive columns into ranges holding about ``target`` values.
+
+    A column whose own stored count exceeds ``target`` becomes its own range.
+    """
+    start = 0
+    total = 0
+    for column in range(counts.size):
+        total += int(counts[column])
+        if total >= target:
+            yield start, column + 1
+            start, total = column + 1, 0
+    if start < counts.size:
+        yield start, counts.size
 
 
 def _squared_norm_is_numerically_zero(
@@ -88,7 +109,6 @@ class SparseLowRankLinearOperator(LinearOperator):
         self.center = bool(center)
         super().__init__(dtype=operator_dtype, shape=self.S.shape)
 
-        self._S_csc = self.S.tocsc()
         self._left_float64 = self.left.astype(np.float64, copy=False)
         self._right_float64 = self.right.astype(np.float64, copy=False)
         # The representation rank is tiny. Accurate scalar sums are preferable
@@ -107,72 +127,92 @@ class SparseLowRankLinearOperator(LinearOperator):
             self.mean = None
 
         zero = np.zeros(self.shape[1], dtype=operator_dtype)
-        self._frobenius_squared_uncentered_float64 = self._squared_norm_about(zero)
         if self.center:
             assert self.mean is not None
-            self._frobenius_squared_centered_float64 = self._squared_norm_about(
-                self.mean
-            )
+            uncentered, centered = self._squared_norms_about((zero, self.mean))
         else:
-            self._frobenius_squared_centered_float64 = (
-                self._frobenius_squared_uncentered_float64
-            )
+            (uncentered,) = self._squared_norms_about((zero,))
+            centered = uncentered
+        self._frobenius_squared_uncentered_float64 = uncentered
+        self._frobenius_squared_centered_float64 = centered
 
-        del self._S_csc
+    def _column_stripes(self) -> Iterator[tuple[int, int, sparse.csc_matrix]]:
+        """Yield ``(first, stop, stripe)`` column-major stripes of whole columns.
+
+        Stripes hold whole columns so that each column's stored rows and values
+        arrive in the same order as a full ``tocsc()``, keeping every statistic
+        below bitwise identical to a single-stripe traversal.
+        """
+        counts = np.bincount(self.S.indices, minlength=self.shape[1])
+        for first, stop in _stripe_bounds(counts, _STATS_CHUNK_NNZ):
+            yield first, stop, self.S[:, first:stop].tocsc()
 
     def _stored_column_values(
-        self, column: int, rows: NDArray[np.int32] | NDArray[np.int64]
+        self,
+        column: int,
+        rows: NDArray[np.int32] | NDArray[np.int64],
+        stored: FloatArray,
     ) -> FloatArray:
         """Evaluate stored-support values using the operator dtype."""
-        start, stop = self._S_csc.indptr[column : column + 2]
         baseline = self.left[rows] @ self.right[column]
-        return np.asarray(baseline + self._S_csc.data[start:stop], dtype=self.dtype)
+        return np.asarray(baseline + stored, dtype=self.dtype)
 
     def _stable_column_means(self) -> NDArray[np.float64]:
         """Calculate means without cancelling dense support corrections."""
         n_obs, n_vars = self.shape
         means = np.empty(n_vars, dtype=np.float64)
-        for column in range(n_vars):
-            start, stop = self._S_csc.indptr[column : column + 2]
-            rows = self._S_csc.indices[start:stop]
-            if rows.size > n_obs // 2:
-                values = self.left @ self.right[column]
-                values[rows] += self._S_csc.data[start:stop]
-                means[column] = math.fsum(values.astype(np.float64, copy=False)) / n_obs
-            else:
-                sparse_sum = math.fsum(
-                    self._S_csc.data[start:stop].astype(np.float64, copy=False)
-                )
-                baseline_sum = float(
-                    self._left_sum_float64 @ self._right_float64[column]
-                )
-                means[column] = math.fsum((baseline_sum, sparse_sum)) / n_obs
+        for first, stop, stripe in self._column_stripes():
+            for column in range(first, stop):
+                local = column - first
+                begin, end = stripe.indptr[local : local + 2]
+                rows = stripe.indices[begin:end]
+                stored = stripe.data[begin:end]
+                if rows.size > n_obs // 2:
+                    values = self.left @ self.right[column]
+                    values[rows] += stored
+                    means[column] = (
+                        math.fsum(values.astype(np.float64, copy=False)) / n_obs
+                    )
+                else:
+                    sparse_sum = math.fsum(stored.astype(np.float64, copy=False))
+                    baseline_sum = float(
+                        self._left_sum_float64 @ self._right_float64[column]
+                    )
+                    means[column] = math.fsum((baseline_sum, sparse_sum)) / n_obs
         return means
 
-    def _squared_norm_about(self, center: FloatArray) -> float:
-        """Return ``sum((S + U V.T - center)**2)`` without cancellation."""
-        n_obs, n_vars = self.shape
-        center = np.asarray(center, dtype=self.dtype)
-        column_norms: list[float] = []
-        for column in range(n_vars):
-            start, stop = self._S_csc.indptr[column : column + 2]
-            rows = self._S_csc.indices[start:stop]
-            if rows.size > n_obs // 2:
-                values = self.left @ self.right[column]
-                values[rows] += self._S_csc.data[start:stop]
+    def _column_squared_norms(
+        self,
+        column: int,
+        rows: NDArray[np.int32] | NDArray[np.int64],
+        stored: FloatArray,
+        centers: Sequence[FloatArray],
+    ) -> list[float]:
+        """Return one column's stable squared norm about each center."""
+        n_obs = self.shape[0]
+        if rows.size > n_obs // 2:
+            values = self.left @ self.right[column]
+            values[rows] += stored
+            norms = []
+            for center in centers:
                 deviations = (values - center[column]).astype(np.float64, copy=False)
-                column_norms.append(math.fsum(deviations * deviations))
-                continue
+                norms.append(math.fsum(deviations * deviations))
+            return norms
 
-            v = self._right_float64[column]
-            offset = float(v @ self._left_mean_float64) - float(center[column])
-            baseline_total = float(
-                v @ self._left_centered_gram_float64 @ v + n_obs * offset * offset
+        v = self._right_float64[column]
+        mean_projection = float(v @ self._left_mean_float64)
+        baseline_quadratic = v @ self._left_centered_gram_float64 @ v
+        left_support = self._left_float64[rows] @ v
+        stored_values = self._stored_column_values(column, rows, stored)
+
+        norms = []
+        for center in centers:
+            offset = mean_projection - float(center[column])
+            baseline_total = float(baseline_quadratic + n_obs * offset * offset)
+            baseline_support = left_support - float(center[column])
+            actual_support = (stored_values - center[column]).astype(
+                np.float64, copy=False
             )
-            baseline_support = self._left_float64[rows] @ v - float(center[column])
-            actual_support = (
-                self._stored_column_values(column, rows) - center[column]
-            ).astype(np.float64, copy=False)
             column_squared = math.fsum(
                 (
                     baseline_total,
@@ -185,8 +225,26 @@ class SparseLowRankLinearOperator(LinearOperator):
             )
             if column_squared < -rounding_bound:
                 raise ArithmeticError("stable squared-norm calculation became negative")
-            column_norms.append(max(column_squared, 0.0))
-        return math.fsum(column_norms)
+            norms.append(max(column_squared, 0.0))
+        return norms
+
+    def _squared_norms_about(self, centers: Sequence[FloatArray]) -> list[float]:
+        """Return ``sum((S + U V.T - center)**2)`` for each center."""
+        cast = [np.asarray(center, dtype=self.dtype) for center in centers]
+        column_norms: list[list[float]] = [[] for _ in cast]
+        for first, stop, stripe in self._column_stripes():
+            for column in range(first, stop):
+                local = column - first
+                begin, end = stripe.indptr[local : local + 2]
+                per_center = self._column_squared_norms(
+                    column,
+                    stripe.indices[begin:end],
+                    stripe.data[begin:end],
+                    cast,
+                )
+                for norms, value in zip(column_norms, per_center):
+                    norms.append(value)
+        return [math.fsum(norms) for norms in column_norms]
 
     def _matvec(self, z: ArrayLike) -> FloatArray:
         """Multiply the represented matrix by a vector.

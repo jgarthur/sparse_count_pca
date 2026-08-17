@@ -4,6 +4,10 @@ All notable user-facing changes are recorded here.
 
 ## Unreleased
 
+- Compute the operator's stable column means and Frobenius norms from
+  column-major stripes rather than one full CSC copy of the sparse part,
+  removing a transient the size of the sparse representation from the PCA peak.
+  Results are bitwise unchanged.
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially
   reducing construction peak RSS when clipping is enabled.
