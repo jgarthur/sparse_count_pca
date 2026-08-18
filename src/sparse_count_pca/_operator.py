@@ -278,6 +278,8 @@ class SparseLowRankLinearOperator(LinearOperator):
         columns = self.S.indices[value_start:value_stop]
         stored = self.S.data[value_start:value_stop]
 
+        # einsum contracts zero-width factors to zeros, covering rank-0
+        # representations without a guard.
         baseline_float64 = np.einsum(
             "ij,ij->i",
             self._left_float64[rows],
