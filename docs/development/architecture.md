@@ -242,10 +242,11 @@ Sparse-column corrections and nonnegative squared terms use vectorized
 `float64` reductions over each block. Their low-order bits may depend on CSR
 and block order under severe mixed-sign cancellation. Columns with more than
 half their entries stored instead use direct represented values grouped by a
-block-local CSC. The source is traversed once per statistical sweep. Centered
-operators require one sweep for means followed by one sweep that computes both
-uncentered and centered norms; expanding centered squares from raw moments
-would save a pass but reintroduce cancellation.
+block-local CSC. After the norm sweep, sparse columns whose result is too small
+relative to the combined support-replacement terms are recomputed directly in
+a second sweep. Centered operators require one sweep for means followed by one
+sweep that computes both uncentered and centered norms; expanding centered
+squares from raw moments would save a pass but reintroduce cancellation.
 
 Pay particular attention to:
 

@@ -164,6 +164,50 @@ def test_blocked_statistics_match_materialized_representation(monkeypatch, dtype
     )
 
 
+def test_ill_conditioned_sparse_norm_is_recomputed_directly():
+    """A sparse concentrated baseline falls back to accurate direct norms."""
+    n_obs = 100
+    baseline = 1e13
+    sparse_part = sparse.csr_matrix(
+        (np.array([-baseline + 1.0]), ([0], [0])),
+        shape=(n_obs, 1),
+    )
+    left = np.zeros((n_obs, 1))
+    left[0, 0] = baseline
+    representation = SparseLowRankMatrix(sparse_part, left, np.ones((1, 1)))
+
+    operator = SparseLowRankLinearOperator(representation, center=True, dtype="float64")
+    represented = operator.S.toarray() + operator.left @ operator.right.T
+    assert operator.S.nnz < n_obs // 2
+    assert operator.mean is not None
+    deviations = represented - operator.mean
+
+    _assert_statistics_close(
+        operator,
+        mean=represented.mean(axis=0),
+        uncentered=np.sum(represented**2),
+        centered=np.sum(deviations**2),
+        tolerance=_STATS_RTOL["float64"],
+    )
+
+
+def test_norm_direct_recalculation_boundary_is_inclusive():
+    """The cancellation threshold and negative results request direct norms."""
+    term_scale = 3.0
+    boundary = operator_module._STATS_MIN_NORM_TERM_RATIO * term_scale
+
+    assert operator_module._norm_needs_direct_recalculation(
+        boundary,
+        term_scale=term_scale,
+    )
+    assert not operator_module._norm_needs_direct_recalculation(
+        np.nextafter(boundary, np.inf),
+        term_scale=term_scale,
+    )
+    assert operator_module._norm_needs_direct_recalculation(-1.0, term_scale=0.0)
+    assert not operator_module._norm_needs_direct_recalculation(0.0, term_scale=0.0)
+
+
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_statistics_agree_across_row_block_sizes(monkeypatch, dtype):
     """Changing row-block granularity preserves statistics within roundoff."""

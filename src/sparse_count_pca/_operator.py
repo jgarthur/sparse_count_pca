@@ -20,6 +20,7 @@ _STATS_MEAN_BLOCK_NNZ = 1_000_000
 # The norm sweep materializes factor values and deviations for each stored
 # entry in the current row block, so its smaller target bounds scratch memory.
 _STATS_NORM_BLOCK_NNZ = 100_000
+_STATS_MIN_NORM_TERM_RATIO = math.sqrt(np.finfo(np.float64).eps)
 
 
 def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
@@ -44,6 +45,13 @@ def _squared_norm_is_numerically_zero(
     eps = np.finfo(_normalize_operator_dtype(dtype)).eps
     tolerance = eps * eps * math.prod(shape) * scale
     return value <= tolerance
+
+
+def _norm_needs_direct_recalculation(value: float, *, term_scale: float) -> bool:
+    """Return whether cancellation leaves too little reliable precision."""
+    return value < 0.0 or (
+        term_scale > 0.0 and value <= _STATS_MIN_NORM_TERM_RATIO * term_scale
+    )
 
 
 class SparseLowRankLinearOperator(LinearOperator):
@@ -118,13 +126,11 @@ class SparseLowRankLinearOperator(LinearOperator):
             assert self.mean is not None
             uncentered, centered = self._squared_norms_about(
                 (zero, self.mean),
-                column_counts,
                 dense_columns,
             )
         else:
             (uncentered,) = self._squared_norms_about(
                 (zero,),
-                column_counts,
                 dense_columns,
             )
             centered = uncentered
@@ -234,6 +240,21 @@ class SparseLowRankLinearOperator(LinearOperator):
                 )
         return partial
 
+    def _direct_column_squared_sums(
+        self,
+        centers: Sequence[FloatArray],
+        column_indices: NDArray[np.intp],
+    ) -> NDArray[np.float64]:
+        """Return direct squared sums for selected represented columns."""
+        total = np.zeros((len(centers), column_indices.size), dtype=np.float64)
+        for block_bounds in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
+            total += self._dense_block_squared_sums(
+                *block_bounds,
+                centers,
+                column_indices,
+            )
+        return total
+
     def _column_means(
         self,
         dense_columns: NDArray[np.bool_],
@@ -341,10 +362,9 @@ class SparseLowRankLinearOperator(LinearOperator):
     def _squared_norms_about(
         self,
         centers: Sequence[FloatArray],
-        column_counts: NDArray[np.integer[Any]],
         dense_columns: NDArray[np.bool_],
     ) -> list[float]:
-        """Return stable squared norms about each center in one CSR pass.
+        """Return stable squared norms about each center in bounded CSR passes.
 
         Implements the support-replacement identities from the specification
         section "Explained variance and total variance"
@@ -366,6 +386,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             added_total += added_partial
 
         column_norms = np.empty(shape, dtype=np.float64)
+        fallback_columns = np.zeros(n_vars, dtype=np.bool_)
         for column in range(n_vars):
             if dense_columns[column]:
                 column_norms[:, column] = added_total[:, column]
@@ -384,16 +405,24 @@ class SparseLowRankLinearOperator(LinearOperator):
                         added_total[index, column],
                     )
                 )
-                rounding_bound = (
-                    np.finfo(np.float64).eps
-                    * max(baseline_total, 1.0)
-                    * max(int(column_counts[column]), 1)
-                )
-                if column_squared < -rounding_bound:
-                    raise ArithmeticError(
-                        "stable squared-norm calculation became negative"
+                term_scale = math.fsum(
+                    (
+                        baseline_total,
+                        removed_total[index, column],
+                        added_total[index, column],
                     )
+                )
+                fallback_columns[column] |= _norm_needs_direct_recalculation(
+                    column_squared,
+                    term_scale=term_scale,
+                )
                 column_norms[index, column] = max(column_squared, 0.0)
+
+        fallback_column_indices = np.flatnonzero(fallback_columns)
+        if fallback_column_indices.size:
+            column_norms[:, fallback_column_indices] = self._direct_column_squared_sums(
+                cast, fallback_column_indices
+            )
         return [math.fsum(norms) for norms in column_norms]
 
     def _matvec(self, z: ArrayLike) -> FloatArray:

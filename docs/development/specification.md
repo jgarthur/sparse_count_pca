@@ -1768,6 +1768,20 @@ severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
 support in `O(nnz)` for fixed representation rank.
 
+The support-replacement combination is itself cancellation limited: its error
+scales with the magnitudes of the three combined terms rather than with the
+result. After the support sweep, let `B`, `D`, and `A` denote the nonnegative
+baseline, removed, and added terms above. Recompute a sparse-support column
+directly when its calculated `q = B - D + A` is negative or satisfies
+
+```math
+q \le \sqrt{\epsilon_{64}}(B + D + A).
+```
+
+This rare second sweep handles adversarial columns whose stored rows contain
+nearly all baseline squared-deviation mass without imposing dense work on
+well-conditioned sparse columns.
+
 Accumulate sparse support sums with vectorized `float64` reductions over
 bounded blocks of complete CSR rows. Ordinary floating-point summation applies:
 block size and CSR order may affect low-order bits when mixed-sign corrections
