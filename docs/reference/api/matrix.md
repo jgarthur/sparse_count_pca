@@ -7,7 +7,9 @@ return result objects without mutating the input.
 
 ::: sparse_count_pca.residual_pca_matrix
 
-<!-- TODO(log1p): Add the log1p_norm_pca_matrix API entry. -->
+## Size-factor-normalized log1p PCA
+
+::: sparse_count_pca.log1p_norm_pca_matrix
 
 ## Shifted-CLR PCA
 

@@ -17,9 +17,9 @@ products to compute PCA of the column-centered transform through SciPy's
 
 The implementation is pure Python and is tested against independent
 dense-matrix implementations and pinned external reference outputs. It covers
-PCA of GLM model residuals, shifted centered log-ratio
-(CLR) coordinates, classical correspondence analysis, and several more
-experimental options.
+PCA of GLM model residuals, size-factor-normalized log counts, shifted
+centered log-ratio (CLR) coordinates, classical correspondence analysis, and
+several more experimental options.
 
 ## Installation
 
@@ -53,11 +53,10 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 
 ## Supported transforms
 
-<!-- TODO(log1p): Add log1p-normalized PCA to this table and revise the omitted-transform wording and link below. -->
-
 | Transform | AnnData function | Main use |
 | --- | --- | --- |
 | Residual PCA | `residual_pca(...)` | Pearson or deviance residual PCA under Poisson, binomial, or scaled-NB (see note below) |
+| Size-factor-normalized log1p | `log1p_norm_pca(...)` | PCA of `log1p` counts after size-factor normalization; matches Scanpy's `normalize_total` + `log1p` |
 | Count-scale shifted CLR | `shifted_clr_pca(...)` | Within-observation log ratios; includes the PFlog parameterization of Booeshaghi et al. (2026) |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca(...)` | CLR after a fixed shift on the composition scale |
 | Correspondence analysis | `correspondence_analysis(...)` | Classical contingency-table ordination |
@@ -65,9 +64,9 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 [Compare transform assumptions, formulas, provenance, and API
 maturity](https://sparse-count-pca.readthedocs.io/en/latest/transforms/)
 
-Already using Scanpy's Pearson-residual preprocessing? See
-[coming from Scanpy][scanpy-compatibility] for what each call maps to, and
-[what this package does not do][omitted-transforms] for the transforms it
+Already using Scanpy? See [coming from Scanpy][scanpy-compatibility] for what
+each call maps to, including the `normalize_total` + `log1p` + `pca` pipeline,
+and [what this package does not do][omitted-transforms] for the recipes it
 deliberately omits.
 
 `scaled_nb` is a package-specific name for a negative-binomial model that
