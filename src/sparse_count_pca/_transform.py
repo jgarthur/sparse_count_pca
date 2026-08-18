@@ -14,7 +14,7 @@ from scipy import sparse
 from scipy.sparse.linalg import LinearOperator
 
 from ._anndata import _empty, _get_count_matrix, _resolve_mask_var
-from ._clip import ClipMode, validate_clip
+from ._clip import ClipLike, ClipMode, resolve_clip, validate_clip
 from ._counts import (
     BoolArray,
     CountMatrix,
@@ -130,6 +130,11 @@ class Residual(Transform):
     stored sparse correction and low-rank factors. Normalization factors and
     intermediates are evaluated in float64.
 
+    A named ``clip`` threshold is symbolic in the specification and numeric in
+    the fit: reusing one specification across datasets resolves it separately
+    against each dataset's observation count. ``params["clip"]`` records the
+    request and ``params["clip_threshold"]`` the resolved number.
+
     Attributes:
         model: Null model supplying the variance ``V_ij``. ``"poisson"`` uses ``mu_ij``,
             ``"binomial"`` uses ``mu_ij * (1 - p_j)``, and ``"scaled_nb"`` uses ``mu_ij
@@ -142,11 +147,15 @@ class Residual(Transform):
             only). Larger values mean more variance, and values below ``1e-8`` use the
             Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
             models. Values for variables with no counts are replaced with zero.
-        clip: Positive threshold applied to the uncentered residual values
-            before PCA centering, or ``None`` for no clipping.
+        clip: Threshold applied to the uncentered residual values before PCA
+            centering. ``"seurat"`` names ``sqrt(n_obs / 30)`` and ``"scanpy"`` names
+            ``sqrt(n_obs)``, both resolved against the number of observations the
+            transform is fitted on; a finite positive float sets the threshold
+            directly, and ``None`` disables clipping.
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
             clips only from above, into ``(-inf, clip]``, which leaves negative
-            residuals (including all zero counts) untouched.
+            residuals (including all zero counts) untouched. It is independent of how
+            the threshold was specified in ``clip``.
         clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
             stored sparse support, as a multiple of the input count matrix's number of
             stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
@@ -161,7 +170,7 @@ class Residual(Transform):
     model: Model = "poisson"
     residual: ResidualType = "pearson"
     alpha: AlphaLike | str = None
-    clip: float | None = None
+    clip: ClipLike = "seurat"
     clip_mode: ClipMode = "symmetric"
     clip_max_nnz_ratio: float | None = 2.0
 
@@ -175,6 +184,7 @@ class Residual(Transform):
         dtype: DTypeLike,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
+        clip_threshold = resolve_clip(self.clip, counts.shape[0])
         n_vars = counts.shape[1]
         alpha_input = _resolve_vector_parameter(self.alpha, var=var, name="alpha")
         n = _sum_counts(counts, axis=1)
@@ -217,7 +227,7 @@ class Residual(Transform):
             model=self.model,
             residual=self.residual,
             alpha=alpha_used,
-            clip=self.clip,
+            clip=clip_threshold,
             clip_mode=self.clip_mode,
             clip_max_nnz_ratio=self.clip_max_nnz_ratio,
             dtype=dtype,
@@ -230,6 +240,7 @@ class Residual(Transform):
                 "residual": self.residual,
                 "alpha": _serialize_parameter(self.alpha),
                 "clip": self.clip,
+                "clip_threshold": clip_threshold,
                 "clip_mode": self.clip_mode,
                 "clip_max_nnz_ratio": self.clip_max_nnz_ratio,
                 "normalization_n_vars": n_vars,
@@ -571,7 +582,9 @@ class TransformedMatrix(LinearOperator):
             transform's own parameters plus ``normalization_n_vars``, the number
             of variables the normalization was fitted on, ``n_empty_vars``, how
             many of those have no counts, and, for the shifted transforms,
-            ``shift_domain``, naming the scale the shift was applied on.
+            ``shift_domain``, naming the scale the shift was applied on. For
+            residual transforms it also records ``clip_threshold``, the numeric
+            threshold this fit resolved ``clip`` to.
         obs_names: Copied AnnData observation names, or ``None`` for matrix
             input.
         var_names: Copied AnnData variable names, or ``None`` for matrix input.
@@ -923,6 +936,8 @@ def transform(
             parameters are used with matrix input.
         ValueError: If counts, transform parameters, or dtype are invalid.
         KeyError: If a requested AnnData layer or variable parameter is absent.
+        RuntimeError: If exact symmetric residual clipping would meet or exceed
+            the configured sparse support-growth limit.
 
     Examples:
         >>> transformed = transform(

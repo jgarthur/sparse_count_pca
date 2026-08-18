@@ -393,7 +393,7 @@ def residual_pca(
     model="poisson",
     residual="pearson",
     alpha=None,
-    clip=None,
+    clip="seurat",
     clip_mode="symmetric",
     clip_max_nnz_ratio=2.0,
     check_values=True,
@@ -416,7 +416,7 @@ def residual_pca_matrix(
     model="poisson",
     residual="pearson",
     alpha=None,
-    clip=None,
+    clip="seurat",
     clip_mode="symmetric",
     clip_max_nnz_ratio=2.0,
     check_values=True,
@@ -525,28 +525,50 @@ the cell-adjusted `alpha_tilde_ij = alpha_j / s_i` is below the threshold.
 
 ### `clip`
 
-For v1, accept only:
+Accept:
 
 ```python
-clip=None       # no clipping
+clip="seurat"   # sqrt(n_obs / 30), the default
+clip="scanpy"   # sqrt(n_obs)
 clip=float      # finite positive clipping threshold
+clip=None       # no clipping
 ```
 
 Validation:
 
 ```python
 if isinstance(clip, str):
-    raise NotImplementedError(
-        "String clip aliases are not supported in v1; "
-        "pass a finite positive float."
-    )
-if clip is not None and (not np.isfinite(clip) or clip <= 0):
+    if clip not in {"seurat", "scanpy"}:
+        raise ValueError(
+            f"Unknown clip name {clip!r}; clip must be one of: "
+            "scanpy, seurat, a finite positive float, or None"
+        )
+elif clip is not None and (not np.isfinite(clip) or clip <= 0):
     raise ValueError("clip must be finite and positive or None")
 ```
 
-Future versions may add string aliases such as `"sqrt_n_obs"` or
-`"sqrt_n_obs_over_30"`, but v1 keeps the default as no clipping rather than
-introduce a hidden Scanpy- or Seurat-style default.
+Names are matched exactly and are case-sensitive.
+
+#### Named-threshold resolution
+
+A named threshold is `sqrt(n_obs / divisor)`, with divisor `30` for `"seurat"`
+and `1` for `"scanpy"`. `n_obs` is the number of rows of the count matrix the
+transform is fitted on, taken as passed; the package never filters
+observations. A named threshold that resolves to a nonpositive value —
+possible only with no rows — raises `ValueError` rather than clipping at
+zero.
+
+Resolution affects only the threshold. It does not change `clip_mode` or
+`clip_max_nnz_ratio`, and it is not specific to a model or residual family:
+`clip="seurat"` means the same threshold for Poisson deviance residuals as for
+scaled-NB Pearson residuals.
+
+A `Residual` specification stores `clip` as passed and resolves it at each
+fit, so one reused specification can produce different thresholds on different
+datasets. The `TransformedMatrix`, the `PCAResult`, and any retained operator
+record both values: `params["clip"]` holds the request as passed and
+`params["clip_threshold"]` holds the resolved float, or `None` when clipping is
+disabled.
 
 ### `clip_mode`
 
@@ -557,8 +579,9 @@ Allowed values:
 "upper"      # clip only the upper tail to clip
 ```
 
-The default is `"symmetric"`. `clip_mode` is validated even when `clip=None`.
-See the Clipping section for mathematical semantics.
+The default is `"symmetric"`. `clip_mode` is validated even when `clip=None`,
+and has the same meaning however the threshold was specified. See the Clipping
+section for mathematical semantics.
 
 Validation:
 
@@ -579,7 +602,8 @@ clip_max_nnz_ratio=None # allow unlimited exact support growth
 
 A finite value must be at least `1.0`. The guard is inactive for upper
 clipping because upper clipping does not alter zero-count residuals for any
-supported model.
+supported model. It is reachable under the defaults, which clip symmetrically;
+the guard depends on `clip_mode`, not on how the threshold was specified.
 
 Validation:
 
@@ -1062,6 +1086,7 @@ adata.uns[uns_key] = {
         "residual": residual,
         "alpha": _serialize_alpha(alpha),
         "clip": clip,
+        "clip_threshold": resolved_clip,
         "clip_mode": clip_mode,
         "clip_max_nnz_ratio": clip_max_nnz_ratio,
         "zero_center": True,
@@ -1564,19 +1589,14 @@ indices only in bounded blocks; it must not require one full-`nnz` row vector.
 The defaults are:
 
 ```python
-clip=None
+clip="seurat"
 clip_mode="symmetric"
 clip_max_nnz_ratio=2.0
 ```
 
-For v1, `clip=None` means no clipping. Later versions may add aliases:
-
-```python
-clip="sqrt_n_obs"
-clip="sqrt_n_obs_over_30"
-```
-
-but v1 should avoid hidden defaults.
+The default clips symmetrically at `sqrt(n_obs / 30)` for every residual
+family, so the support-growth guard above is reachable under default
+arguments. `clip=None` recovers unclipped residuals.
 
 ## Solver
 
@@ -1732,6 +1752,7 @@ Include tests with:
 clip=None
 clip=small value with clip_mode="upper"
 clip=small value with clip_mode="symmetric"
+clip="seurat" and clip="scanpy" with both clip modes
 center=True
 center=False
 ```
@@ -1867,6 +1888,15 @@ symmetric clipping matches the dense exact oracle
 clip_max_nnz_ratio=None allows exact support growth
 clip_max_nnz_ratio=1.0 rejects any support growth
 finite guard includes below the threshold and raises at the threshold
+each named threshold equals its numeric equivalent in both clipping modes
+named thresholds resolve against the fitted observation count, including for
+  a specification reused across datasets
+a named threshold can trigger the support-growth guard
+the clipped default applies to Pearson and deviance residuals
+metadata records the request and the resolved threshold for names, numbers,
+  and None
+matrix, AnnData, one-step, and two-step entry points resolve names alike
+unknown clip names are rejected
 ```
 
 ### 8. Variance tests

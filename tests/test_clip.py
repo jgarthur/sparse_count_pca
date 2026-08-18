@@ -9,6 +9,8 @@ from sparse_count_pca._clip import (
     _CANDIDATE_CHUNK_SIZE,
     _clipped_zero_locations,
     _guarded_clipped_zero_locations,
+    resolve_clip,
+    validate_clip,
 )
 
 
@@ -41,6 +43,34 @@ def _assert_matches_oracle(X, u, v, threshold):
 @pytest.fixture
 def small(counts):
     return counts
+
+
+@pytest.mark.parametrize(
+    ("name", "divisor"),
+    [("seurat", 30.0), ("scanpy", 1.0)],
+)
+@pytest.mark.parametrize("n_obs", [1, 30, 2_700, 22_111])
+def test_named_thresholds_follow_their_square_root_formulas(name, divisor, n_obs):
+    """Named thresholds resolve to sqrt(n_obs / divisor) for their divisors."""
+    assert resolve_clip(name, n_obs) == pytest.approx(np.sqrt(n_obs / divisor))
+
+
+@pytest.mark.parametrize("clip", [None, 1.5, np.float64(0.25)])
+def test_resolve_clip_passes_unnamed_thresholds_through(clip):
+    """Numeric thresholds and None resolve to themselves, independent of n_obs."""
+    assert resolve_clip(clip, 7) == resolve_clip(clip, 5_000) == clip
+
+
+def test_unknown_clip_names_are_rejected_by_validation():
+    """Validation names the supported thresholds when a string is unknown."""
+    with pytest.raises(ValueError, match="Unknown clip name 'sctransform'"):
+        validate_clip("sctransform", "symmetric", 2.0)
+
+
+def test_named_thresholds_require_at_least_one_observation():
+    """A named threshold with no observations is rejected rather than silently zero."""
+    with pytest.raises(ValueError, match="nonpositive threshold"):
+        resolve_clip("seurat", 0)
 
 
 def test_matches_dense_oracle_mixed_signs(small):

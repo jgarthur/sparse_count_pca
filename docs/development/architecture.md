@@ -137,7 +137,9 @@ multiple copies of the full sparse support.
 
 [`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the
-lower threshold, so it has an explicit support-growth guard.
+lower threshold, so it has an explicit support-growth guard, reachable under
+the clipped symmetric default. `_clip.py` also resolves the named thresholds
+`"seurat"` and `"scanpy"` into numbers.
 
 ### Log and CLR family
 

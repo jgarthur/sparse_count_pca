@@ -28,7 +28,7 @@ from tests._oracles import (
             lambda X: _dense_log1p_norm(X, np.arange(1.0, 7.0)),
             1e-14,
         ),
-        (scp.Residual(), _materialize_dense_residual, 1e-12),
+        (scp.Residual(clip=None), _materialize_dense_residual, 1e-12),
     ],
     ids=["shifted-clr", "log1p-normalized", "residual"],
 )
