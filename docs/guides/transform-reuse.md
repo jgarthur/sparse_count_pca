@@ -31,9 +31,10 @@ log_normalized = scp.transform(
 ```
 
 String-valued per-observation parameters, such as the `adata.obs` size-factor
-key above, are resolved when the transform is fitted. Correspondence analysis
-remains a separate one-step API because its variable selection changes the
-fitted table margins.
+key above, are resolved when the transform is fitted.
+
+Correspondence analysis remains a separate one-step API because its variable
+selection changes the fitted table margins.
 
 ## Inspect selected values
 

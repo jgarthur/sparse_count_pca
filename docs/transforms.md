@@ -48,11 +48,7 @@ Size-factor-normalized log1p is a boundary case for the package's
 representation. Dividing by a size factor and taking `log1p` maps zero to
 zero, so the normalized matrix stays sparse and only PCA centering makes it
 dense — a rank-one correction that iterative sparse PCA implementations
-already handle. It is included anyway, as the rank-zero case of the same
-representation, because it is the most common count normalization: one
-interface then covers the standard workflow and its alternatives with the same
-validation, masking, and output contracts, verified against Scanpy. Every
-other transform here has a normalized matrix that is dense *before* centering.
+already handle. It is included anyway, as most common count normalization.
 
 Two log-normalization recipes are deliberately absent. Seurat's "CLR"
 is not a CLR coordinate transform and adds a data-dependent shift rule. The
@@ -226,29 +222,17 @@ normalization recipe applies:
 ### Origin and validation
 
 This is the standard library-size normalization followed by `log1p`, as
-implemented by Scanpy's `pp.normalize_total` and `pp.log1p`
-([Wolf, Angerer, and Theis (2018)](https://doi.org/10.1186/s13059-017-1382-0)).
+implemented by Scanpy's `pp.normalize_total` and `pp.log1p`.
 Transformed values are
 [tested directly against those Scanpy functions](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log1p_scanpy.py)
 for both the median and explicit `target_sum` recipes, and against an
 independent dense formula oracle.
 
-### Size-factor scale
-
-Because \(\log(1+x/s) = \log(x+s)-\log s\), the size factor is also the
-transform's effective raw-count pseudocount: a smaller `target_sum` gives
-larger size factors and shrinks the transformed values toward zero. Supplied
-size factors are therefore used exactly as given, since rescaling them would
-change the transform rather than only its units.
-
 ### Caveats
 
 Cell totals and the median target are computed before `mask_var` selects PCA
 variables; slice the count matrix first if excluded genes should not count
-toward totals. Formula parity with Scanpy does not extend to the surrounding
-pipeline: `normalize_total`'s `exclude_highly_expressed` option and `log1p`'s
-`base` are not offered, and normalized values are never written to `.X`. See
-[coming from Scanpy](reference/compatibility.md#coming-from-scanpy).
+toward totals.
 
 ## Count-scale shifted CLR
 

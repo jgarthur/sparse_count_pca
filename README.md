@@ -17,7 +17,7 @@ products to compute PCA of the column-centered transform through SciPy's
 
 The implementation is pure Python and is tested against independent
 dense-matrix implementations and pinned external reference outputs. It covers
-PCA of GLM model residuals, size-factor-normalized log counts, shifted
+PCA of GLM model residuals, size-factor-normalized log1p counts, shifted
 centered log-ratio (CLR) coordinates, classical correspondence analysis, and
 several more experimental options.
 
