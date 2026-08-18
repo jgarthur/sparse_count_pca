@@ -55,6 +55,7 @@ Start with [`src/sparse_count_pca/__init__.py`](https://github.com/jgarthur/spar
 It exports complete one-step analyses plus an explicit two-step transform API:
 
 - residual PCA: `residual_pca`, `residual_pca_matrix`;
+- size-factor-normalized log1p: `log1p_norm_pca` and its matrix variant;
 - count-scale CLR: `shifted_clr_pca` and its matrix variant;
 - composition-scale CLR: `proportion_shifted_clr_pca` and matrix variant;
 - prior-count transforms: `dirichlet_log_pca`, `dirichlet_clr_pca` and matrix
@@ -149,13 +150,20 @@ S_ij = log1p(X_ij / prior_count_j),
 
 which is zero on structural zeros and therefore preserves sparse support.
 
-[`_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_pca.py) provides the count-scale and
-composition-scale PCA APIs.
+For size-factor-normalized log1p, that sparse correction is the entire
+transform: `build_log1p_norm_representation` divides each stored count by its
+row's size factor, applies `log1p`, and returns the result with empty
+rank-zero factors. Zeros map to zero, so there is no low-rank baseline to
+carry, and only PCA centering later adds a rank-one term.
+
+[`_log_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_log_pca.py) provides the
+normalized-log1p, count-scale, and composition-scale PCA APIs.
 [`_dirichlet_pca.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_dirichlet_pca.py) provides the
 prior-count parameterization and AnnData prior alignment.
 
 | Transform | Shift domain | Representation rank | Empty cells |
 | --- | --- | ---: | --- |
+| size-factor-normalized log1p | normalized count | 0 | rejected by input policy |
 | shifted CLR | fixed raw count | 1 | rejected by input policy |
 | composition-scale shifted CLR | composition scale | 1 | rejected |
 | Dirichlet log closure | prior counts | at most 2 | rejected by input policy |

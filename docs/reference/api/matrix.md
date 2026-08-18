@@ -7,6 +7,10 @@ return result objects without mutating the input.
 
 ::: sparse_count_pca.residual_pca_matrix
 
+## Size-factor-normalized log1p PCA
+
+::: sparse_count_pca.log1p_norm_pca_matrix
+
 ## Shifted-CLR PCA
 
 ::: sparse_count_pca.shifted_clr_pca_matrix

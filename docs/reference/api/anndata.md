@@ -7,6 +7,10 @@ These functions mutate an `AnnData` object by default and return `None`. Pass
 
 ::: sparse_count_pca.residual_pca
 
+## Size-factor-normalized log1p PCA
+
+::: sparse_count_pca.log1p_norm_pca
+
 ## Shifted-CLR PCA
 
 ::: sparse_count_pca.shifted_clr_pca

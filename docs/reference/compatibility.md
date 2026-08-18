@@ -14,7 +14,7 @@ question is which call this package replaces.
 | `sc.experimental.pp.normalize_pearson_residuals_pca` | `scp.residual_pca(model="poisson")` | Scanpy uses a negative-binomial variance with one shared `theta`; `model="poisson"` is its `theta → ∞` limit. See below. |
 | `sc.experimental.pp.normalize_pearson_residuals`, to inspect residual values | `scp.transform(adata, scp.Residual(...))`, then `materialize` | Scanpy materializes dense residuals into `.X` or the selected layer or `obsm` representation and stores only normalization settings in `.uns`; the two-step API keeps the transform implicit and returns bounded slices on request. |
 | `sc.experimental.pp.highly_variable_genes(flavor="pearson_residuals")` | keep using it | This package consumes `adata.var["highly_variable"]` and does not select variables. |
-| `sc.pp.normalize_total` + `sc.pp.log1p` + `sc.pp.pca` | none | Library-size-normalized log is deliberately out of scope; see [what this package does not do](../transforms.md#what-this-package-does-not-do). |
+| `sc.pp.normalize_total` + `sc.pp.log1p` + `sc.pp.pca` | `scp.log1p_norm_pca(target_sum=...)` | Transformed values match exactly for both the default median target and an explicit `target_sum`, and that parity is [tested against Scanpy](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log1p_scanpy.py). This package additionally accepts supplied size factors, keeps the transform implicit rather than writing normalized values into `.X`, rejects zero-total cells, and offers no `exclude_highly_expressed` or log `base`. |
 
 Nothing in this package requires materializing the residual matrix, and it adds
 deviance residuals and the binomial and scaled-NB variance models, none of

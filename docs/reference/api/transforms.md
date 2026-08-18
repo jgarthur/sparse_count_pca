@@ -13,6 +13,10 @@ from materialization and PCA.
     options:
       members: false
 
+::: sparse_count_pca.Log1pNormalized
+    options:
+      members: false
+
 ::: sparse_count_pca.ShiftedCLR
     options:
       members: false

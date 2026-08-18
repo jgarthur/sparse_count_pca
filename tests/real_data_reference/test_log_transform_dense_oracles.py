@@ -12,6 +12,7 @@ import sparse_count_pca as scp
 from tests._oracles import (
     _dense_count_shifted_clr,
     _dense_dirichlet,
+    _dense_log1p_norm,
     _dense_proportion_shifted_clr,
 )
 
@@ -22,6 +23,7 @@ EQUAL_DEPTH_COUNTS_PATH = REFERENCE_DIR / "pbmc3k_equal_depth_counts.npz"
 COUNT_SHIFT = 0.75
 COMPOSITION_SHIFT = 0.00075
 DIRICHLET_CONCENTRATION = 12.5
+LOG1P_TARGET_SUM = 1e4
 ORACLE_ATOL = 2e-14
 
 
@@ -66,6 +68,23 @@ def test_proportion_shifted_clr_matches_dense_oracle_on_unequal_depth_real_data(
         scp.ProportionShiftedCLR(composition_shift=COMPOSITION_SHIFT),
     ).materialize()
     expected = _dense_proportion_shifted_clr(raw_counts, COMPOSITION_SHIFT)
+
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=ORACLE_ATOL)
+
+
+def test_log1p_normalized_matches_dense_oracle_on_unequal_depth_real_data(
+    raw_counts: sparse.csr_matrix,
+) -> None:
+    """Every real-data target-normalized log1p entry matches its dense formula."""
+    row_totals = np.asarray(raw_counts.sum(axis=1)).ravel()
+    actual = scp.transform(
+        raw_counts,
+        scp.Log1pNormalized(target_sum=LOG1P_TARGET_SUM),
+    ).materialize()
+    expected = _dense_log1p_norm(
+        raw_counts,
+        row_totals / LOG1P_TARGET_SUM,
+    )
 
     np.testing.assert_allclose(actual, expected, rtol=0.0, atol=ORACLE_ATOL)
 
