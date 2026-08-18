@@ -16,7 +16,6 @@ IndexArray: TypeAlias = NDArray[np.intp]
 CSRMatrix: TypeAlias = sparse.csr_matrix | sparse.csr_array
 
 CLIP_MODES: set[ClipMode] = {"symmetric", "upper"}
-# Each named threshold is ``sqrt(n_obs / divisor)``.
 CLIP_NAME_DIVISORS: dict[str, float] = {"seurat": 30.0, "scanpy": 1.0}
 _CANDIDATE_CHUNK_SIZE = 65_536
 
