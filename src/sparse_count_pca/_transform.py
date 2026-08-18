@@ -155,13 +155,12 @@ class Residual(Transform):
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
             clips only from above, into ``(-inf, clip]``, which leaves negative
             residuals (including all zero counts) untouched. It is independent of how
-            the threshold was specified: a named threshold never selects a mode.
+            the threshold was specified in ``clip``.
         clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
             stored sparse support, as a multiple of the input count matrix's number of
             stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
             limit. Only symmetric clipping can grow support, so the limit never binds
-            when ``clip`` is ``None`` or ``clip_mode="upper"``, but the clipped
-            symmetric defaults do make it reachable.
+            when ``clip`` is ``None`` or ``clip_mode="upper"``.
 
     Examples:
         >>> method = Residual(model="poisson", residual="pearson")
