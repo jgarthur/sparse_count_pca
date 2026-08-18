@@ -553,12 +553,10 @@ Names are matched exactly and are case-sensitive.
 
 A named threshold is `sqrt(n_obs / divisor)`, with divisor `30` for `"seurat"`
 and `1` for `"scanpy"`. `n_obs` is the number of rows of the count matrix the
-transform is fitted on, taken as passed: the package never filters
-observations, so the threshold reflects any cell filtering the caller
-performed and is unaffected by `mask_var`, PCA variable selection, and
-empty-variable handling. A named threshold that resolves to a nonpositive
-value — possible only with no rows — raises `ValueError` rather than clipping
-at zero.
+transform is fitted on, taken as passed; the package never filters
+observations. A named threshold that resolves to a nonpositive value —
+possible only with no rows — raises `ValueError` rather than clipping at
+zero.
 
 Resolution affects only the threshold. It does not change `clip_mode` or
 `clip_max_nnz_ratio`, and it is not specific to a model or residual family:

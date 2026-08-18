@@ -14,8 +14,7 @@ value:
 | `None` | no clipping |
 
 Here \(n_\mathrm{obs}\) is the number of rows — cells — of the count matrix
-the transform is fitted on, taken as passed. Gene masking and later PCA
-variable selection do not change it.
+the transform is fitted on, taken as passed.
 
 The two names come from the defaults of
 [SCTransform](https://satijalab.org/seurat/reference/sctransform) and
