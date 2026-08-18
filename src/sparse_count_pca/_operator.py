@@ -49,6 +49,7 @@ def _squared_norm_is_numerically_zero(
 
 def _norm_needs_direct_recalculation(value: float, *, term_scale: float) -> bool:
     """Return whether cancellation leaves too little reliable precision."""
+    # A zero term scale means B = D = A = 0, so the zero norm needs no fallback.
     return value < 0.0 or (
         term_scale > 0.0 and value <= _STATS_MIN_NORM_TERM_RATIO * term_scale
     )
