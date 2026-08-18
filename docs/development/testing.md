@@ -38,7 +38,10 @@ before the parent establishes the RSS baseline. The timed and sampled boundary
 is residual-representation construction alone. BLAS-related thread variables
 are fixed at one for every worker. Clipped cases use
 `clip=sqrt(n_obs / 30)` and `clip_max_nnz_ratio=1.0`; `--clip` can override the
-threshold for a custom synthetic input.
+threshold for a custom synthetic input. That is the numeric form of the
+`clip="seurat"` default, passed explicitly so a baseline tree predating the
+clipped default stays comparable; the unclipped cases likewise pass
+`clip=None`.
 
 The output reports sampled incremental peak RSS and the process-lifetime high
 water mark as a cross-check. It intentionally has no machine-independent pass
@@ -133,8 +136,13 @@ versions or commits, and integrity checks where appropriate.
 
 Validation tests cover invalid counts, masks, dimensions, parameters, dtypes,
 zero totals, zero-variance transforms, clipping thresholds, and support-growth
-limits. Ownership tests mutate caller-owned matrices after fitting and verify
-that transformed values cannot change.
+limits. Named clipping thresholds are covered against their numeric
+equivalents, across both clipping modes, entry points, residual families, and
+observation subsets. Ownership tests mutate caller-owned matrices after fitting
+and verify that transformed values cannot change.
+
+Tests that compare against an unclipped dense oracle or a pinned external
+reference must pass `clip=None` explicitly; the residual default clips.
 
 When adding a test, give every test function a docstring describing the
 behavior it verifies. Every Python file, including examples and oracle scripts,

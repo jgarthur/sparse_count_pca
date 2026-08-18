@@ -18,8 +18,10 @@ question is which call this package replaces.
 
 Nothing in this package requires materializing the residual matrix, and it adds
 deviance residuals and the binomial and scaled-NB variance models, none of
-which Scanpy offers. Defaults also differ: Scanpy clips residuals at
-`sqrt(n_obs)` by default, while clipping here is off unless `clip` is passed.
+which Scanpy offers. Clipping defaults still differ: Scanpy clips residuals at
+`sqrt(n_obs)` by default, while this package defaults to the lower
+`clip="seurat"` threshold, `sqrt(n_obs / 30)`. Pass `clip="scanpy"` for
+Scanpy's threshold or `clip=None` for no clipping.
 
 ### The shared-`theta` model is not offered
 
@@ -85,6 +87,12 @@ demonstrated to be equivalent under very specific conditions:
 The repository includes a pinned
 [real-data equality oracle](https://github.com/jgarthur/sparse_count_pca/tree/main/tests/real_data_reference)
 generated with `sctransform` 0.4.3 and smaller algebraic identity tests.
+
+The default `clip="seurat"` with `clip_mode="symmetric"` reproduces
+SCTransform's default clip range of \(\pm\sqrt{n_\mathrm{obs}/30}\). That is a
+match of one number, not of the method: the name carries no part of
+SCTransform's variance model, regularization, or variance floor, and it applies
+unchanged to deviance residuals and to the Poisson and binomial models.
 
 ## Shifted CLR, PFlog, and cleartools
 

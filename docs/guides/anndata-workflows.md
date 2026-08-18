@@ -73,9 +73,10 @@ scp.residual_pca(adata, layer="counts", n_comps=50)
 
 Selection and PCA fit separate null models, and their parameters need not
 agree: Scanpy's `"pearson_residuals"` flavor defaults to a negative binomial
-with `theta=100` and clips residuals, while `residual_pca` defaults to Poisson
-without clipping. The pairing above is a match of residual family, not of
-parameters; selection only decides which genes enter the PCA.
+with `theta=100` and clips at `sqrt(n_obs)`, while `residual_pca` defaults to
+Poisson and clips at `sqrt(n_obs / 30)`. The pairing above is a match of
+residual family, not of parameters; selection only decides which genes enter
+the PCA.
 
 Scanpy's other flavors (`"seurat"`, `"cell_ranger"`, `"seurat_v3"`) each expect
 a particular input scale; any boolean `var` column works here.

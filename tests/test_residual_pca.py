@@ -35,6 +35,7 @@ def test_operator_and_svd_match_dense(counts, model, residual, alpha):
         model=model,
         residual=residual,
         alpha=alpha,
+        clip=None,
         dtype="float64",
         return_operator=True,
     )
@@ -87,6 +88,7 @@ def test_scaled_nb_probability_family_is_selected_once_per_gene(residual):
         model="scaled_nb",
         residual=residual,
         alpha=alpha,
+        clip=None,
         dtype="float64",
         return_operator=True,
     )
@@ -173,7 +175,7 @@ def test_scaled_nb_accepts_zero_dimensional_numpy_alpha(counts, entry_point):
 def test_uncentered_operator_matches_dense(counts):
     """The uncentered implicit operator matches its dense representation."""
     result = residual_pca_matrix(
-        counts, n_comps=2, dtype="float64", return_operator=True
+        counts, n_comps=2, clip=None, dtype="float64", return_operator=True
     )
     centered = result.operator
     uncentered = SparseLowRankLinearOperator(
@@ -580,7 +582,7 @@ def test_upper_clipping_is_exact_without_support_growth(counts, model, residual,
 def test_upper_clipping_leaves_negative_tail_unchanged(counts):
     """Upper clipping leaves the package's negative residual tail unchanged."""
     clip = 0.5
-    unclipped = scp.transform(counts, scp.Residual()).materialize()
+    unclipped = scp.transform(counts, scp.Residual(clip=None)).materialize()
     clipped = scp.transform(
         counts, scp.Residual(clip=clip, clip_mode="upper")
     ).materialize()
@@ -613,8 +615,194 @@ def test_matrix_clipping_params_are_recorded(counts):
         clip_max_nnz_ratio=None,
     )
     assert result.params["clip"] == 1.0
+    assert result.params["clip_threshold"] == 1.0
     assert result.params["clip_mode"] == "upper"
     assert result.params["clip_max_nnz_ratio"] is None
+
+
+NAMED_CLIP_DIVISORS = {"seurat": 30.0, "scanpy": 1.0}
+
+
+@pytest.fixture
+def named_clip_counts():
+    """Counts where both named thresholds clip but only Seurat's grows support."""
+    return sparse.csr_matrix(
+        [
+            [20, 1, 0, 2],
+            [1, 4, 2, 0],
+            [0, 2, 5, 1],
+            [3, 0, 1, 4],
+            [2, 3, 0, 2],
+            [1, 1, 3, 9],
+        ]
+    )
+
+
+def _named_threshold(counts, name):
+    """Return the numeric threshold a named clip resolves to for these counts."""
+    return float(np.sqrt(counts.shape[0] / NAMED_CLIP_DIVISORS[name]))
+
+
+@pytest.mark.parametrize("name", ["seurat", "scanpy"])
+@pytest.mark.parametrize("clip_mode", ["symmetric", "upper"])
+def test_named_clip_matches_its_numeric_threshold(named_clip_counts, name, clip_mode):
+    """Each named threshold reproduces its numeric equivalent in both modes."""
+    threshold = _named_threshold(named_clip_counts, name)
+    named = scp.transform(
+        named_clip_counts,
+        scp.Residual(clip=name, clip_mode=clip_mode, clip_max_nnz_ratio=None),
+    ).materialize()
+    numeric = scp.transform(
+        named_clip_counts,
+        scp.Residual(clip=threshold, clip_mode=clip_mode, clip_max_nnz_ratio=None),
+    ).materialize()
+    unclipped = scp.transform(named_clip_counts, scp.Residual(clip=None)).materialize()
+
+    np.testing.assert_array_equal(named, numeric)
+    assert np.any(named != unclipped)
+
+
+@pytest.mark.parametrize(
+    ("name", "clips_lower_tail"),
+    [("seurat", True), ("scanpy", False)],
+)
+def test_named_clip_does_not_select_a_clip_mode(
+    named_clip_counts, name, clips_lower_tail
+):
+    """A named threshold leaves both clipping modes with their own meanings."""
+    threshold = _named_threshold(named_clip_counts, name)
+    unclipped = scp.transform(named_clip_counts, scp.Residual(clip=None)).materialize()
+    symmetric = scp.transform(
+        named_clip_counts,
+        scp.Residual(clip=name, clip_mode="symmetric", clip_max_nnz_ratio=None),
+    )
+    upper = scp.transform(
+        named_clip_counts,
+        scp.Residual(clip=name, clip_mode="upper", clip_max_nnz_ratio=1.0),
+    )
+    lower_tail = unclipped < -threshold
+
+    assert bool(lower_tail.any()) is clips_lower_tail
+    assert upper._sparse.nnz == named_clip_counts.nnz
+    assert (symmetric._sparse.nnz > named_clip_counts.nnz) is clips_lower_tail
+    np.testing.assert_allclose(
+        upper.materialize()[lower_tail],
+        unclipped[lower_tail],
+        rtol=1e-14,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        symmetric.materialize()[lower_tail],
+        np.full(int(lower_tail.sum()), -threshold),
+        rtol=0.0,
+        atol=1e-14,
+    )
+
+
+@pytest.mark.parametrize(
+    ("clip", "expected"),
+    [("seurat", np.sqrt(6 / 30)), ("scanpy", np.sqrt(6.0)), (1.5, 1.5), (None, None)],
+    ids=["seurat", "scanpy", "numeric", "none"],
+)
+def test_clip_metadata_records_the_request_and_the_resolved_threshold(
+    named_clip_counts, clip, expected
+):
+    """Result metadata carries the requested clip and the number it resolved to."""
+    result = residual_pca_matrix(
+        named_clip_counts,
+        n_comps=2,
+        clip=clip,
+        clip_max_nnz_ratio=None,
+    )
+
+    assert result.params["clip"] == clip
+    if expected is None:
+        assert result.params["clip_threshold"] is None
+    else:
+        assert result.params["clip_threshold"] == pytest.approx(expected)
+
+
+def test_named_clip_resolves_against_each_fitted_observation_count(named_clip_counts):
+    """One reused specification resolves a named threshold per dataset."""
+    subset = named_clip_counts[:4]
+    method = scp.Residual(clip="seurat", clip_max_nnz_ratio=None)
+
+    full = scp.transform(named_clip_counts, method)
+    part = scp.transform(subset, method)
+    numeric = scp.transform(
+        subset,
+        scp.Residual(clip=_named_threshold(subset, "seurat"), clip_max_nnz_ratio=None),
+    )
+
+    assert full.params["clip_threshold"] == pytest.approx(np.sqrt(6 / 30))
+    assert part.params["clip_threshold"] == pytest.approx(np.sqrt(4 / 30))
+    assert full.params["clip"] == part.params["clip"] == "seurat"
+    np.testing.assert_array_equal(part.materialize(), numeric.materialize())
+
+
+def test_named_clip_reaches_the_support_growth_guard(named_clip_counts):
+    """A named symmetric threshold is bounded by clip_max_nnz_ratio like a number."""
+    with pytest.raises(RuntimeError, match="clip_max_nnz_ratio=1.0"):
+        residual_pca_matrix(
+            named_clip_counts,
+            n_comps=2,
+            clip="seurat",
+            clip_max_nnz_ratio=1.0,
+        )
+
+    result = residual_pca_matrix(
+        named_clip_counts,
+        n_comps=2,
+        clip="seurat",
+        clip_max_nnz_ratio=None,
+        return_operator=True,
+    )
+    assert result.operator.S.nnz > named_clip_counts.nnz
+
+
+@pytest.mark.parametrize("residual", ["pearson", "deviance"])
+def test_clipped_default_applies_to_every_residual_family(named_clip_counts, residual):
+    """Pearson and deviance residuals share the same clipped Seurat default."""
+    default = scp.transform(named_clip_counts, scp.Residual(residual=residual))
+    named = scp.transform(
+        named_clip_counts, scp.Residual(residual=residual, clip="seurat")
+    )
+    unclipped = scp.transform(
+        named_clip_counts, scp.Residual(residual=residual, clip=None)
+    ).materialize()
+
+    assert default.params["clip"] == "seurat"
+    assert default.params["clip_mode"] == "symmetric"
+    np.testing.assert_array_equal(default.materialize(), named.materialize())
+    assert np.any(default.materialize() != unclipped)
+
+
+def test_every_entry_point_shares_the_named_clip_resolution(named_clip_counts):
+    """Matrix, AnnData, one-step, and two-step entry points resolve names alike."""
+    adata = AnnData(named_clip_counts.copy())
+    expected = residual_pca_matrix(
+        named_clip_counts,
+        n_comps=2,
+        clip=_named_threshold(named_clip_counts, "seurat"),
+    )
+    one_step = residual_pca_matrix(named_clip_counts, n_comps=2, clip="seurat")
+    two_step = scp.transform(named_clip_counts, scp.Residual(clip="seurat")).pca(2)
+    residual_pca(adata, n_comps=2, clip="seurat")
+
+    for actual in (one_step, two_step):
+        np.testing.assert_allclose(
+            actual.singular_values, expected.singular_values, rtol=1e-12, atol=0.0
+        )
+    np.testing.assert_allclose(
+        adata.uns["pca"]["singular_values"],
+        expected.singular_values,
+        rtol=1e-12,
+        atol=0.0,
+    )
+    assert adata.uns["pca"]["params"]["clip"] == "seurat"
+    assert adata.uns["pca"]["params"]["clip_threshold"] == pytest.approx(
+        np.sqrt(6 / 30)
+    )
 
 
 @pytest.mark.parametrize(
@@ -681,7 +869,8 @@ def test_operator_dtype_rejects_types_other_than_float32_and_float64(counts, dty
         ({"clip": 0}, "clip must be finite and positive"),
         ({"clip": np.inf}, "clip must be finite and positive"),
         ({"clip": np.nan}, "clip must be finite and positive"),
-        ({"clip": "sqrt_n_obs"}, "String clip aliases"),
+        ({"clip": "sqrt_n_obs"}, "Unknown clip name"),
+        ({"clip": "Seurat"}, "Unknown clip name"),
         ({"clip_mode": "lower"}, "clip_mode must be one of"),
         ({"clip_max_nnz_ratio": 0.99}, "must be finite and at least 1"),
         ({"clip_max_nnz_ratio": np.inf}, "must be finite and at least 1"),
@@ -691,11 +880,7 @@ def test_operator_dtype_rejects_types_other_than_float32_and_float64(counts, dty
 )
 def test_parameter_validation(counts, kwargs, message):
     """Residual PCA rejects invalid model and solver parameters."""
-    error = (
-        NotImplementedError
-        if "solver" in kwargs or isinstance(kwargs.get("clip"), str)
-        else ValueError
-    )
+    error = NotImplementedError if "solver" in kwargs else ValueError
     with pytest.raises(error, match=message):
         residual_pca_matrix(counts, n_comps=2, **kwargs)
 

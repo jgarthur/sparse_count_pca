@@ -1,4 +1,4 @@
-"""Exact clipping operations for sparse-plus-low-rank representations."""
+"""Clipping thresholds and exact clipping for sparse-plus-low-rank representations."""
 
 from __future__ import annotations
 
@@ -9,36 +9,42 @@ from numpy.typing import NDArray
 from scipy import sparse
 
 ClipMode: TypeAlias = Literal["symmetric", "upper"]
+ClipName: TypeAlias = Literal["seurat", "scanpy"]
+ClipLike: TypeAlias = float | ClipName | None
 Float64Array: TypeAlias = NDArray[np.float64]
 IndexArray: TypeAlias = NDArray[np.intp]
 CSRMatrix: TypeAlias = sparse.csr_matrix | sparse.csr_array
 
 CLIP_MODES: set[ClipMode] = {"symmetric", "upper"}
+# Each named threshold is ``sqrt(n_obs / divisor)``.
+CLIP_NAME_DIVISORS: dict[str, float] = {"seurat": 30.0, "scanpy": 1.0}
 _CANDIDATE_CHUNK_SIZE = 65_536
 
 
 def validate_clip(
-    clip: float | None,
+    clip: ClipLike,
     clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
 ) -> None:
     """Validate clipping options.
 
     Args:
-        clip: Positive clipping threshold, or ``None``.
+        clip: Positive clipping threshold, a named threshold, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
 
     Raises:
         ValueError: If a clipping option is outside its supported range.
-        NotImplementedError: If ``clip`` is a string alias.
     """
     if isinstance(clip, str):
-        raise NotImplementedError(
-            "String clip aliases are not supported in v1; pass a finite positive float."
-        )
-    if clip is not None and (not np.isfinite(clip) or clip <= 0):
+        if clip not in CLIP_NAME_DIVISORS:
+            allowed = ", ".join(sorted(CLIP_NAME_DIVISORS))
+            raise ValueError(
+                f"Unknown clip name {clip!r}; clip must be one of: {allowed}, "
+                "a finite positive float, or None"
+            )
+    elif clip is not None and (not np.isfinite(clip) or clip <= 0):
         raise ValueError("clip must be finite and positive or None")
     if clip_mode not in CLIP_MODES:
         allowed = ", ".join(sorted(CLIP_MODES))
@@ -47,6 +53,36 @@ def validate_clip(
         not np.isfinite(clip_max_nnz_ratio) or clip_max_nnz_ratio < 1
     ):
         raise ValueError("clip_max_nnz_ratio must be finite and at least 1 or None")
+
+
+def resolve_clip(clip: ClipLike, n_obs: int) -> float | None:
+    """Resolve a validated clipping threshold against the observation count.
+
+    A named threshold is ``sqrt(n_obs / divisor)``, so it resolves to a
+    different number for every dataset a transform specification is fitted on.
+    Names resolve only the threshold; ``clip_mode`` retains its own meaning.
+
+    Args:
+        clip: Positive clipping threshold, a named threshold, or ``None``.
+        n_obs: Number of observations in the fitted count matrix.
+
+    Returns:
+        The numeric threshold, or ``None`` when clipping is disabled.
+
+    Raises:
+        ValueError: If a named threshold resolves to a nonpositive value.
+    """
+    if clip is None:
+        return None
+    if not isinstance(clip, str):
+        return float(clip)
+    threshold = float(np.sqrt(n_obs / CLIP_NAME_DIVISORS[clip]))
+    if threshold <= 0:
+        raise ValueError(
+            f"clip={clip!r} resolves to a nonpositive threshold for "
+            f"n_obs={n_obs}; pass a positive float or None"
+        )
+    return threshold
 
 
 def _clipped_zero_locations(

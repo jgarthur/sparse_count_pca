@@ -149,7 +149,10 @@ Use `residual_pca`, `residual_pca_matrix`, or
 - `alpha`: nonnegative scalar or per-variable overdispersion required by
   `scaled_nb`; variance under the model increases with `alpha`. Not currently
   estimated in this package
-- optional `clip`, `clip_mode`, and `clip_max_nnz_ratio`; see
+- `clip`, `clip_mode`, and `clip_max_nnz_ratio`. `clip` defaults to the named
+  `"seurat"` threshold \(\sqrt{n_\mathrm{obs}/30}\); `"scanpy"` names
+  \(\sqrt{n_\mathrm{obs}}\), a float sets the threshold directly, and `None`
+  disables clipping. See
   [clipping and precision](concepts/clipping-and-precision.md).
 
 ### Origin and validation
@@ -183,7 +186,7 @@ tests only the conditions under which the two NB parameterizations coincide.
 ### Caveats
 
 Residual normalization is fitted before `mask_var` selects PCA variables.
-Clipping is optional, occurs before PCA centering, and can increase sparse
+Clipping is on by default, occurs before PCA centering, and can increase sparse
 support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).

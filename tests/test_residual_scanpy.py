@@ -20,7 +20,7 @@ def test_poisson_pearson_matches_scanpy_residuals(counts):
     )
     actual_residuals = scp.transform(
         counts,
-        scp.Residual(model="poisson", residual="pearson"),
+        scp.Residual(model="poisson", residual="pearson", clip=None),
         dtype="float64",
     ).materialize()
     np.testing.assert_allclose(explicit.X, actual_residuals, rtol=0.0, atol=1e-12)
@@ -81,6 +81,7 @@ def test_equal_depth_scaled_nb_matches_sctransform_pearson_form(
                 model="scaled_nb",
                 residual="pearson",
                 alpha=alpha,
+                clip=None,
             ),
             dtype="float64",
         ).materialize()

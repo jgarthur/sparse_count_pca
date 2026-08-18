@@ -49,7 +49,10 @@ mask. Reusing one `TransformedMatrix` with several masks therefore reuses the
 normalization state but calculates a distinct centered operator for each PCA
 selection.
 
-Clipping, when enabled, occurs before this centering step.
+Residual clipping occurs at fit time, before this centering step, and a named
+`clip` threshold resolves against the observation count then. Neither the
+threshold nor the clipped values depend on which variables a later mask
+selects.
 
 ## Correspondence analysis is different
 

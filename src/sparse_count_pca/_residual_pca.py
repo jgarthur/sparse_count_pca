@@ -14,7 +14,7 @@ from ._anndata import (
     _resolve_mask_var,
     _write_pca_result,
 )
-from ._clip import ClipMode
+from ._clip import ClipLike, ClipMode
 from ._counts import BoolArray, CountMatrix
 from ._pca import PCAResult
 from ._residuals import AlphaLike, Model, ResidualType
@@ -31,7 +31,7 @@ def _compute_residual_pca(
     model: Model,
     residual: ResidualType,
     alpha: AlphaLike,
-    clip: float | None,
+    clip: ClipLike,
     clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
     check_values: bool,
@@ -50,7 +50,7 @@ def _compute_residual_pca(
         model: Residual null model.
         residual: Residual type.
         alpha: Scaled-NB overdispersion, or ``None``.
-        clip: Positive clipping threshold, or ``None``.
+        clip: Positive clipping threshold, a named threshold, or ``None``.
         clip_mode: Whether to clip symmetrically or only the upper tail.
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
@@ -98,7 +98,7 @@ def residual_pca_matrix(
     model: Model = "poisson",
     residual: ResidualType = "pearson",
     alpha: AlphaLike = None,
-    clip: float | None = None,
+    clip: ClipLike = "seurat",
     clip_mode: ClipMode = "symmetric",
     clip_max_nnz_ratio: float | None = 2.0,
     check_values: bool = True,
@@ -130,16 +130,21 @@ def residual_pca_matrix(
             only). Larger values mean more variance, and values below ``1e-8`` use the
             Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
             models. Values for variables with no counts are replaced with zero.
-        clip: Positive threshold applied to the uncentered residual values
-            before PCA centering, or ``None`` for no clipping.
+        clip: Threshold applied to the uncentered residual values before PCA
+            centering. ``"seurat"`` names ``sqrt(n_obs / 30)`` and ``"scanpy"`` names
+            ``sqrt(n_obs)``, both resolved against the number of observations in the
+            input; a finite positive float sets the threshold directly, and ``None``
+            disables clipping.
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
             clips only from above, into ``(-inf, clip]``, which leaves negative
-            residuals (including all zero counts) untouched.
+            residuals (including all zero counts) untouched. It is independent of how
+            the threshold was specified: a named threshold never selects a mode.
         clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
             stored sparse support, as a multiple of the input count matrix's number of
             stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
             limit. Only symmetric clipping can grow support, so the limit never binds
-            when ``clip`` is ``None`` or ``clip_mode="upper"``.
+            when ``clip`` is ``None`` or ``clip_mode="upper"``, but the clipped
+            symmetric defaults do make it reachable.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
@@ -158,7 +163,10 @@ def residual_pca_matrix(
         Residual PCA scores, components, variance statistics, and metadata.
 
     Raises:
-        ValueError: If counts, dimensions, or model parameters are invalid.
+        ValueError: If counts, dimensions, clipping, or model parameters are
+            invalid.
+        RuntimeError: If exact symmetric clipping would meet or exceed the
+            configured sparse support-growth limit.
 
     Examples:
         >>> result = residual_pca_matrix(
@@ -238,7 +246,7 @@ def residual_pca(
     model: Model = "poisson",
     residual: ResidualType = "pearson",
     alpha: AlphaLike | str = None,
-    clip: float | None = None,
+    clip: ClipLike = "seurat",
     clip_mode: ClipMode = "symmetric",
     clip_max_nnz_ratio: float | None = 2.0,
     check_values: bool = True,
@@ -283,16 +291,21 @@ def residual_pca(
             only). Larger values mean more variance, and values below ``1e-8`` use the
             Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
             models. Values for variables with no counts are replaced with zero.
-        clip: Positive threshold applied to the uncentered residual values
-            before PCA centering, or ``None`` for no clipping.
+        clip: Threshold applied to the uncentered residual values before PCA
+            centering. ``"seurat"`` names ``sqrt(n_obs / 30)`` and ``"scanpy"`` names
+            ``sqrt(n_obs)``, both resolved against the number of observations in the
+            input; a finite positive float sets the threshold directly, and ``None``
+            disables clipping.
         clip_mode: ``"symmetric"`` clips residuals into ``[-clip, clip]``; ``"upper"``
             clips only from above, into ``(-inf, clip]``, which leaves negative
-            residuals (including all zero counts) untouched.
+            residuals (including all zero counts) untouched. It is independent of how
+            the threshold was specified: a named threshold never selects a mode.
         clip_max_nnz_ratio: Upper bound on how far symmetric clipping may grow the
             stored sparse support, as a multiple of the input count matrix's number of
             stored nonzeros. Reaching it raises ``RuntimeError``; ``None`` removes the
             limit. Only symmetric clipping can grow support, so the limit never binds
-            when ``clip`` is ``None`` or ``clip_mode="upper"``.
+            when ``clip`` is ``None`` or ``clip_mode="upper"``, but the clipped
+            symmetric defaults do make it reachable.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or

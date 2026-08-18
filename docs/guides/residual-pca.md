@@ -103,20 +103,34 @@ distinguishable from valid zero values. See
 
 ## Clipping
 
-Residuals are not clipped unless `clip` is provided:
+Residuals are clipped by default, symmetrically at the named `"seurat"`
+threshold \(\sqrt{n_\mathrm{obs}/30}\). Pass `clip` to choose another
+threshold, and `clip=None` to disable clipping:
+
+```python
+scp.residual_pca(adata, layer="counts")                 # clip="seurat"
+scp.residual_pca(adata, layer="counts", clip="scanpy")  # sqrt(n_obs)
+scp.residual_pca(adata, layer="counts", clip=10.0)      # explicit number
+scp.residual_pca(adata, layer="counts", clip=None)      # unclipped
+```
+
+A name selects the threshold only. `clip_mode` is independent of it, so
+upper-only clipping at the Seurat threshold is spelled out in full:
 
 ```python
 scp.residual_pca(
     adata,
     layer="counts",
-    clip=10.0,
-    clip_mode="symmetric",
+    clip="seurat",
+    clip_mode="upper",
 )
 ```
 
 Clipping occurs on uncentered residuals before PCA column centering. Symmetric
 clipping can change zero-count entries and expand sparse support; upper-only
-clipping cannot. See [clipping and precision](../concepts/clipping-and-precision.md).
+clipping cannot. Because the defaults are symmetric, a plain call can raise on
+the `clip_max_nnz_ratio` guard. See
+[clipping and precision](../concepts/clipping-and-precision.md).
 
 ## Matrix workflow
 

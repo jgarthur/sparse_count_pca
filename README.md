@@ -129,10 +129,15 @@ to expose matrix-vector and matrix-matrix products to
   not expect default outputs to match. See the
   [compatibility reference][sctransform-compatibility] for the conditions under
   which equality can be tested.
+- **Residual clipping is on by default**, symmetrically at the named
+  `clip="seurat"` threshold `sqrt(n_obs / 30)`. `clip="scanpy"` names
+  `sqrt(n_obs)`, a float sets the threshold directly, and `clip=None` disables
+  clipping. A name selects the threshold only, never `clip_mode`.
 - **Symmetric residual clipping can expand sparse support**, because it alters
   negative residuals at zero-count entries that the low-rank baseline would
-  otherwise carry. Upper-only clipping cannot. See
-  [clipping and precision][clipping-and-precision].
+  otherwise carry. Upper-only clipping cannot, and the default being symmetric
+  means the `clip_max_nnz_ratio` guard can fire on a call that never mentions
+  clipping. See [clipping and precision][clipping-and-precision].
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.
