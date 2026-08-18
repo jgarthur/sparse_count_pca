@@ -165,7 +165,13 @@ class SparseLowRankLinearOperator(LinearOperator):
         value_stop: int,
         dense_columns: NDArray[np.bool_],
     ) -> NDArray[np.float64]:
-        """Return one row block's per-column mean numerators."""
+        """Return one row block's contribution to the column-mean sums.
+
+        Sparse columns contribute their stored corrections only; the analytic
+        baseline sum is added once in _column_means. Dense-majority columns
+        contribute full represented values, which replace the baseline
+        entirely.
+        """
         columns = self.S.indices[value_start:value_stop]
         partial = np.bincount(
             columns,
