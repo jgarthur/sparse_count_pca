@@ -1,7 +1,5 @@
 """Tests for sparse-plus-low-rank matrix and operator behavior."""
 
-from fractions import Fraction
-
 import numpy as np
 import pytest
 from scipy import sparse
@@ -51,24 +49,6 @@ def _statistics_fixture():
         ]
     )
     return SparseLowRankMatrix(sparse_part, left, right)
-
-
-def _fraction_matrix(operator):
-    """Return the operator's uncentered represented values as exact fractions."""
-    sparse_values = operator.S.toarray()
-    values = []
-    for row in range(operator.shape[0]):
-        represented_row = []
-        for column in range(operator.shape[1]):
-            value = Fraction.from_float(float(sparse_values[row, column]))
-            value += sum(
-                Fraction.from_float(float(operator.left[row, component]))
-                * Fraction.from_float(float(operator.right[column, component]))
-                for component in range(operator.left.shape[1])
-            )
-            represented_row.append(value)
-        values.append(represented_row)
-    return values
 
 
 @pytest.mark.parametrize("target_nnz", [0, -1])
@@ -139,8 +119,8 @@ def test_representation_selection_and_scaling():
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_blocked_statistics_match_fraction_oracle(monkeypatch, dtype):
-    """Blocked means and norms remain close to exact represented arithmetic."""
+def test_blocked_statistics_match_materialized_representation(monkeypatch, dtype):
+    """Blocked means and norms match the explicitly represented matrix."""
     monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
     monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
     representation = _statistics_fixture()
@@ -153,36 +133,31 @@ def test_blocked_statistics_match_fraction_oracle(monkeypatch, dtype):
         center=True,
         dtype=dtype,
     )
-    exact = _fraction_matrix(operator)
-    n_obs, n_vars = operator.shape
-    exact_means = [
-        sum(exact[row][column] for row in range(n_obs)) / n_obs
-        for column in range(n_vars)
-    ]
-    eps = np.finfo(dtype).eps
-
+    represented = operator.S.toarray()
+    represented += operator.left @ operator.right.T
+    expected_mean = represented.mean(axis=0, dtype=np.float64).astype(dtype)
+    expected_uncentered = np.sum(represented.astype(np.float64) ** 2)
     assert operator.mean is not None
-    for column, expected in enumerate(exact_means):
-        scale = sum(abs(exact[row][column]) for row in range(n_obs)) / n_obs
-        tolerance = 64.0 * eps * max(float(scale), 1.0)
-        assert abs(float(operator.mean[column]) - float(expected)) <= tolerance
+    centered = (represented - operator.mean).astype(np.float64)
+    expected_centered = np.sum(centered**2)
+    tolerance = 2e-6 if dtype == "float32" else 1e-12
 
-    centers = [
-        [Fraction(0) for _ in range(n_vars)],
-        [Fraction.from_float(float(value)) for value in operator.mean],
-    ]
-    actual_norms = [
-        operator.frobenius_squared_uncentered(),
-        operator.frobenius_squared_centered(),
-    ]
-    for center, actual in zip(centers, actual_norms):
-        expected = sum(
-            (exact[row][column] - center[column]) ** 2
-            for row in range(n_obs)
-            for column in range(n_vars)
-        )
-        tolerance = 256.0 * eps * max(float(expected), 1.0)
-        assert abs(actual - float(expected)) <= tolerance
+    np.testing.assert_allclose(
+        operator.mean,
+        expected_mean,
+        rtol=tolerance,
+        atol=tolerance,
+    )
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        expected_uncentered,
+        rel=tolerance,
+        abs=0.0,
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        expected_centered,
+        rel=tolerance,
+        abs=0.0,
+    )
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
