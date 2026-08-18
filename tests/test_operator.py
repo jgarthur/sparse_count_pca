@@ -12,6 +12,29 @@ from sparse_count_pca._operator import (
 from sparse_count_pca._representation import SparseLowRankMatrix
 from sparse_count_pca._sparse import _support_row_blocks
 
+_STATS_RTOL = {"float32": 2e-6, "float64": 1e-12}
+
+
+def _set_stats_block_nnz(monkeypatch, target_nnz):
+    """Point both statistics sweeps at the given row-block storage target."""
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", target_nnz)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", target_nnz)
+
+
+def _assert_statistics_close(operator, *, mean, uncentered, centered, tolerance):
+    """Assert the operator's summary statistics match the expected values."""
+    np.testing.assert_allclose(operator.mean, mean, rtol=tolerance, atol=0.0)
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        uncentered,
+        rel=tolerance,
+        abs=0.0,
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        centered,
+        rel=tolerance,
+        abs=0.0,
+    )
+
 
 def _statistics_fixture():
     """Build a representation with empty, sparse, boundary, and dense columns."""
@@ -83,7 +106,7 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
 
     identity = np.eye(n_vars, dtype=dtype)
     materialized = operator @ identity
-    tolerance = 2e-6 if dtype == "float32" else 1e-12
+    tolerance = _STATS_RTOL[dtype]
     np.testing.assert_allclose(materialized, expected, rtol=tolerance, atol=tolerance)
     assert operator.frobenius_squared_uncentered() == pytest.approx(
         np.sum((dense_sparse + left @ right.T).astype(dtype).astype(float) ** 2),
@@ -121,42 +144,23 @@ def test_representation_selection_and_scaling():
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_blocked_statistics_match_materialized_representation(monkeypatch, dtype):
     """Blocked means and norms match the explicitly represented matrix."""
-    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
-    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
+    _set_stats_block_nnz(monkeypatch, 4)
     representation = _statistics_fixture()
     assert np.array_equal(
         np.bincount(representation.sparse.indices, minlength=5),
         [0, 2, 3, 5, 7],
     )
-    operator = SparseLowRankLinearOperator(
-        representation,
-        center=True,
-        dtype=dtype,
-    )
-    represented = operator.S.toarray()
-    represented += operator.left @ operator.right.T
-    expected_mean = represented.mean(axis=0, dtype=np.float64).astype(dtype)
-    expected_uncentered = np.sum(represented.astype(np.float64) ** 2)
+    operator = SparseLowRankLinearOperator(representation, center=True, dtype=dtype)
+    represented = operator.S.toarray() + operator.left @ operator.right.T
     assert operator.mean is not None
-    centered = (represented - operator.mean).astype(np.float64)
-    expected_centered = np.sum(centered**2)
-    tolerance = 2e-6 if dtype == "float32" else 1e-12
+    deviations = (represented - operator.mean).astype(np.float64)
 
-    np.testing.assert_allclose(
-        operator.mean,
-        expected_mean,
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    assert operator.frobenius_squared_uncentered() == pytest.approx(
-        expected_uncentered,
-        rel=tolerance,
-        abs=0.0,
-    )
-    assert operator.frobenius_squared_centered() == pytest.approx(
-        expected_centered,
-        rel=tolerance,
-        abs=0.0,
+    _assert_statistics_close(
+        operator,
+        mean=represented.mean(axis=0, dtype=np.float64).astype(dtype),
+        uncentered=np.sum(represented.astype(np.float64) ** 2),
+        centered=np.sum(deviations**2),
+        tolerance=_STATS_RTOL[dtype],
     )
 
 
@@ -164,42 +168,19 @@ def test_blocked_statistics_match_materialized_representation(monkeypatch, dtype
 def test_statistics_agree_across_row_block_sizes(monkeypatch, dtype):
     """Changing row-block granularity preserves statistics within roundoff."""
     representation = _statistics_fixture()
-    monkeypatch.setattr(
-        operator_module,
-        "_STATS_MEAN_BLOCK_NNZ",
-        representation.sparse.nnz,
-    )
-    monkeypatch.setattr(
-        operator_module,
-        "_STATS_NORM_BLOCK_NNZ",
-        representation.sparse.nnz,
-    )
-    single = SparseLowRankLinearOperator(
-        representation,
-        center=True,
-        dtype=dtype,
-    )
+    _set_stats_block_nnz(monkeypatch, representation.sparse.nnz)
+    single = SparseLowRankLinearOperator(representation, center=True, dtype=dtype)
 
-    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
-    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
+    _set_stats_block_nnz(monkeypatch, 4)
     assert len(list(_support_row_blocks(representation.sparse, 4))) >= 4
-    blocked = SparseLowRankLinearOperator(
-        representation,
-        center=True,
-        dtype=dtype,
-    )
+    blocked = SparseLowRankLinearOperator(representation, center=True, dtype=dtype)
 
-    tolerance = 2e-6 if dtype == "float32" else 1e-12
-    np.testing.assert_allclose(blocked.mean, single.mean, rtol=tolerance, atol=0.0)
-    assert blocked.frobenius_squared_uncentered() == pytest.approx(
-        single.frobenius_squared_uncentered(),
-        rel=tolerance,
-        abs=0.0,
-    )
-    assert blocked.frobenius_squared_centered() == pytest.approx(
-        single.frobenius_squared_centered(),
-        rel=tolerance,
-        abs=0.0,
+    _assert_statistics_close(
+        blocked,
+        mean=single.mean,
+        uncentered=single.frobenius_squared_uncentered(),
+        centered=single.frobenius_squared_centered(),
+        tolerance=_STATS_RTOL[dtype],
     )
 
 
