@@ -17,8 +17,8 @@ from ._sparse import _support_row_blocks
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
 _STATS_MEAN_BLOCK_NNZ = 1_000_000
-# The norm sweep holds several support-sized arrays, including nnz-by-rank
-# indexed factor values, while the mean sweep holds only one block-local CSC.
+# The norm sweep materializes factor values and deviations for each stored
+# entry in the current row block, so its smaller target bounds scratch memory.
 _STATS_NORM_BLOCK_NNZ = 100_000
 
 
