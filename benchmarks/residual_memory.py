@@ -3,9 +3,10 @@
 This is a manual maintainer probe rather than a CI test. Each measurement runs
 in a fresh process, loads the same saved CSR matrix before establishing its RSS
 baseline, and measures either residual-representation construction or operator
-statistics. In operator mode the representation is built before the baseline.
-The parent polls current RSS while the worker also reports its process-lifetime
-high-water mark as a cross-check.
+statistics. In operator mode the representation is built before the baseline
+so the measured increment isolates memory used to center the operator and
+calculate its summary statistics. The parent polls current RSS while the worker
+also reports its process-lifetime high-water mark as a cross-check.
 """
 
 from __future__ import annotations
