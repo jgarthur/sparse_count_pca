@@ -93,7 +93,7 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
         random_state=7,
         tol=1e-6,
         check_values=False,
-        clip=1.0,
+        clip="scanpy",
         clip_mode="upper",
         clip_max_nnz_ratio=None,
     )
@@ -108,7 +108,8 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
         assert params["check_values"] is False
         assert params["dtype"] == "float64"
         assert params["package_version"] == __version__
-        assert params["clip"] == 1.0
+        assert params["clip"] == "scanpy"
+        assert params["clip_threshold"] == pytest.approx(np.sqrt(adata.n_obs))
         assert params["clip_mode"] == "upper"
         assert params["clip_max_nnz_ratio"] is None
 

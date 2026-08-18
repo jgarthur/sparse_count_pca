@@ -88,15 +88,25 @@ print("PCA genes:", adata.uns["masked_pca"]["params"]["pca_n_vars"])
 print("masked component rows:", np.isnan(adata.varm["masked_pca"]).all(axis=1).sum())
 
 # %% [markdown]
-# **Clip residuals before centering.** Upper-only clipping never expands the
-# stored sparse support.
+# **Residuals are clipped before centering by default**, symmetrically at the
+# named `"seurat"` threshold `sqrt(n_obs / 30)`. The result records both the
+# request and the number it resolved to.
+
+# %%
+print("requested clip:", adata.uns["pca"]["params"]["clip"])
+print("resolved threshold:", adata.uns["pca"]["params"]["clip_threshold"])
+
+# %% [markdown]
+# **A name chooses the threshold, never the mode.** Upper-only clipping at the
+# same named threshold never expands the stored sparse support, and `clip=None`
+# turns clipping off.
 
 # %%
 scp.residual_pca(
     adata,
     layer="counts",
     n_comps=2,
-    clip=1.5,
+    clip="seurat",
     clip_mode="upper",
     key_added="clipped_pca",
 )

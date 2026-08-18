@@ -10,6 +10,7 @@ import pytest
 from scipy import sparse
 
 import sparse_count_pca as scp
+from sparse_count_pca._clip import resolve_clip
 
 REFERENCE_DIR = Path(__file__).resolve().parent
 COUNTS_PATH = REFERENCE_DIR / "pbmc3k_equal_depth_counts.npz"
@@ -40,7 +41,7 @@ def test_sctransform_reference_artifact_has_pinned_checksum() -> None:
 def test_sctransform_final_parameters_match_the_shared_equal_depth_model(
     counts, oracle
 ):
-    """Pinned SCT theta and fixed means map exactly to scaled-NB parameters."""
+    """Pinned SCT theta, means, and clip range map exactly to package parameters."""
     row_totals = np.asarray(counts.sum(axis=1, dtype=np.int64)).ravel()
     gene_means = np.asarray(counts.mean(axis=0)).ravel()
     theta = oracle["theta"]
@@ -56,7 +57,7 @@ def test_sctransform_final_parameters_match_the_shared_equal_depth_model(
     assert oracle["alpha"][oracle["alpha"] > 0].min() > 1e-8
     np.testing.assert_allclose(oracle["fitted_mean"], gene_means, rtol=0.0, atol=1e-12)
     np.testing.assert_allclose(
-        oracle["clip"], [np.sqrt(counts.shape[0] / 30)], rtol=0.0, atol=0.0
+        oracle["clip"], [resolve_clip("seurat", counts.shape[0])], rtol=0.0, atol=0.0
     )
     np.testing.assert_array_equal(oracle["clip_counts"], [0.0, 7356.0])
 

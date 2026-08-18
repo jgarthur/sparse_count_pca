@@ -4,6 +4,15 @@ All notable user-facing changes are recorded here.
 
 ## Unreleased
 
+- **Breaking:** residual transforms now clip by default. `clip` accepts the
+  named thresholds `"seurat"` (`sqrt(n_obs / 30)`, the new default) and
+  `"scanpy"` (`sqrt(n_obs)`) alongside a positive float and `None`, resolving
+  the name against the observation count of the fitted matrix. A name selects
+  only the threshold; `clip_mode` and `clip_max_nnz_ratio` are unchanged, so
+  the symmetric default can trigger the support-growth guard under default
+  arguments. Pass `clip=None` to recover the previous unclipped behavior.
+- Record the resolved numeric clipping threshold as `clip_threshold` in
+  transform and PCA metadata, alongside the request in `clip`.
 - Add size-factor-normalized `log1p` PCA with median-depth or explicit target
   totals, supplied size factors, AnnData observation-key alignment, and an
   exact rank-zero sparse representation verified against Scanpy. Composition-

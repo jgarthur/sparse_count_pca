@@ -1,25 +1,51 @@
 # Clipping and numerical precision
 
-## Clipping is opt-in and exact
+## Residual clipping is on by default and exact
 
-Residual transforms do not clip outliers by default. Set a positive finite
-`clip` threshold to enable clipping. The threshold applies to the computed
-residual values before column centering.
+Residual transforms clip by default. The threshold applies to the computed
+residual values before column centering, and `clip` accepts four kinds of
+value:
+
+| `clip` | Threshold |
+| --- | --- |
+| `"seurat"` (default) | \(\sqrt{n_\mathrm{obs}/30}\) |
+| `"scanpy"` | \(\sqrt{n_\mathrm{obs}}\) |
+| positive finite float | that number |
+| `None` | no clipping |
+
+Here \(n_\mathrm{obs}\) is the number of rows — cells — of the count matrix
+the transform is fitted on, taken as passed.
+
+The two names come from the defaults of
+[SCTransform](https://satijalab.org/seurat/reference/sctransform) and
+[Scanpy](https://scanpy.readthedocs.io/en/stable/generated/scanpy.experimental.pp.normalize_pearson_residuals_pca.html)
+respectively. A name resolves only a numeric threshold: it applies to every
+residual family and model, not only to Pearson residuals, and it resolves to a
+different number for a different dataset.
 
 Two clipping modes are available:
 
-- `clip_mode="symmetric"` (the default, when `clip` is set) clips to
-  `[-clip, clip]`;
+- `clip_mode="symmetric"` (the default) clips to `[-clip, clip]`;
 - `clip_mode="upper"` clips to `(-inf, clip]`, leaving the negative residuals
   untouched.
 
-For comparison,
-[SCTransform](https://satijalab.org/seurat/reference/sctransform) defaults to a
-symmetric threshold of \(\sqrt{n_\mathrm{obs}/30}\), and
-[Scanpy](https://scanpy.readthedocs.io/en/stable/generated/scanpy.experimental.pp.normalize_pearson_residuals_pca.html)
-to \(\sqrt{n_\mathrm{obs}}\), where \(n_\mathrm{obs}\) is the number of cells;
-this package applies neither automatically, so pass the desired threshold as
-`clip`.
+`clip` and `clip_mode` are independent: a name selects a threshold, not a
+mode. `clip="seurat", clip_mode="upper"` means upper-only clipping at
+\(\sqrt{n_\mathrm{obs}/30}\), not SCTransform's symmetric clipping.
+
+### Reusing a specification across datasets
+
+A `Residual` specification stores `clip` as passed and resolves a name at each
+fit, so reusing one `Residual(clip="seurat")` on two datasets can produce two
+different thresholds. The fitted transform, the PCA result, and any retained
+operator record the resolved value as `params["clip_threshold"]` alongside the
+request in `params["clip"]`.
+
+```python
+result = residual_pca_matrix(counts, n_comps=50)
+result.params["clip"]            # "seurat"
+result.params["clip_threshold"]  # sqrt(counts.shape[0] / 30)
+```
 
 ## Symmetric clipping may expand the sparse matrix support
 
@@ -35,6 +61,11 @@ grow to just under twice that. The operation raises `RuntimeError` if the
 correction would meet or exceed the limit. Use `1.0` to reject any support
 growth, `clip_mode="upper"` to avoid it by construction, or `None` to disable
 the guard and allow unlimited exact expansion.
+
+Because the default clips symmetrically, both the growth and the guard are
+reachable under default arguments. How much support grows depends on the
+dataset. If a run raises on the guard, raise `clip_max_nnz_ratio`, switch to
+`clip_mode="upper"`, or set `clip=None`.
 
 ## Calculation dtype
 

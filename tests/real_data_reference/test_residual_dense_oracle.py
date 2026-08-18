@@ -61,7 +61,7 @@ def test_unclipped_residuals_match_dense_oracle_on_real_counts(
 
     actual = scp.transform(
         raw_counts,
-        scp.Residual(model=model, residual=residual, alpha=alpha),
+        scp.Residual(model=model, residual=residual, alpha=alpha, clip=None),
         dtype="float64",
     ).materialize(block_size=64)
 

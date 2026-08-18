@@ -42,12 +42,13 @@ def test_singular_values_match_townes_reference(
     residual,
     expected,
 ):
-    """Residual PCA singular values match the pinned Townes reference."""
+    """Unclipped residual PCA singular values match the pinned Townes reference."""
     result = residual_pca_matrix(
         counts,
         n_comps=3,
         model=model,
         residual=residual,
+        clip=None,
         dtype="float64",
     )
     np.testing.assert_allclose(
