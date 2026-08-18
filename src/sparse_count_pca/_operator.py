@@ -51,7 +51,14 @@ def _compensated_add(
     correction: NDArray[np.float64],
     addend: NDArray[np.float64],
 ) -> None:
-    """Accumulate an array with vectorized Neumaier compensation."""
+    """Accumulate an array with vectorized Neumaier compensation.
+
+    Args:
+        total: Running elementwise sums, updated in place.
+        correction: Running elementwise compensation terms, updated in place.
+        addend: Values to add, with the same shape as ``total`` and
+            ``correction``; this array is not modified.
+    """
     updated = total + addend
     correction += np.where(
         np.abs(total) >= np.abs(addend),
