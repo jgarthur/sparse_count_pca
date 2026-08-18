@@ -12,6 +12,7 @@ input validation, masking, dtype, and output contracts, see the
 | Transform | AnnData function | Matrix function | Two-step specification | Status |
 | --- | --- | --- | --- | --- |
 | Pearson or deviance residuals | `residual_pca` | `residual_pca_matrix` | `Residual` | Supported; see notes on `scaled_nb` |
+| Size-factor-normalized log1p | `log1p_norm_pca` | `log1p_norm_pca_matrix` | `Log1pNormalized` | Supported; matches Scanpy's `normalize_total` + `log1p` |
 | Count-scale shifted CLR | `shifted_clr_pca` | `shifted_clr_pca_matrix` | `ShiftedCLR` | Supported; includes the PFlog parameterization |
 | Composition-scale shifted CLR | `proportion_shifted_clr_pca` | `proportion_shifted_clr_pca_matrix` | `ProportionShiftedCLR` | Supported |
 | Dirichlet log | `dirichlet_log_pca` | `dirichlet_log_pca_matrix` | `DirichletLog` | Numerically verified only |
@@ -41,17 +42,15 @@ tolerances.
 
 ## What this package does not do
 
-The table above is the complete set of transforms. In particular, there is no
-library-size-normalized log transform.
+The table above is the complete set of transforms.
 
-That workflow is deliberately out of scope rather than merely unimplemented.
-Dividing by a row total and taking `log1p` maps zero to zero, so the normalized
-matrix stays sparse and only PCA centering makes it dense. Existing sparse PCA
-implementations already handle that rank-one correction, so the transform gains
-nothing from this package's representation. The transforms here are the ones
-whose normalized matrix is dense *before* centering.
+Size-factor-normalized log1p is a boundary case for the package's
+representation. Dividing by a size factor and taking `log1p` maps zero to
+zero, so the normalized matrix stays sparse and only PCA centering makes it
+dense — a rank-one correction that iterative sparse PCA implementations
+already handle. It is included anyway, as most common count normalization.
 
-Two further log-normalization recipes are deliberately absent. Seurat's "CLR"
+Two log-normalization recipes are deliberately absent. Seurat's "CLR"
 is not a CLR coordinate transform and adds a data-dependent shift rule. The
 Ahlmann-Eltze and Huber normalized Anscombe log divides by a size factor before
 adding \(1/(4\alpha)\), which is a cell-specific raw-count shift
@@ -188,6 +187,52 @@ Clipping is optional, occurs before PCA centering, and can increase sparse
 support. See the [residual-PCA guide](guides/residual-pca.md),
 [masking concept page](concepts/normalization-masking-and-centering.md), and
 [compatibility reference](reference/compatibility.md#sctransform-v2).
+
+## Size-factor-normalized log1p
+
+### Formula
+
+For positive per-observation size factors \(s_i\),
+
+```math
+Z_{ij}
+= \log\!\left(1+\frac{X_{ij}}{s_i}\right)
+= \log(X_{ij}+s_i) - \log s_i.
+```
+
+With a target total \(t\), the size factors are \(s_i = n_i/t\). The default
+target is the median observation total, so the size factors have median one.
+
+Zeros map to zero, so this is the one transform in the catalog whose
+normalized matrix is sparse before PCA centering; its representation has rank
+zero. There is no row centering and no log-ratio coordinate rule.
+
+### Interfaces and parameters
+
+Use `log1p_norm_pca`, `log1p_norm_pca_matrix`, or
+`Log1pNormalized(target_sum=..., size_factors=...)`. Exactly one
+normalization recipe applies:
+
+- `target_sum`: positive total to which each observation is normalized;
+  `target_sum=None`, the default, uses the median observation total;
+- `size_factors`: positive per-observation divisors, or an `adata.obs` key on
+  the AnnData interface, used without rescaling. Mutually exclusive with an
+  explicit `target_sum`.
+
+### Origin and validation
+
+This is the standard library-size normalization followed by `log1p`, as
+implemented by Scanpy's `pp.normalize_total` and `pp.log1p`.
+Transformed values are
+[tested directly against those Scanpy functions](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log1p_scanpy.py)
+for both the median and explicit `target_sum` recipes, and against an
+independent dense formula oracle.
+
+### Caveats
+
+Cell totals and the median target are computed before `mask_var` selects PCA
+variables; slice the count matrix first if excluded genes should not count
+toward totals.
 
 ## Count-scale shifted CLR
 

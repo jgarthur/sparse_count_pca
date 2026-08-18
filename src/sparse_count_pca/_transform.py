@@ -26,10 +26,12 @@ from ._log_transforms import (
     PriorProportions,
     build_dirichlet_clr_representation,
     build_dirichlet_log_representation,
+    build_log1p_norm_representation,
     build_proportion_shifted_clr_representation,
     build_shifted_clr_representation,
     validate_dirichlet_prior,
     validate_positive_scalar,
+    validate_size_factors,
 )
 from ._operator import _normalize_operator_dtype
 from ._pca import PCAResult, compute_pca_from_representation
@@ -58,16 +60,17 @@ class Transform(ABC):
         self,
         counts: sparse.csr_matrix,
         *,
+        obs: Any | None,
         var: Any | None,
         columns: BoolArray | None,
         dtype: DTypeLike,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         """Build a representation and its reproducibility metadata.
 
-        ``var`` is available only for AnnData-derived transforms. ``columns``
-        is either ``None`` for all variables or the PCA-only variable mask;
-        builders must fit normalization state before applying that mask.
-        ``dtype`` is the validated floating-point calculation dtype.
+        ``obs`` and ``var`` are available only for AnnData-derived transforms.
+        ``columns`` is either ``None`` for all variables or the PCA-only
+        variable mask; builders must fit normalization state before applying
+        that mask. ``dtype`` is the validated floating-point calculation dtype.
         """
 
 
@@ -85,6 +88,22 @@ def _resolve_vector_parameter(
     if value not in var:
         raise KeyError(f"{value!r} not found in adata.var")
     return np.asarray(var[value], dtype=np.float64)
+
+
+def _resolve_obs_vector_parameter(
+    value: ArrayLike | str,
+    *,
+    obs: Any | None,
+    name: str,
+) -> ArrayLike:
+    """Resolve a per-observation parameter from AnnData metadata."""
+    if not isinstance(value, str):
+        return value
+    if obs is None:
+        raise TypeError(f"{name}={value!r} requires an AnnData input")
+    if value not in obs:
+        raise KeyError(f"{value!r} not found in adata.obs")
+    return np.asarray(obs[value], dtype=np.float64)
 
 
 def _serialize_parameter(value: Any, *, none: Any = None) -> Any:
@@ -150,6 +169,7 @@ class Residual(Transform):
         self,
         counts: sparse.csr_matrix,
         *,
+        obs: Any | None,
         var: Any | None,
         columns: BoolArray | None,
         dtype: DTypeLike,
@@ -241,7 +261,7 @@ class ShiftedCLR(Transform):
 
     count_shift: float
 
-    def _build(self, counts, *, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype):
         count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
         representation = build_shifted_clr_representation(
             counts, count_shift=count_shift
@@ -282,7 +302,7 @@ class ProportionShiftedCLR(Transform):
 
     composition_shift: float
 
-    def _build(self, counts, *, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype):
         composition_shift = validate_positive_scalar(
             self.composition_shift, name="composition_shift"
         )
@@ -299,6 +319,97 @@ class ProportionShiftedCLR(Transform):
                 "shift_domain": "composition",
                 "composition_shift": composition_shift,
                 "effective_count_shift": "cell_total * composition_shift",
+                "normalization_n_vars": counts.shape[1],
+            },
+        )
+
+
+@dataclass(frozen=True)
+class Log1pNormalized(Transform):
+    """Specify size-factor normalization followed by ``log1p``.
+
+    The transform is ``log1p(x_ij / s_i)``. With ``target_sum=t``, the
+    per-observation divisor is ``s_i = n_i / t``, where ``n_i`` is the count
+    total. The default target is ``median(n)``, which gives size factors with
+    median one, so a typical observation has an effective pseudocount near one.
+
+    Supplying size factors uses them as-is. Their scale sets the effective
+    raw-count pseudocount because
+    ``log1p(x_ij / s_i) = log(x_ij + s_i) - log(s_i)``.
+
+    Attributes:
+        target_sum: Positive target total, or ``None`` to use the median
+            observation total. Mutually exclusive with ``size_factors``.
+        size_factors: Positive per-observation divisors, or an ``adata.obs`` key
+            for AnnData input. Values are not rescaled. Mutually exclusive with
+            an explicit ``target_sum``.
+
+    Examples:
+        >>> transformed = transform(counts, Log1pNormalized(target_sum=1e4))
+    """
+
+    target_sum: float | None = None
+    size_factors: ArrayLike | str | None = None
+
+    def _build(self, counts, *, obs, var, columns, dtype):
+        if self.target_sum is not None and self.size_factors is not None:
+            raise ValueError("target_sum and size_factors are mutually exclusive")
+        requested_target_sum = None
+        row_totals = _sum_counts(counts, axis=1)
+        if not np.isfinite(row_totals).all():
+            raise ValueError("Cell totals overflow float64")
+        if (row_totals == 0).any():
+            raise ValueError(
+                "Cells with zero total counts are not supported; filter empty "
+                "rows out of the count matrix first"
+            )
+
+        if self.size_factors is not None:
+            size_factor_input = _resolve_obs_vector_parameter(
+                self.size_factors,
+                obs=obs,
+                name="size_factors",
+            )
+            size_factors = validate_size_factors(size_factor_input, counts.shape[0])
+            size_factor_source = "supplied"
+            resolved_target_sum = None
+        else:
+            if self.target_sum is None:
+                resolved_target_sum = float(np.median(row_totals))
+                size_factor_source = "median_target_sum"
+            else:
+                requested_target_sum = validate_positive_scalar(
+                    self.target_sum, name="target_sum"
+                )
+                resolved_target_sum = requested_target_sum
+                size_factor_source = "target_sum"
+            with np.errstate(over="ignore", under="ignore"):
+                size_factors = row_totals / resolved_target_sum
+            if not np.isfinite(size_factors).all() or (size_factors <= 0).any():
+                raise ValueError(
+                    "target_sum produces size factors outside the finite positive "
+                    "float64 range"
+                )
+            size_factors = validate_size_factors(size_factors, counts.shape[0])
+
+        representation = build_log1p_norm_representation(
+            counts,
+            size_factors=size_factors,
+        )
+        if columns is not None:
+            representation = representation.select_columns(columns)
+        return (
+            representation,
+            "Log1p normalized",
+            {
+                "transform": "log1p_norm",
+                "shift_domain": "normalized_count",
+                "target_sum": requested_target_sum,
+                "resolved_target_sum": resolved_target_sum,
+                "size_factors": _serialize_parameter(self.size_factors),
+                "size_factor_source": size_factor_source,
+                "size_factor_median": float(np.median(size_factors)),
+                "effective_count_shift": "size_factor",
                 "normalization_n_vars": counts.shape[1],
             },
         )
@@ -327,7 +438,7 @@ class DirichletLog(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -381,7 +492,7 @@ class DirichletCLR(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -722,6 +833,7 @@ def _transform(
     dtype: DTypeLike = "float64",
     _columns: BoolArray | None = None,
     _isolate_returned_operator: bool = True,
+    _obs: Any | None = None,
 ) -> TransformedMatrix:
     """Build a public transform, optionally restricted for a PCA wrapper."""
     if not isinstance(method, Transform):
@@ -729,6 +841,7 @@ def _transform(
     operator_dtype = _normalize_operator_dtype(dtype)
     if isinstance(data, AnnData):
         X = _get_count_matrix(data, layer=layer)
+        obs = data.obs
         var = data.var
         obs_names = data.obs_names
         var_names = data.var_names
@@ -736,6 +849,7 @@ def _transform(
         if layer is not None:
             raise TypeError("layer is only valid for AnnData input")
         X = data
+        obs = _obs
         var = None
         obs_names = None
         var_names = None
@@ -750,6 +864,7 @@ def _transform(
             _columns = None
     representation, label, params = method._build(
         counts,
+        obs=obs,
         var=var,
         columns=_columns,
         dtype=operator_dtype,
@@ -790,7 +905,7 @@ def transform(
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
             object. Observations are rows and variables are columns.
-        method: Residual, shifted-CLR, or Dirichlet transform specification.
+        method: Immutable count-transform specification.
         layer: AnnData count layer to use. If ``layer=None``, use ``adata.X``.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.

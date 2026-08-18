@@ -40,6 +40,16 @@ def _dense_proportion_shifted_clr(
     return proportion_shifted_clr(X, composition_shift)
 
 
+def _dense_log1p_norm(
+    X: DenseOrSparse,
+    size_factors: ArrayLike,
+) -> Float64Array:
+    """Evaluate size-factor normalization followed by log1p densely."""
+    values = _as_dense_float64(X)
+    divisors = np.asarray(size_factors, dtype=np.float64)
+    return np.log1p(values / divisors[:, None])
+
+
 def _dense_dirichlet(
     X: DenseOrSparse,
     concentration: float,

@@ -57,6 +57,24 @@ def validate_dirichlet_prior(
     return concentration, proportions
 
 
+def validate_size_factors(
+    size_factors: ArrayLike,
+    n_obs: int,
+) -> Float64Array:
+    """Return finite positive per-observation divisors as float64."""
+    values = np.asarray(size_factors)
+    if values.ndim != 1 or values.shape[0] != n_obs:
+        raise ValueError("size_factors must have shape (n_obs,)")
+    if values.dtype.kind not in "fiu":
+        raise ValueError("size_factors must be finite and strictly positive")
+    result = values.astype(np.float64, copy=False)
+    if not np.isfinite(result).all():
+        raise ValueError("size_factors must be finite and strictly positive")
+    if (result <= 0).any():
+        raise ValueError("size_factors must be finite and strictly positive")
+    return result
+
+
 def log1p_count_correction(
     X: sparse.csr_matrix,
     prior_counts: Float64Array | float,
@@ -75,6 +93,46 @@ def log1p_count_correction(
     np.log1p(data, out=data)
     return sparse.csr_matrix(
         (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    )
+
+
+def log1p_row_scaled_counts(
+    X: sparse.csr_matrix,
+    row_divisors: Float64Array,
+    *,
+    overflow_message: str,
+) -> sparse.csr_matrix:
+    """Return sparse ``log1p(x_ij / row_divisor_i)`` values."""
+    if not np.isfinite(row_divisors).all() or (row_divisors <= 0).any():
+        raise ValueError(overflow_message)
+    denominators = np.repeat(row_divisors, np.diff(X.indptr))
+    data = X.data.astype(np.float64, copy=True)
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        np.divide(data, denominators, out=data)
+    if not np.isfinite(data).all():
+        raise ValueError(overflow_message)
+    np.log1p(data, out=data)
+    return sparse.csr_matrix(
+        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    )
+
+
+def build_log1p_norm_representation(
+    X: sparse.csr_matrix,
+    *,
+    size_factors: ArrayLike,
+) -> SparseLowRankMatrix:
+    """Represent size-factor-normalized ``log1p`` values as rank-zero sparse."""
+    divisors = validate_size_factors(size_factors, X.shape[0])
+    sparse_part = log1p_row_scaled_counts(
+        X,
+        divisors,
+        overflow_message="Count-to-size-factor ratios overflow float64",
+    )
+    return SparseLowRankMatrix(
+        sparse_part,
+        np.zeros((X.shape[0], 0), dtype=np.float64),
+        np.zeros((X.shape[1], 0), dtype=np.float64),
     )
 
 
@@ -111,19 +169,12 @@ def build_proportion_shifted_clr_representation(
             "Cells with zero total counts are not supported; filter empty rows "
             "out of the count matrix first"
         )
-    rows = np.repeat(np.arange(X.shape[0], dtype=np.intp), np.diff(X.indptr))
-    data = X.data.astype(np.float64, copy=True)
-    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-        np.divide(
-            data,
-            row_totals[rows] * composition_shift,
-            out=data,
-        )
-    if not np.isfinite(data).all():
-        raise ValueError("Count-to-composition ratios overflow float64")
-    np.log1p(data, out=data)
-    sparse_part = sparse.csr_matrix(
-        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    with np.errstate(over="ignore", under="ignore"):
+        row_divisors = row_totals * composition_shift
+    sparse_part = log1p_row_scaled_counts(
+        X,
+        row_divisors,
+        overflow_message="Count-to-composition ratios overflow float64",
     )
     row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
     return SparseLowRankMatrix(

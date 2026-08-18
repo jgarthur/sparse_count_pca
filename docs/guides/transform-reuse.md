@@ -19,8 +19,20 @@ transformed = scp.transform(
 )
 ```
 
-Other primary transform specifications are `ShiftedCLR` and
-`ProportionShiftedCLR`.
+Other primary transform specifications are `Log1pNormalized`, `ShiftedCLR`,
+and `ProportionShiftedCLR`:
+
+```python
+log_normalized = scp.transform(
+    adata,
+    scp.Log1pNormalized(size_factors="size_factors"),
+    layer="counts",
+)
+```
+
+String-valued per-observation parameters, such as the `adata.obs` size-factor
+key above, are resolved when the transform is fitted.
+
 Correspondence analysis remains a separate one-step API because its variable
 selection changes the fitted table margins.
 

@@ -21,6 +21,7 @@ This version supports:
 * Binomial deviance residuals
 * size-factor-scaled negative-binomial Pearson residuals
 * size-factor-scaled negative-binomial deviance residuals
+* size-factor-normalized log1p PCA
 * count-scale shifted-CLR PCA
 * composition-scale shifted-CLR PCA
 * Dirichlet-log PCA
@@ -79,6 +80,8 @@ import sparse_count_pca as scp
 
 scp.residual_pca(adata, ...)
 scp.residual_pca_matrix(X, ...)
+scp.log1p_norm_pca(adata, ...)
+scp.log1p_norm_pca_matrix(X, ...)
 scp.shifted_clr_pca(adata, count_shift=...)
 scp.shifted_clr_pca_matrix(X, count_shift=...)
 scp.proportion_shifted_clr_pca(adata, composition_shift=...)
@@ -90,6 +93,7 @@ scp.dirichlet_clr_pca_matrix(X, ...)
 scp.correspondence_analysis(adata, ...)
 scp.correspondence_analysis_matrix(X, ...)
 scp.transform(adata_or_X, scp.Residual(...))
+scp.transform(adata_or_X, scp.Log1pNormalized(...))
 scp.transform(adata_or_X, scp.ShiftedCLR(...))
 scp.transform(adata_or_X, scp.ProportionShiftedCLR(...))
 scp.transform(adata_or_X, scp.DirichletLog(...))
@@ -184,12 +188,43 @@ For the same reason, every log-family result records `shift_domain` in its
 
 | Transform | `shift_domain` |
 | --- | --- |
+| `log1p_norm` | `"normalized_count"` |
 | `shifted_clr` | `"count"` |
 | `proportion_shifted_clr` | `"composition"` |
 | `dirichlet_log`, `dirichlet_clr` | `"dirichlet_prior_counts"` |
 
 A stored result therefore identifies its own shift scale without a reader
 inferring it from the parameter name.
+
+### Size-factor-normalized log1p
+
+`log1p_norm` analyzes
+
+```math
+Z_{ij}
+= \log\!\left(1+\frac{X_{ij}}{s_i}\right)
+= \log(X_{ij}+s_i) - \log s_i,
+```
+
+where `s_i` is the per-observation size factor. Its shift is fixed at one on
+the normalized-count scale, so no shift parameter is exposed; the effective
+raw-count shift is `s_i` itself, recorded as
+`effective_count_shift="size_factor"`.
+
+Size factors come from exactly one of two recipes:
+
+* `target_sum=t` sets `s_i = n_i / t` from the row total `n_i`. The default
+  `target_sum=None` resolves `t` to the median row total, so the size factors
+  have median one.
+* `size_factors` supplies finite positive per-observation divisors, or an
+  `adata.obs` key on the AnnData interfaces, used without rescaling.
+
+An explicit `target_sum` and `size_factors` are mutually exclusive. Result
+metadata records the requested `target_sum`, `resolved_target_sum` (`None`
+for supplied factors), `size_factor_source` (`"median_target_sum"`,
+`"target_sum"`, or `"supplied"`), and `size_factor_median`. The
+representation has rank zero: zeros map to zero, and only PCA centering adds
+a low-rank term.
 
 ### Count-scale shifted CLR
 
@@ -797,13 +832,14 @@ Its value is well defined in each family:
 | --- | --- | --- |
 | Residual (Poisson, binomial, scaled-NB) | `0`, the limit of the residual as the fitted mean goes to zero | none |
 | Correspondence analysis | `0`, the limit of the standardized deviation as column mass goes to zero | none |
+| Size-factor-normalized log1p | `0`, since `log1p` of zero is zero | none |
 | Count-scale shifted CLR | `log(a) - m_i` | scales the log-ratio centering |
 | Composition-scale shifted CLR | analogous | scales the log-ratio centering |
 | Dirichlet log | `log(a_j) - log(s_i + A)` for prior counts `a_j = A p_j` | consumes prior mass |
 | Dirichlet CLR | `log(a_j)` minus the row mean of the log posterior counts | consumes prior mass |
 
-For the residual and correspondence families the column is **identically
-zero**. Such a column carries no variance and no inertia, so it contributes
+For the residual, correspondence, and normalized-log1p families the column is
+**identically zero**. Such a column carries no variance and no inertia, so it contributes
 nothing to the decomposition and its coefficient comes back as zero to solver
 precision. An empty gene therefore cannot change any other gene's result, and
 the outcome matches the same input with the column removed. Two consequences:
@@ -1121,7 +1157,8 @@ where:
 * rank zero is permitted
 
 Residual transforms and both shifted CLR transforms produce rank-one
-representations. Dirichlet log and Dirichlet CLR produce representations of
+representations. Size-factor-normalized log1p produces a rank-zero
+representation. Dirichlet log and Dirichlet CLR produce representations of
 rank at most two.
 The generic form supports transforms with multiple implicit components. Row
 scaling, column scaling, and column selection preserve the sparse-plus-low-rank
