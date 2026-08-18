@@ -161,7 +161,7 @@ def test_blocked_statistics_match_materialized_representation(monkeypatch, dtype
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_statistics_are_stable_across_row_block_sizes(monkeypatch, dtype):
+def test_statistics_agree_across_row_block_sizes(monkeypatch, dtype):
     """Changing row-block granularity preserves statistics within roundoff."""
     representation = _statistics_fixture()
     monkeypatch.setattr(

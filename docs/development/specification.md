@@ -1703,6 +1703,11 @@ For sparse-support columns, calculate the represented mean as
 \frac{1}{N}\sum_{i \in P_j} S_{ij}.
 ```
 
+Accumulate sparse support sums with vectorized `float64` reductions over
+bounded blocks of complete CSR rows. Ordinary floating-point summation applies:
+block size and CSR order may affect low-order bits when mixed-sign corrections
+cancel severely. Bitwise invariance across block sizes is not required.
+
 For an arbitrary scalar center `c_j`, the baseline squared deviation over all
 rows is
 

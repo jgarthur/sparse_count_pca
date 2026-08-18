@@ -1,4 +1,4 @@
-"""Linear operator and stable statistics for implicit transformed matrices."""
+"""Linear operator and bounded statistics for implicit transformed matrices."""
 
 from __future__ import annotations
 
@@ -44,28 +44,6 @@ def _squared_norm_is_numerically_zero(
     eps = np.finfo(_normalize_operator_dtype(dtype)).eps
     tolerance = eps * eps * math.prod(shape) * scale
     return value <= tolerance
-
-
-def _compensated_add(
-    total: NDArray[np.float64],
-    correction: NDArray[np.float64],
-    addend: NDArray[np.float64],
-) -> None:
-    """Accumulate an array with vectorized Neumaier compensation.
-
-    Args:
-        total: Running elementwise sums, updated in place.
-        correction: Running elementwise compensation terms, updated in place.
-        addend: Values to add, with the same shape as ``total`` and
-            ``correction``; this array is not modified.
-    """
-    updated = total + addend
-    correction += np.where(
-        np.abs(total) >= np.abs(addend),
-        (total - updated) + addend,
-        (addend - updated) + total,
-    )
-    total[...] = updated
 
 
 class SparseLowRankLinearOperator(LinearOperator):
@@ -119,8 +97,6 @@ class SparseLowRankLinearOperator(LinearOperator):
 
         self._left_float64 = self.left.astype(np.float64, copy=False)
         self._right_float64 = self.right.astype(np.float64, copy=False)
-        # The representation rank is tiny. Accurate scalar sums are preferable
-        # to a faster reduction whose cancellation depends on array order.
         self._left_sum_float64 = np.array(
             [math.fsum(column) for column in self._left_float64.T]
         )
@@ -132,7 +108,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         dense_columns = column_counts > self.shape[0] // 2
 
         if self.center:
-            self._mean_float64 = self._stable_column_means(dense_columns)
+            self._mean_float64 = self._column_means(dense_columns)
             self.mean = self._mean_float64.astype(operator_dtype)
         else:
             self.mean = None
@@ -165,7 +141,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         """Group one borrowed CSR row block by column.
 
         A matrix that fits in one block takes the direct whole-matrix shortcut,
-        so its mean-pass scratch floor is one full CSC copy.
+        so dense-column handling may allocate one full CSC copy.
         """
         if row_start == 0 and row_stop == self.shape[0]:
             return self.S.tocsc()
@@ -189,30 +165,31 @@ class SparseLowRankLinearOperator(LinearOperator):
         value_stop: int,
         dense_columns: NDArray[np.bool_],
     ) -> NDArray[np.float64]:
-        """Return one row block's stable per-column mean numerators."""
-        block = self._csc_row_block(
-            row_start,
-            row_stop,
-            value_start,
-            value_stop,
+        """Return one row block's per-column mean numerators."""
+        columns = self.S.indices[value_start:value_stop]
+        partial = np.bincount(
+            columns,
+            weights=self.S.data[value_start:value_stop].astype(
+                np.float64,
+                copy=False,
+            ),
+            minlength=self.shape[1],
         )
-        partial = np.zeros(self.shape[1], dtype=np.float64)
-        left = self.left[row_start:row_stop]
-        active_columns = np.flatnonzero(
-            (block.indptr[1:] != block.indptr[:-1]) | dense_columns
-        )
-        # Sparse corrections can have either sign; vectorized reductions use
-        # order-dependent naive addition instead of an accurate column sum.
-        for column in active_columns:
-            begin, end = block.indptr[column : column + 2]
-            rows = block.indices[begin:end]
-            stored = block.data[begin:end]
-            if dense_columns[column]:
+        dense_column_indices = np.flatnonzero(dense_columns)
+        if dense_column_indices.size:
+            block = self._csc_row_block(
+                row_start,
+                row_stop,
+                value_start,
+                value_stop,
+            )
+            left = self.left[row_start:row_stop]
+            for column in dense_column_indices:
+                begin, end = block.indptr[column : column + 2]
+                rows = block.indices[begin:end]
                 values = left @ self.right[column]
-                values[rows] += stored
+                values[rows] += block.data[begin:end]
                 partial[column] = math.fsum(values.astype(np.float64, copy=False))
-            elif begin != end:
-                partial[column] = math.fsum(stored.astype(np.float64, copy=False))
         return partial
 
     def _dense_block_squared_sums(
@@ -251,14 +228,13 @@ class SparseLowRankLinearOperator(LinearOperator):
                 )
         return partial
 
-    def _stable_column_means(
+    def _column_means(
         self,
         dense_columns: NDArray[np.bool_],
     ) -> NDArray[np.float64]:
-        """Calculate stable means in bounded row-major passes."""
+        """Calculate column means in bounded row-major passes."""
         n_obs, n_vars = self.shape
         total = np.zeros(n_vars, dtype=np.float64)
-        correction = np.zeros(n_vars, dtype=np.float64)
 
         for (
             row_start,
@@ -273,18 +249,11 @@ class SparseLowRankLinearOperator(LinearOperator):
                 value_stop,
                 dense_columns,
             )
-            _compensated_add(total, correction, partial)
+            total += partial
 
-        accumulated = total + correction
-        means = np.empty(n_vars, dtype=np.float64)
-        for column in range(n_vars):
-            if dense_columns[column]:
-                means[column] = accumulated[column] / n_obs
-            else:
-                baseline_sum = float(
-                    self._left_sum_float64 @ self._right_float64[column]
-                )
-                means[column] = math.fsum((baseline_sum, accumulated[column])) / n_obs
+        baseline_sums = self._right_float64 @ self._left_sum_float64
+        means = (baseline_sums + total) / n_obs
+        means[dense_columns] = total[dense_columns] / n_obs
         return means
 
     def _squared_norms_about(
@@ -298,9 +267,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         cast = [np.asarray(center, dtype=self.dtype) for center in centers]
         shape = (len(cast), n_vars)
         removed_total = np.zeros(shape, dtype=np.float64)
-        removed_correction = np.zeros(shape, dtype=np.float64)
         added_total = np.zeros(shape, dtype=np.float64)
-        added_correction = np.zeros(shape, dtype=np.float64)
         dense_column_indices = np.flatnonzero(dense_columns)
 
         for (
@@ -377,19 +344,13 @@ class SparseLowRankLinearOperator(LinearOperator):
                     cast,
                     dense_column_indices,
                 )
-            _compensated_add(
-                removed_total,
-                removed_correction,
-                removed_partial,
-            )
-            _compensated_add(added_total, added_correction, added_partial)
+            removed_total += removed_partial
+            added_total += added_partial
 
-        removed = removed_total + removed_correction
-        added = added_total + added_correction
         column_norms = np.empty(shape, dtype=np.float64)
         for column in range(n_vars):
             if dense_columns[column]:
-                column_norms[:, column] = added[:, column]
+                column_norms[:, column] = added_total[:, column]
                 continue
 
             v = self._right_float64[column]
@@ -401,8 +362,8 @@ class SparseLowRankLinearOperator(LinearOperator):
                 column_squared = math.fsum(
                     (
                         baseline_total,
-                        -removed[index, column],
-                        added[index, column],
+                        -removed_total[index, column],
+                        added_total[index, column],
                     )
                 )
                 rounding_bound = (

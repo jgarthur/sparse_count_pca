@@ -230,18 +230,19 @@ A = S + U @ V.T - 1 @ mean.T
 when PCA column centering is enabled.
 
 The multiplication paths are straightforward; the numerically delicate part
-is stable means and Frobenius norms. Sparse corrections and low-rank baselines
-can be individually large and nearly cancel. The implementation therefore
-computes actual represented values on stored support and treats sparse and
-nearly dense columns differently instead of subtracting large component norms.
-The precise mean and squared-norm contracts are specified in
+is calculating means and Frobenius norms. Sparse corrections and low-rank
+baselines can be individually large and nearly cancel. The implementation
+therefore computes actual represented values on stored support and treats
+sparse and nearly dense columns differently instead of subtracting large
+component norms. The precise mean and squared-norm contracts are specified in
 [Explained variance and total variance](specification.md#explained-variance-and-total-variance).
 
 The support terms are accumulated from bounded blocks of complete CSR rows.
-Mixed-sign mean corrections use a temporary block-local CSC for accurate
-per-column sums; nonnegative squared terms reduce directly from the CSR support.
-The source is therefore traversed only once per statistical sweep, and
-compensated per-column accumulators merge block-local results. Centered
+Sparse-column corrections and nonnegative squared terms use vectorized
+`float64` reductions over each block. Their low-order bits may depend on CSR
+and block order under severe mixed-sign cancellation. Columns with more than
+half their entries stored instead use direct represented values grouped by a
+block-local CSC. The source is traversed once per statistical sweep. Centered
 operators require one sweep for means followed by one sweep that computes both
 uncentered and centered norms; expanding centered squares from raw moments
 would save a pass but reintroduce cancellation.
