@@ -5,13 +5,14 @@ import pytest
 from scipy import sparse
 
 from sparse_count_pca import (
-    TransformedMatrix,
+    Log1pNormalized,
     log1p_norm_pca,
     log1p_norm_pca_matrix,
     proportion_shifted_clr_pca,
     proportion_shifted_clr_pca_matrix,
     shifted_clr_pca,
     shifted_clr_pca_matrix,
+    transform,
 )
 from sparse_count_pca._log_transforms import (
     build_dirichlet_clr_representation,
@@ -289,68 +290,54 @@ def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
 )
 def test_log1p_norm_records_target_recipe(counts, target_sum, source):
     """Target recipes retain their requested and resolved normalization values."""
-    result = log1p_norm_pca_matrix(counts, n_comps=2, target_sum=target_sum)
+    transformed = transform(counts, Log1pNormalized(target_sum=target_sum))
     expected_resolved = (
         np.median(np.asarray(counts.sum(axis=1)).ravel())
         if target_sum is None
         else target_sum
     )
 
-    assert result.params["target_sum"] == target_sum
-    assert result.params["resolved_target_sum"] == expected_resolved
-    assert result.params["size_factor_source"] == source
+    assert transformed.params["target_sum"] == target_sum
+    assert transformed.params["resolved_target_sum"] == expected_resolved
+    assert transformed.params["size_factor_source"] == source
 
 
 def test_log1p_norm_uses_supplied_size_factors_without_rescaling(counts):
     """Supplied factors retain their scale in transformed values and metadata."""
     size_factors = np.array([2.0, 2.5, 3.0, 3.5, 4.0, 5.0])
-    transformed = log1p_norm_pca_matrix(
-        counts,
-        n_comps=2,
-        size_factors=size_factors,
-        return_operator=True,
-    )
+    transformed = transform(counts, Log1pNormalized(size_factors=size_factors))
     expected = _dense_log1p_norm(counts, size_factors)
-    expected -= expected.mean(axis=0)
 
     np.testing.assert_allclose(
-        transformed.operator @ np.eye(counts.shape[1]),
+        transformed.materialize(),
         expected,
         rtol=0.0,
-        atol=1e-12,
+        atol=1e-15,
     )
     assert transformed.params["size_factor_source"] == "supplied"
     np.testing.assert_array_equal(transformed.params["size_factors"], size_factors)
 
 
-def test_log1p_norm_anndata_resolves_size_factors_from_obs(adata):
-    """AnnData log1p normalization aligns named size factors from observations."""
+def test_log1p_norm_transform_resolves_size_factors_from_obs(adata):
+    """AnnData transforms resolve numeric object factors from observations."""
     size_factors = np.array([0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
     adata.obs["scran_size_factor"] = size_factors.astype(object)
     assert adata.obs["scran_size_factor"].dtype == object
 
-    result = log1p_norm_pca(
+    transformed = transform(
         adata,
-        n_comps=2,
-        size_factors="scran_size_factor",
-        key_added="log1p_norm",
-        copy=True,
+        Log1pNormalized(size_factors="scran_size_factor"),
     )
-    expected = log1p_norm_pca_matrix(
-        adata.X,
-        n_comps=2,
-        size_factors=size_factors,
-    )
+    expected = _dense_log1p_norm(adata.X, size_factors)
 
     np.testing.assert_allclose(
-        result.uns["log1p_norm"]["singular_values"],
-        expected.singular_values,
-        rtol=1e-10,
-        atol=0.0,
+        transformed.materialize(),
+        expected,
+        rtol=0.0,
+        atol=1e-15,
     )
-    params = result.uns["log1p_norm"]["params"]
-    assert params["size_factors"] == "scran_size_factor"
-    assert params["size_factor_source"] == "supplied"
+    assert transformed.params["size_factors"] == "scran_size_factor"
+    assert transformed.params["size_factor_source"] == "supplied"
 
 
 def test_log1p_norm_explicit_mask_is_not_replaced_by_highly_variable(adata):
@@ -365,37 +352,16 @@ def test_log1p_norm_explicit_mask_is_not_replaced_by_highly_variable(adata):
         mask_var=mask,
         copy=True,
     )
-    expected = log1p_norm_pca_matrix(
-        adata.X,
-        n_comps=2,
-        target_sum=7.0,
-        return_operator=True,
-    )
-    expected_values = (expected.operator @ np.eye(adata.n_vars))[:, mask]
-
-    np.testing.assert_allclose(
-        result.uns["pca"]["singular_values"],
-        np.linalg.svd(expected_values, compute_uv=False)[:2],
-        rtol=1e-10,
-        atol=0.0,
-    )
-    assert result.uns["pca"]["params"]["pca_n_vars"] == int(mask.sum())
-
-
-def test_log1p_norm_anndata_wrapper_does_not_retain_metadata(adata, monkeypatch):
-    """One-step log1p PCA passes only counts and obs metadata to its transform."""
-    retained_metadata = []
-    original_pca = TransformedMatrix.pca
-
-    def recording_pca(self, *args, **kwargs):
-        retained_metadata.append((self._var, self.obs_names, self.var_names))
-        return original_pca(self, *args, **kwargs)
-
-    monkeypatch.setattr(TransformedMatrix, "pca", recording_pca)
-
-    log1p_norm_pca(adata, n_comps=2, copy=True)
-
-    assert retained_metadata == [(None, None, None)]
+    params = result.uns["pca"]["params"]
+    np.testing.assert_array_equal(params["mask_var"], mask)
+    assert params["use_highly_variable"] is False
+    assert params["mask_var_details"] == {
+        "kind": "array",
+        "key": None,
+        "n_vars_used": int(mask.sum()),
+    }
+    assert np.isfinite(result.varm["PCs"][mask]).all()
+    assert np.isnan(result.varm["PCs"][~mask]).all()
 
 
 @pytest.mark.parametrize("target_sum", [0.0, -1.0, np.inf, [1.0], "1"])
