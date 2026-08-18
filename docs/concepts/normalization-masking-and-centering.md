@@ -50,7 +50,7 @@ normalization state but calculates a distinct centered operator for each PCA
 selection.
 
 Residual clipping occurs at fit time, before this centering step, and a named
-`clip` threshold resolves against the observation count then. Neither the
+`clip` threshold resolves against the input observation count. Neither the
 threshold nor the clipped values depend on which variables a later mask
 selects.
 

@@ -13,9 +13,9 @@ value:
 | positive finite float | that number |
 | `None` | no clipping |
 
-Here \(n_\mathrm{obs}\) is the number of observations in the count matrix the
-transform is fitted on. It reflects any cell filtering you performed
-beforehand, but not gene masking or later PCA variable selection.
+Here \(n_\mathrm{obs}\) is the number of rows — cells — of the count matrix
+the transform is fitted on, taken as passed. Gene masking and later PCA
+variable selection do not change it.
 
 The two names come from the defaults of
 [SCTransform](https://satijalab.org/seurat/reference/sctransform) and

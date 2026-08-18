@@ -139,10 +139,9 @@ multiple copies of the full sparse support.
 clipping may add sparse entries where structural-zero residuals cross the
 lower threshold, so it has an explicit support-growth guard, reachable under
 the clipped symmetric default. `_clip.py` also resolves the named thresholds
-`"seurat"` and `"scanpy"` into numbers. `Residual._build` performs the
-resolution once the observation axis is final and before the representation is
-constructed, so a specification keeps the name while fitted objects record the
-resolved value.
+`"seurat"` and `"scanpy"` into numbers. `Residual._build` resolves a name
+against the input row count before constructing the representation, so a
+specification keeps the name while fitted objects record the resolved value.
 
 ### Log and CLR family
 

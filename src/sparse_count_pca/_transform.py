@@ -185,7 +185,6 @@ class Residual(Transform):
         dtype: DTypeLike,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
-        # The observation axis is final here; variable masking cannot change it.
         clip_threshold = resolve_clip(self.clip, counts.shape[0])
         n_vars = counts.shape[1]
         alpha_input = _resolve_vector_parameter(self.alpha, var=var, name="alpha")
