@@ -1665,37 +1665,84 @@ components = Vt
 
 ## Explained variance and total variance
 
-For:
+For a rank-`k` representation
 
 ```math
-R = S + uv^\top,
+R = S + UV^\top,
 ```
 
-calculate column means and squared norms from the actual represented values:
+let `v_j` be column `j` of `V.T`, let
+`b_j = Uv_j` be that column's low-rank baseline, and let `P_j` contain the row
+indices stored in column `j` of `S`. The represented values are
 
 ```math
 R_{ij} =
 \begin{cases}
-S_{ij} + u_i v_j & (i,j) \in \operatorname{supp}(S),\\
-u_i v_j & \text{otherwise}.
+b_{ij} + S_{ij} & i \in P_j,\\
+b_{ij} & i \notin P_j.
 \end{cases}
 ```
 
-Do not calculate large sparse and low-rank component norms and then subtract
-them. For sparse-support columns, accumulate the implicit baseline using
-stable moments of `u` and replace values on stored support. For columns with
-more than half their entries stored, evaluate the full column directly; this
-avoids severe subtraction for dense and nearly dense support while retaining
-`O(nnz + n_obs + n_vars)` complexity.
-
-The centered squared norm is accumulated directly about the stored operator
-mean:
+With `1` the length-`N` vector of ones, define
 
 ```math
-\|R_c\|_F^2 = \sum_{ij}(R_{ij}-\bar r_j)^2.
+\bar u = \frac{1}{N}U^\top \mathbf 1,
+\qquad
+U_c = U - \mathbf 1\bar u^\top,
+\qquad
+\Gamma_U = U_c^\top U_c.
 ```
 
-Statistics describe the post-cast `S`, `u`, `v`, and mean used by the operator
+For sparse-support columns, calculate the represented mean as
+
+```math
+\bar r_j
+=
+\bar u^\top v_j
++
+\frac{1}{N}\sum_{i \in P_j} S_{ij}.
+```
+
+For an arbitrary scalar center `c_j`, the baseline squared deviation over all
+rows is
+
+```math
+\sum_i (b_{ij} - c_j)^2
+=
+v_j^\top \Gamma_U v_j
++
+N(\bar u^\top v_j - c_j)^2.
+```
+
+Replace that baseline on stored support to obtain the represented column norm:
+
+```math
+q_j(c_j)
+=
+\sum_i (b_{ij} - c_j)^2
+-
+\sum_{i \in P_j}(b_{ij} - c_j)^2
++
+\sum_{i \in P_j}(b_{ij} + S_{ij} - c_j)^2.
+```
+
+The required Frobenius norms are therefore
+
+```math
+\|R - \mathbf 1 c^\top\|_F^2 = \sum_j q_j(c_j),
+```
+
+using `c = 0` for `frobenius_squared_uncentered()` and the stored operator mean
+`c = bar_r` for `frobenius_squared_centered()`.
+
+Do not calculate large sparse and low-rank component norms and then subtract
+them. For columns with more than half their entries stored, calculate means and
+squared deviations from the full represented column directly; this avoids
+severe subtraction for dense and nearly dense support. For the remaining
+columns, use the support-replacement identities above and traverse sparse
+support in `O(nnz)` for fixed representation rank.
+
+Statistics describe the post-cast `S`, `U`, `V`, and mean used by the operator
 passed to ARPACK. Before invoking ARPACK, treat the centered matrix as
 numerically zero when:
 

@@ -234,27 +234,8 @@ is stable means and Frobenius norms. Sparse corrections and low-rank baselines
 can be individually large and nearly cancel. The implementation therefore
 computes actual represented values on stored support and treats sparse and
 nearly dense columns differently instead of subtracting large component norms.
-
-For a low-rank baseline column `b = U @ v` and scalar center `c`, its full
-squared deviation is available without traversing sparse support. With `1`
-the `n_obs`-vector of ones, define
-
-```text
-u_bar = U.T @ 1 / n_obs
-U_centered = U - 1 @ u_bar.T
-G = U_centered.T @ U_centered
-```
-
-Then
-
-```text
-sum((b - c) ** 2) = v.T @ G @ v + n_obs * (mean(b) - c) ** 2
-```
-
-The represented column norm starts from that baseline total, subtracts
-baseline squares on stored support, and adds actual represented squares there.
-Nearly dense columns instead sum their actual values directly, avoiding an
-ill-conditioned subtraction.
+The precise mean and squared-norm contracts are specified in
+[Explained variance and total variance](specification.md#explained-variance-and-total-variance).
 
 The support terms are accumulated from bounded blocks of complete CSR rows.
 Mixed-sign mean corrections use a temporary block-local CSC for accurate
