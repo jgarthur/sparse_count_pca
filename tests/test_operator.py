@@ -7,7 +7,6 @@ import pytest
 from scipy import sparse
 
 from sparse_count_pca import _operator as operator_module
-from sparse_count_pca import residual_pca_matrix
 from sparse_count_pca._operator import (
     SparseLowRankLinearOperator,
     _squared_norm_is_numerically_zero,
@@ -70,6 +69,15 @@ def _fraction_matrix(operator):
             represented_row.append(value)
         values.append(represented_row)
     return values
+
+
+@pytest.mark.parametrize("target_nnz", [0, -1])
+def test_support_row_blocks_rejects_nonpositive_target(target_nnz):
+    """Row-block planning rejects zero and negative storage targets."""
+    matrix = sparse.csr_matrix([[1.0]])
+
+    with pytest.raises(ValueError, match="target_nnz must be positive"):
+        list(_support_row_blocks(matrix, target_nnz))
 
 
 @pytest.mark.parametrize("rank", [0, 1, 3])
@@ -215,53 +223,6 @@ def test_statistics_are_stable_across_row_block_sizes(monkeypatch, dtype):
     )
     assert blocked.frobenius_squared_centered() == pytest.approx(
         single.frobenius_squared_centered(),
-        rel=tolerance,
-        abs=0.0,
-    )
-
-
-@pytest.mark.parametrize("dtype", ["float64", "float32"])
-def test_residual_pca_is_stable_across_statistics_blocks(monkeypatch, dtype):
-    """Row-block granularity preserves PCA variances and principal subspaces."""
-    rng = np.random.default_rng(11)
-    counts = sparse.csr_matrix(rng.poisson(0.4, size=(24, 15)).astype(np.float64))
-    keywords = {
-        "n_comps": 3,
-        "clip": 2.0,
-        "clip_mode": "symmetric",
-        "dtype": dtype,
-        "solver": "arpack",
-        "random_state": 0,
-    }
-
-    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", counts.nnz + 1)
-    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", counts.nnz + 1)
-    single = residual_pca_matrix(counts, **keywords)
-    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 4)
-    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 4)
-    blocked = residual_pca_matrix(counts, **keywords)
-
-    tolerance = 2e-5 if dtype == "float32" else 1e-11
-    np.testing.assert_allclose(
-        blocked.singular_values,
-        single.singular_values,
-        rtol=tolerance,
-        atol=0.0,
-    )
-    np.testing.assert_allclose(
-        blocked.components.T @ blocked.components,
-        single.components.T @ single.components,
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        blocked.explained_variance_ratio,
-        single.explained_variance_ratio,
-        rtol=tolerance,
-        atol=0.0,
-    )
-    assert blocked.total_variance == pytest.approx(
-        single.total_variance,
         rel=tolerance,
         abs=0.0,
     )

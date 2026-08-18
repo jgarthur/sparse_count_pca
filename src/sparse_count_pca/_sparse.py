@@ -11,7 +11,11 @@ def _support_row_blocks(
     matrix: sparse.csr_matrix,
     target_nnz: int,
 ) -> Iterator[tuple[int, int, int, int]]:
-    """Yield whole-row blocks containing about ``target_nnz`` stored values."""
+    """Yield whole-row blocks containing about ``target_nnz`` stored values.
+
+    Raises:
+        ValueError: If ``target_nnz`` is not positive.
+    """
     if target_nnz <= 0:
         raise ValueError("target_nnz must be positive")
 

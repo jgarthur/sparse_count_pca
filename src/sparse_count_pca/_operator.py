@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -17,6 +17,8 @@ from ._sparse import _support_row_blocks
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
 _STATS_MEAN_BLOCK_NNZ = 1_000_000
+# The norm sweep holds several support-sized arrays, including nnz-by-rank
+# indexed factor values, while the mean sweep holds only one block-local CSC.
 _STATS_NORM_BLOCK_NNZ = 100_000
 
 
@@ -146,16 +148,6 @@ class SparseLowRankLinearOperator(LinearOperator):
         self._frobenius_squared_uncentered_float64 = uncentered
         self._frobenius_squared_centered_float64 = centered
 
-    def _statistics_row_blocks(
-        self,
-        target_nnz: int,
-    ) -> Iterator[tuple[int, int, int, int]]:
-        """Yield bounded ranges of consecutive complete CSR rows."""
-        yield from _support_row_blocks(
-            self.S,
-            target_nnz,
-        )
-
     def _csc_row_block(
         self,
         row_start: int,
@@ -163,7 +155,11 @@ class SparseLowRankLinearOperator(LinearOperator):
         value_start: int,
         value_stop: int,
     ) -> sparse.csc_matrix:
-        """Group one borrowed CSR row block by column."""
+        """Group one borrowed CSR row block by column.
+
+        A matrix that fits in one block takes the direct whole-matrix shortcut,
+        so its mean-pass scratch floor is one full CSC copy.
+        """
         if row_start == 0 and row_stop == self.shape[0]:
             return self.S.tocsc()
         indptr = self.S.indptr[row_start : row_stop + 1] - value_start
@@ -198,6 +194,8 @@ class SparseLowRankLinearOperator(LinearOperator):
         active_columns = np.flatnonzero(
             (block.indptr[1:] != block.indptr[:-1]) | dense_columns
         )
+        # Sparse corrections can have either sign; vectorized reductions use
+        # order-dependent naive addition instead of an accurate column sum.
         for column in active_columns:
             begin, end = block.indptr[column : column + 2]
             rows = block.indices[begin:end]
@@ -217,7 +215,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         value_start: int,
         value_stop: int,
         centers: Sequence[FloatArray],
-        dense_columns: NDArray[np.intp],
+        dense_column_indices: NDArray[np.intp],
     ) -> NDArray[np.float64]:
         """Return direct squared sums for dense columns in one row block."""
         block = self._csc_row_block(
@@ -226,9 +224,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             value_start,
             value_stop,
         )
-        partial = np.empty((len(centers), dense_columns.size), dtype=np.float64)
+        partial = np.empty(
+            (len(centers), dense_column_indices.size),
+            dtype=np.float64,
+        )
         left = self.left[row_start:row_stop]
-        for output_column, column in enumerate(dense_columns):
+        for output_column, column in enumerate(dense_column_indices):
             begin, end = block.indptr[column : column + 2]
             rows = block.indices[begin:end]
             values = left @ self.right[column]
@@ -257,7 +258,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             row_stop,
             value_start,
             value_stop,
-        ) in self._statistics_row_blocks(_STATS_MEAN_BLOCK_NNZ):
+        ) in _support_row_blocks(self.S, _STATS_MEAN_BLOCK_NNZ):
             partial = self._mean_block_sums(
                 row_start,
                 row_stop,
@@ -300,7 +301,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             row_stop,
             value_start,
             value_stop,
-        ) in self._statistics_row_blocks(_STATS_NORM_BLOCK_NNZ):
+        ) in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
             removed_partial = np.zeros(shape, dtype=np.float64)
             added_partial = np.zeros(shape, dtype=np.float64)
             row_counts = np.diff(self.S.indptr[row_start : row_stop + 1])
