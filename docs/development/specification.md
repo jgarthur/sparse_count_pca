@@ -1683,33 +1683,54 @@ b_{ij} & i \notin P_j.
 \end{cases}
 ```
 
-With `1` the length-`N` vector of ones, define
+Both required Frobenius norms measure squared deviations of the columns of `R`
+from a per-column scalar center `c_j`: `c = 0` for the uncentered norm, and
+`c` equal to the column means of `R` for the centered norm. Compute the column
+means first.
+
+With `1` the length-`N` vector of ones, let
 
 ```math
-\bar u = \frac{1}{N}U^\top \mathbf 1,
-\qquad
-U_c = U - \mathbf 1\bar u^\top,
-\qquad
-\Gamma_U = U_c^\top U_c.
+\bar u = \frac{1}{N}U^\top \mathbf 1
 ```
 
-For sparse-support columns, calculate the represented mean as
+hold the column means of `U`. Averaging column `j` of `R` averages the
+baseline `b_j = Uv_j` and adds the stored corrections, giving the represented
+mean
 
 ```math
 \bar r_j
+=
+\frac{1}{N}\mathbf 1^\top U v_j
++
+\frac{1}{N}\sum_{i \in P_j} S_{ij}
 =
 \bar u^\top v_j
 +
 \frac{1}{N}\sum_{i \in P_j} S_{ij}.
 ```
 
-Accumulate sparse support sums with vectorized `float64` reductions over
-bounded blocks of complete CSR rows. Ordinary floating-point summation applies:
-block size and CSR order may affect low-order bits when mixed-sign corrections
-cancel severely. Bitwise invariance across block sizes is not required.
+For the squared deviations, center the low-rank factor and form its Gram
+matrix:
 
-For an arbitrary scalar center `c_j`, the baseline squared deviation over all
-rows is
+```math
+U_c = U - \mathbf 1\bar u^\top,
+\qquad
+\Gamma_U = U_c^\top U_c.
+```
+
+For any scalar center `c_j`, the baseline decomposes as
+
+```math
+b_j - c_j\mathbf 1
+=
+U_c v_j
++
+(\bar u^\top v_j - c_j)\mathbf 1,
+```
+
+and `1^T U_c = 0` eliminates the cross term, so the baseline squared deviation
+over all rows is
 
 ```math
 \sum_i (b_{ij} - c_j)^2
@@ -1731,7 +1752,7 @@ q_j(c_j)
 \sum_{i \in P_j}(b_{ij} + S_{ij} - c_j)^2.
 ```
 
-The required Frobenius norms are therefore
+Summing over columns gives both norms:
 
 ```math
 \|R - \mathbf 1 c^\top\|_F^2 = \sum_j q_j(c_j),
@@ -1746,6 +1767,11 @@ squared deviations from the full represented column directly; this avoids
 severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
 support in `O(nnz)` for fixed representation rank.
+
+Accumulate sparse support sums with vectorized `float64` reductions over
+bounded blocks of complete CSR rows. Ordinary floating-point summation applies:
+block size and CSR order may affect low-order bits when mixed-sign corrections
+cancel severely. Bitwise invariance across block sizes is not required.
 
 Statistics describe the post-cast `S`, `U`, `V`, and mean used by the operator
 passed to ARPACK. Before invoking ARPACK, treat the centered matrix as
