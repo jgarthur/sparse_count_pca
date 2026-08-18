@@ -547,7 +547,7 @@ elif clip is not None and (not np.isfinite(clip) or clip <= 0):
     raise ValueError("clip must be finite and positive or None")
 ```
 
-Names are exact and case-sensitive; no other spelling resolves.
+Names are matched exactly and are case-sensitive.
 
 #### Named-threshold resolution
 
@@ -557,19 +557,18 @@ matrix the transform is fitted on, taken after the observation axis is final
 and before the residual representation is constructed. It is therefore
 sensitive to caller-side cell filtering and insensitive to `mask_var`, PCA
 variable selection, and empty-variable handling. A named threshold that
-resolves to a nonpositive value — only possible with no observations — raises
+resolves to a nonpositive value — possible only with no observations — raises
 `ValueError` rather than clipping at zero.
 
-Resolution produces a number and nothing else. It never changes `clip_mode`,
-never changes `clip_max_nnz_ratio`, and is not specific to a model or residual
-family: `clip="seurat"` means the same threshold for Poisson deviance
-residuals as for scaled-NB Pearson residuals.
+Resolution affects only the threshold. It does not change `clip_mode` or
+`clip_max_nnz_ratio`, and it is not specific to a model or residual family:
+`clip="seurat"` means the same threshold for Poisson deviance residuals as for
+scaled-NB Pearson residuals.
 
-A `Residual` specification holds the request symbolically and resolves it at
-each fit, so one reused specification can produce two different thresholds on
-two datasets. Everything downstream of a single fit — the `TransformedMatrix`,
-the `PCAResult`, a retained operator — carries that fit's frozen number.
-Both values are recorded: `params["clip"]` holds the request as passed and
+A `Residual` specification stores `clip` as passed and resolves it at each
+fit, so one reused specification can produce different thresholds on different
+datasets. The `TransformedMatrix`, the `PCAResult`, and any retained operator
+record both values: `params["clip"]` holds the request as passed and
 `params["clip_threshold"]` holds the resolved float, or `None` when clipping is
 disabled.
 
@@ -606,8 +605,7 @@ clip_max_nnz_ratio=None # allow unlimited exact support growth
 A finite value must be at least `1.0`. The guard is inactive for upper
 clipping because upper clipping does not alter zero-count residuals for any
 supported model. It is reachable under the defaults, which clip symmetrically;
-the guard depends on `clip_mode`, never on whether the threshold was named or
-given as a number.
+the guard depends on `clip_mode`, not on how the threshold was specified.
 
 Validation:
 
@@ -1598,9 +1596,9 @@ clip_mode="symmetric"
 clip_max_nnz_ratio=2.0
 ```
 
-The default therefore clips symmetrically at `sqrt(n_obs / 30)` for every
-residual family, and the support-growth guard above is reachable without the
-caller mentioning clipping. `clip=None` recovers unclipped residuals.
+The default clips symmetrically at `sqrt(n_obs / 30)` for every residual
+family, so the support-growth guard above is reachable under default
+arguments. `clip=None` recovers unclipped residuals.
 
 ## Solver
 
@@ -1893,10 +1891,10 @@ clip_max_nnz_ratio=None allows exact support growth
 clip_max_nnz_ratio=1.0 rejects any support growth
 finite guard includes below the threshold and raises at the threshold
 each named threshold equals its numeric equivalent in both clipping modes
-each named threshold resolves against the fitted observation count, so one
-  reused specification gives two thresholds on two datasets
-a named threshold reaches the support-growth guard like a number
-the clipped default applies to Pearson and deviance alike
+named thresholds resolve against the fitted observation count, including for
+  a specification reused across datasets
+a named threshold can trigger the support-growth guard
+the clipped default applies to Pearson and deviance residuals
 metadata records the request and the resolved threshold for names, numbers,
   and None
 matrix, AnnData, one-step, and two-step entry points resolve names alike

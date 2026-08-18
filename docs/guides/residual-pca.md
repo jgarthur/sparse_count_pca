@@ -114,8 +114,8 @@ scp.residual_pca(adata, layer="counts", clip=10.0)      # explicit number
 scp.residual_pca(adata, layer="counts", clip=None)      # unclipped
 ```
 
-A name selects the threshold only. `clip_mode` is independent of it, so
-upper-only clipping at the Seurat threshold is spelled out in full:
+A name selects the threshold only; `clip_mode` is independent of it. Upper-only
+clipping at the Seurat threshold combines the two:
 
 ```python
 scp.residual_pca(
@@ -128,8 +128,8 @@ scp.residual_pca(
 
 Clipping occurs on uncentered residuals before PCA column centering. Symmetric
 clipping can change zero-count entries and expand sparse support; upper-only
-clipping cannot. Because the defaults are symmetric, a plain call can raise on
-the `clip_max_nnz_ratio` guard. See
+clipping cannot. Because the default is symmetric, a call with default
+arguments can raise on the `clip_max_nnz_ratio` guard. See
 [clipping and precision](../concepts/clipping-and-precision.md).
 
 ## Matrix workflow

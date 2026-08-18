@@ -132,12 +132,12 @@ to expose matrix-vector and matrix-matrix products to
 - **Residual clipping is on by default**, symmetrically at the named
   `clip="seurat"` threshold `sqrt(n_obs / 30)`. `clip="scanpy"` names
   `sqrt(n_obs)`, a float sets the threshold directly, and `clip=None` disables
-  clipping. A name selects the threshold only, never `clip_mode`.
+  clipping. A name selects the threshold only, not `clip_mode`.
 - **Symmetric residual clipping can expand sparse support**, because it alters
   negative residuals at zero-count entries that the low-rank baseline would
-  otherwise carry. Upper-only clipping cannot, and the default being symmetric
-  means the `clip_max_nnz_ratio` guard can fire on a call that never mentions
-  clipping. See [clipping and precision][clipping-and-precision].
+  otherwise carry. Upper-only clipping cannot. Because the default is
+  symmetric, the `clip_max_nnz_ratio` guard can fire under default arguments.
+  See [clipping and precision][clipping-and-precision].
 - **Precision is a computation choice.** Keep the recommended `float64`
   default for accuracy and parity testing. Explicit `float32` reduces memory
   but changes the representation passed to ARPACK.

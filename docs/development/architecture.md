@@ -137,12 +137,12 @@ multiple copies of the full sparse support.
 
 [`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the
-lower threshold, so it has an explicit support-growth guard, which the clipped
-symmetric default makes reachable. `_clip.py` also resolves the named
-thresholds `"seurat"` and `"scanpy"` into numbers. That resolution happens in
-`Residual._build`, once the observation axis is final and before the
-representation is constructed, so a specification stays symbolic while every
-fitted object downstream carries one frozen number.
+lower threshold, so it has an explicit support-growth guard, reachable under
+the clipped symmetric default. `_clip.py` also resolves the named thresholds
+`"seurat"` and `"scanpy"` into numbers. `Residual._build` performs the
+resolution once the observation axis is final and before the representation is
+constructed, so a specification keeps the name while fitted objects record the
+resolved value.
 
 ### Log and CLR family
 

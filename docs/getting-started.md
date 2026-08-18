@@ -53,10 +53,10 @@ print(adata.varm["PCs"].shape)    # (4, 2)
 The default call mutates `adata` and returns `None`. Pass `copy=True` to return
 a modified copy instead.
 
-Residuals are clipped by default, symmetrically at
-`clip="seurat"` — `sqrt(n_obs / 30)`, resolved from the count matrix being
-fitted. Pass `clip="scanpy"` for `sqrt(n_obs)`, a float for an explicit
-threshold, or `clip=None` for no clipping. See
+Residuals are clipped by default, symmetrically at the `clip="seurat"`
+threshold `sqrt(n_obs / 30)`, resolved from the count matrix being fitted.
+Pass `clip="scanpy"` for `sqrt(n_obs)`, a float for an explicit threshold, or
+`clip=None` for no clipping. See
 [clipping and precision](concepts/clipping-and-precision.md).
 
 ## Choosing `n_comps`

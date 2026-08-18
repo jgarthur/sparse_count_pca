@@ -20,10 +20,9 @@ beforehand, but not gene masking or later PCA variable selection.
 The two names come from the defaults of
 [SCTransform](https://satijalab.org/seurat/reference/sctransform) and
 [Scanpy](https://scanpy.readthedocs.io/en/stable/generated/scanpy.experimental.pp.normalize_pearson_residuals_pca.html)
-respectively. They are named numbers, nothing more: they apply to every
-residual family and model, not only to Pearson residuals, and the same name
-resolves to a different number for a different dataset. Pass `clip=None` to
-recover unclipped residuals.
+respectively. A name resolves only a numeric threshold: it applies to every
+residual family and model, not only to Pearson residuals, and it resolves to a
+different number for a different dataset.
 
 Two clipping modes are available:
 
@@ -31,20 +30,17 @@ Two clipping modes are available:
 - `clip_mode="upper"` clips to `(-inf, clip]`, leaving the negative residuals
   untouched.
 
-`clip` and `clip_mode` are independent. A name selects only the threshold and
-never a mode, so `clip="seurat", clip_mode="upper"` means upper-only clipping
-at \(\sqrt{n_\mathrm{obs}/30}\) — it does not adopt SCTransform's symmetric
-clipping. The reverse holds too: `clip_mode` means the same thing for named and
-numeric thresholds alike.
+`clip` and `clip_mode` are independent: a name selects a threshold, not a
+mode. `clip="seurat", clip_mode="upper"` means upper-only clipping at
+\(\sqrt{n_\mathrm{obs}/30}\), not SCTransform's symmetric clipping.
 
 ### Reusing a specification across datasets
 
-A named threshold is symbolic in a `Residual` specification and numeric in a
-fit. Reusing one `Residual(clip="seurat")` on two datasets resolves two
-different thresholds, one per dataset's \(n_\mathrm{obs}\). The fitted
-transform, the PCA result, and any retained operator carry the value frozen at
-their own fit, recorded as `params["clip_threshold"]` alongside the request in
-`params["clip"]`.
+A `Residual` specification stores `clip` as passed and resolves a name at each
+fit, so reusing one `Residual(clip="seurat")` on two datasets can produce two
+different thresholds. The fitted transform, the PCA result, and any retained
+operator record the resolved value as `params["clip_threshold"]` alongside the
+request in `params["clip"]`.
 
 ```python
 result = residual_pca_matrix(counts, n_comps=50)
@@ -67,20 +63,10 @@ correction would meet or exceed the limit. Use `1.0` to reject any support
 growth, `clip_mode="upper"` to avoid it by construction, or `None` to disable
 the guard and allow unlimited exact expansion.
 
-Because the defaults clip symmetrically, both the growth and the guard are
-reachable on a call that never mentions clipping. This is deliberate: extreme
-residuals need control, and the alternative — pairing the clipped default with
-`clip_mode="upper"` — would leave the large negative residuals of deeply
-sequenced cells untouched.
-
-How much support actually grows is a property of the dataset, not of the API.
-On a combined four-donor PBMC matrix of 22,111 cells filtered to at least 100
-detected genes per cell and three cells per gene, the Seurat threshold is about
-`27.148`, and symmetric Poisson Pearson clipping changes 157,739 positive and
-84 negative residuals while adding no structural-zero entries at all. A smaller
-or shallower dataset has a smaller threshold and can add many. Do not treat the
-absence of growth as an API guarantee: if a run raises on the guard, raise
-`clip_max_nnz_ratio`, switch to `clip_mode="upper"`, or set `clip=None`.
+Because the default clips symmetrically, both the growth and the guard are
+reachable under default arguments. How much support grows depends on the
+dataset. If a run raises on the guard, raise `clip_max_nnz_ratio`, switch to
+`clip_mode="upper"`, or set `clip=None`.
 
 ## Calculation dtype
 

@@ -89,10 +89,10 @@ The repository includes a pinned
 generated with `sctransform` 0.4.3 and smaller algebraic identity tests.
 
 The default `clip="seurat"` with `clip_mode="symmetric"` reproduces
-SCTransform's default clip range of \(\pm\sqrt{n_\mathrm{obs}/30}\). That is a
-match of one number, not of the method: the name carries no part of
-SCTransform's variance model, regularization, or variance floor, and it applies
-unchanged to deviance residuals and to the Poisson and binomial models.
+SCTransform's default clip range of \(\pm\sqrt{n_\mathrm{obs}/30}\). Only the
+threshold matches: the name carries none of SCTransform's variance model,
+regularization, or variance floor, and it applies unchanged to deviance
+residuals and to the Poisson and binomial models.
 
 ## Shifted CLR, PFlog, and cleartools
 
