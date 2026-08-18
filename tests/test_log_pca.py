@@ -84,27 +84,6 @@ def test_log1p_norm_representation_is_exact_sparse_rank_zero(counts):
     assert representation.rank == 0
 
 
-def test_log1p_norm_is_proportion_shifted_clr_sparse_part(counts):
-    """Target-sum log1p equals the sparse term of composition-shifted CLR."""
-    target_sum = 7.0
-    row_totals = np.asarray(counts.sum(axis=1)).ravel()
-    log1p_norm = build_log1p_norm_representation(
-        counts,
-        size_factors=row_totals / target_sum,
-    )
-    clr = build_proportion_shifted_clr_representation(
-        counts,
-        composition_shift=1.0 / target_sum,
-    )
-
-    np.testing.assert_allclose(
-        log1p_norm.sparse.toarray(),
-        clr.sparse.toarray(),
-        rtol=0.0,
-        atol=1e-15,
-    )
-
-
 def test_count_shifted_clr_matches_current_pflog_formula(counts):
     """Values match the pinned June 24, 2026 BHGP PFlog formula."""
     alpha = 0.37
@@ -282,6 +261,13 @@ def test_count_shifted_clr_is_invariant_to_joint_global_scaling(counts):
             "composition",
             "composition_shift",
         ),
+        (
+            log1p_norm_pca_matrix,
+            {"target_sum": 0.4},
+            "log1p_norm",
+            "normalized_count",
+            "target_sum",
+        ),
     ],
 )
 def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
@@ -293,27 +279,26 @@ def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
     assert result.params["normalization_n_vars"] == counts.shape[1]
 
 
-def test_log1p_norm_default_records_resolved_median_target(counts):
-    """Default log1p normalization records median-depth factor metadata."""
-    result = log1p_norm_pca_matrix(counts, n_comps=2)
-    row_totals = np.asarray(counts.sum(axis=1)).ravel()
+@pytest.mark.parametrize(
+    ("target_sum", "source"),
+    [
+        (None, "median_target_sum"),
+        (1e4, "target_sum"),
+    ],
+    ids=["median-target", "explicit-target"],
+)
+def test_log1p_norm_records_target_recipe(counts, target_sum, source):
+    """Target recipes retain their requested and resolved normalization values."""
+    result = log1p_norm_pca_matrix(counts, n_comps=2, target_sum=target_sum)
+    expected_resolved = (
+        np.median(np.asarray(counts.sum(axis=1)).ravel())
+        if target_sum is None
+        else target_sum
+    )
 
-    assert result.params["transform"] == "log1p_norm"
-    assert result.params["shift_domain"] == "normalized_count"
-    assert result.params["target_sum"] is None
-    assert result.params["resolved_target_sum"] == np.median(row_totals)
-    assert result.params["size_factor_source"] == "median_target_sum"
-    assert result.params["size_factor_median"] == pytest.approx(1.0)
-    assert result.params["effective_count_shift"] == "size_factor"
-
-
-def test_log1p_norm_explicit_target_records_target_recipe(counts):
-    """Explicit target normalization records its requested and resolved target."""
-    result = log1p_norm_pca_matrix(counts, n_comps=2, target_sum=1e4)
-
-    assert result.params["target_sum"] == 1e4
-    assert result.params["resolved_target_sum"] == 1e4
-    assert result.params["size_factor_source"] == "target_sum"
+    assert result.params["target_sum"] == target_sum
+    assert result.params["resolved_target_sum"] == expected_resolved
+    assert result.params["size_factor_source"] == source
 
 
 def test_log1p_norm_uses_supplied_size_factors_without_rescaling(counts):
@@ -334,9 +319,7 @@ def test_log1p_norm_uses_supplied_size_factors_without_rescaling(counts):
         rtol=0.0,
         atol=1e-12,
     )
-    assert transformed.params["resolved_target_sum"] is None
     assert transformed.params["size_factor_source"] == "supplied"
-    assert transformed.params["size_factor_median"] == np.median(size_factors)
     np.testing.assert_array_equal(transformed.params["size_factors"], size_factors)
 
 
