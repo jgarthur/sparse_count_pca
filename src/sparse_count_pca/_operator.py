@@ -256,94 +256,104 @@ class SparseLowRankLinearOperator(LinearOperator):
         means[dense_columns] = total[dense_columns] / n_obs
         return means
 
+    def _norm_block_squared_sums(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+        centers: Sequence[FloatArray],
+        dense_columns: NDArray[np.bool_],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Return one row block's removed and added support squared sums."""
+        n_vars = self.shape[1]
+        shape = (len(centers), n_vars)
+        removed_partial = np.zeros(shape, dtype=np.float64)
+        added_partial = np.zeros(shape, dtype=np.float64)
+        row_counts = np.diff(self.S.indptr[row_start : row_stop + 1])
+        rows = np.repeat(
+            np.arange(row_start, row_stop, dtype=np.intp),
+            row_counts,
+        )
+        columns = self.S.indices[value_start:value_stop]
+        stored = self.S.data[value_start:value_stop]
+
+        baseline_float64 = np.einsum(
+            "ij,ij->i",
+            self._left_float64[rows],
+            self._right_float64[columns],
+        )
+        if self.dtype == np.dtype(np.float64):
+            baseline = baseline_float64
+        else:
+            baseline = np.einsum(
+                "ij,ij->i",
+                self.left[rows],
+                self.right[columns],
+            )
+        actual = np.asarray(baseline + stored, dtype=self.dtype)
+
+        sparse_support = ~dense_columns[columns]
+        sparse_columns = columns[sparse_support]
+        sparse_baseline = baseline_float64[sparse_support]
+        sparse_actual = actual[sparse_support]
+
+        for index, center in enumerate(centers):
+            baseline_deviations = sparse_baseline - center[sparse_columns].astype(
+                np.float64,
+                copy=False,
+            )
+            actual_deviations = (sparse_actual - center[sparse_columns]).astype(
+                np.float64,
+                copy=False,
+            )
+            removed_partial[index] = np.bincount(
+                sparse_columns,
+                weights=baseline_deviations * baseline_deviations,
+                minlength=n_vars,
+            )
+            added_partial[index] = np.bincount(
+                sparse_columns,
+                weights=actual_deviations * actual_deviations,
+                minlength=n_vars,
+            )
+
+        dense_column_indices = np.flatnonzero(dense_columns)
+        if dense_column_indices.size:
+            added_partial[:, dense_column_indices] = self._dense_block_squared_sums(
+                row_start,
+                row_stop,
+                value_start,
+                value_stop,
+                centers,
+                dense_column_indices,
+            )
+        return removed_partial, added_partial
+
     def _squared_norms_about(
         self,
         centers: Sequence[FloatArray],
         column_counts: NDArray[np.integer[Any]],
         dense_columns: NDArray[np.bool_],
     ) -> list[float]:
-        """Return stable squared norms about each center in one CSR pass."""
+        """Return stable squared norms about each center in one CSR pass.
+
+        Implements the support-replacement identities from the specification
+        section "Explained variance and total variance"
+        (``docs/development/specification.md``).
+        """
         n_obs, n_vars = self.shape
         cast = [np.asarray(center, dtype=self.dtype) for center in centers]
         shape = (len(cast), n_vars)
         removed_total = np.zeros(shape, dtype=np.float64)
         added_total = np.zeros(shape, dtype=np.float64)
-        dense_column_indices = np.flatnonzero(dense_columns)
 
-        for (
-            row_start,
-            row_stop,
-            value_start,
-            value_stop,
-        ) in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
-            removed_partial = np.zeros(shape, dtype=np.float64)
-            added_partial = np.zeros(shape, dtype=np.float64)
-            row_counts = np.diff(self.S.indptr[row_start : row_stop + 1])
-            rows = np.repeat(
-                np.arange(row_start, row_stop, dtype=np.intp),
-                row_counts,
+        for block_bounds in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
+            removed_partial, added_partial = self._norm_block_squared_sums(
+                *block_bounds,
+                cast,
+                dense_columns,
             )
-            columns = self.S.indices[value_start:value_stop]
-            stored = self.S.data[value_start:value_stop]
-
-            if self.left.shape[1]:
-                baseline_float64 = np.einsum(
-                    "ij,ij->i",
-                    self._left_float64[rows],
-                    self._right_float64[columns],
-                )
-                if self.dtype == np.dtype(np.float64):
-                    baseline = baseline_float64
-                else:
-                    baseline = np.einsum(
-                        "ij,ij->i",
-                        self.left[rows],
-                        self.right[columns],
-                    )
-            else:
-                baseline_float64 = np.zeros(columns.size, dtype=np.float64)
-                baseline = np.zeros(columns.size, dtype=self.dtype)
-            actual = np.asarray(baseline + stored, dtype=self.dtype)
-
-            if dense_column_indices.size:
-                sparse_support = ~dense_columns[columns]
-                sparse_columns = columns[sparse_support]
-                sparse_baseline = baseline_float64[sparse_support]
-                sparse_actual = actual[sparse_support]
-            else:
-                sparse_columns = columns
-                sparse_baseline = baseline_float64
-                sparse_actual = actual
-
-            for index, center in enumerate(cast):
-                baseline_deviations = sparse_baseline - center[sparse_columns].astype(
-                    np.float64,
-                    copy=False,
-                )
-                actual_deviations = (sparse_actual - center[sparse_columns]).astype(
-                    np.float64,
-                    copy=False,
-                )
-                removed_partial[index] = np.bincount(
-                    sparse_columns,
-                    weights=baseline_deviations * baseline_deviations,
-                    minlength=n_vars,
-                )
-                added_partial[index] = np.bincount(
-                    sparse_columns,
-                    weights=actual_deviations * actual_deviations,
-                    minlength=n_vars,
-                )
-
-            if dense_column_indices.size:
-                added_partial[:, dense_column_indices] = self._dense_block_squared_sums(
-                    row_start,
-                    row_stop,
-                    value_start,
-                    value_stop,
-                    cast,
-                    dense_column_indices,
-                )
             removed_total += removed_partial
             added_total += added_partial
 
