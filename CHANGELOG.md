@@ -21,6 +21,10 @@ All notable user-facing changes are recorded here.
 - For large sparse inputs, compute operator means and Frobenius norms from
   bounded CSR row blocks instead of a full CSC copy, reducing PCA peak memory
   while keeping results within floating-point roundoff.
+- Require the sparse part of an operator's representation to be canonical CSR.
+  Public entry points already canonicalize their counts; calling an internal
+  representation builder with unsorted or duplicated entries now fails loudly
+  instead of returning wrong statistics.
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially
   reducing construction peak RSS when clipping is enabled.

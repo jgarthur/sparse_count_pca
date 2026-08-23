@@ -217,12 +217,12 @@ def test_log_pca_mask_is_applied_after_full_transform(
 def test_proportion_shifted_clr_is_row_scale_invariant(counts):
     """Composition-scale shifted CLR is invariant to row-wise count scaling."""
     scales = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
-    scaled = sparse.diags(scales) @ counts
+    scaled = (sparse.diags(scales) @ counts).tocsr().sorted_indices()
     original = build_proportion_shifted_clr_representation(
         counts, composition_shift=0.3
     )
     rescaled = build_proportion_shifted_clr_representation(
-        scaled.tocsr(), composition_shift=0.3
+        scaled, composition_shift=0.3
     )
     np.testing.assert_allclose(
         _materialize(original),

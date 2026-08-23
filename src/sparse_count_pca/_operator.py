@@ -59,7 +59,9 @@ class SparseLowRankLinearOperator(LinearOperator):
     """Represent a sparse-plus-low-rank matrix with optional column centering.
 
     The represented matrix is ``S + U V.T - 1 mean.T`` when centered and
-    ``S + U V.T`` otherwise.
+    ``S + U V.T`` otherwise. The sparse part must be canonical CSR: statistics
+    subtract each stored entry's low-rank baseline once, so duplicate entries
+    at one position would be counted inconsistently.
 
     Args:
         representation: Sparse-plus-low-rank representation.
@@ -99,6 +101,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         self.S = representation.sparse.astype(operator_dtype, copy=copy).tocsr(
             copy=False
         )
+        assert self.S.has_canonical_format, "sparse part must be canonical CSR"
         self.left = representation.left.astype(operator_dtype, copy=copy)
         self.right = representation.right.astype(operator_dtype, copy=copy)
         self.center = bool(center)

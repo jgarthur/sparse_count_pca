@@ -119,6 +119,27 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
     )
 
 
+def test_duplicate_sparse_entries_are_rejected():
+    """A non-canonical sparse part with duplicate entries fails the guard."""
+    duplicated = sparse.csr_matrix(
+        (
+            np.array([1.0, 2.0]),
+            np.array([1, 1], dtype=np.int32),
+            np.array([0, 2, 2], dtype=np.int32),
+        ),
+        shape=(2, 3),
+    )
+    assert not duplicated.has_canonical_format
+    representation = SparseLowRankMatrix(
+        duplicated,
+        np.zeros((2, 1)),
+        np.zeros((3, 1)),
+    )
+
+    with pytest.raises(AssertionError, match="canonical CSR"):
+        SparseLowRankLinearOperator(representation)
+
+
 def test_representation_selection_and_scaling():
     """Column selection and scalar multiplication preserve represented values."""
     S = sparse.csr_matrix([[1.0, 0.0, 2.0], [0.0, 3.0, 0.0]])
