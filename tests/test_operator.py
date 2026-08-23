@@ -1,5 +1,7 @@
 """Tests for sparse-plus-low-rank matrix and operator behavior."""
 
+import math
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -10,6 +12,7 @@ from sparse_count_pca._operator import (
     _squared_norm_is_numerically_zero,
 )
 from sparse_count_pca._representation import SparseLowRankMatrix
+from sparse_count_pca._residuals import build_residual_representation
 from sparse_count_pca._sparse import _support_row_blocks
 
 _STATS_RTOL = {"float32": 2e-6, "float64": 1e-12}
@@ -209,6 +212,114 @@ def test_ill_conditioned_sparse_norm_is_recomputed_directly():
         uncentered=np.sum(represented**2),
         centered=np.sum(deviations**2),
         tolerance=_STATS_RTOL["float64"],
+    )
+
+
+def _assert_column_norms_close(operator):
+    """Assert both squared norms of a one-column operator match exact sums.
+
+    The materialized column rounds each represented entry once, so its mean is
+    a different quantity from the operator's identity-based mean whenever the
+    two nearly cancel; only the norms are compared.
+    """
+    column = (operator.S.toarray() + operator.left @ operator.right.T)[:, 0]
+    deviations = column - math.fsum(column) / column.size
+    tolerance = _STATS_RTOL["float64"]
+
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        math.fsum(column * column),
+        rel=tolerance,
+        abs=0.0,
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        math.fsum(deviations * deviations),
+        rel=tolerance,
+        abs=0.0,
+    )
+
+
+def test_concentrated_single_entry_column_norm_stays_accurate():
+    """One stored entry cancelling a large baseline keeps float64 accuracy."""
+    n_obs = 10_000
+    sparse_part = sparse.csr_matrix(
+        (np.array([-1e16 + 2e12]), ([0], [0])),
+        shape=(n_obs, 1),
+    )
+    left = np.zeros((n_obs, 1))
+    left[0, 0] = 1e16
+    representation = SparseLowRankMatrix(sparse_part, left, np.ones((1, 1)))
+
+    operator = SparseLowRankLinearOperator(representation, center=True, dtype="float64")
+
+    assert operator.S.nnz == 1
+    _assert_column_norms_close(operator)
+
+
+def test_wide_support_cancelling_column_norm_stays_accurate():
+    """A column whose many stored entries cancel their baseline stays accurate."""
+    rng = np.random.default_rng(3)
+    n_obs, support = 200_000, 90_000
+    rows = np.sort(rng.choice(n_obs, support, replace=False))
+    left = np.zeros((n_obs, 1))
+    left[rows, 0] = 1e4 * (1.0 + rng.random(support))
+    residual_scale = np.sqrt(
+        1.1
+        * np.sqrt(np.finfo(np.float64).eps)
+        * 2
+        * np.sum(left[rows, 0] ** 2)
+        / support
+    )
+    stored = -left[rows, 0] + residual_scale * rng.normal(size=support)
+    sparse_part = sparse.csr_matrix(
+        (stored, (rows, np.zeros(support, dtype=np.intp))),
+        shape=(n_obs, 1),
+    )
+    representation = SparseLowRankMatrix(sparse_part, left, np.ones((1, 1)))
+
+    operator = SparseLowRankLinearOperator(representation, center=True, dtype="float64")
+
+    assert operator.S.nnz < n_obs // 2
+    _assert_column_norms_close(operator)
+
+
+def test_binomial_residual_norms_of_a_lopsided_gene_stay_accurate():
+    """A gene carrying counts 1e9 and 1 keeps float64 accurate residual norms."""
+    rng = np.random.default_rng(5)
+    counts = rng.integers(0, 40, size=(40, 4)).astype(np.float64)
+    counts[:, -1] = 0.0
+    counts[0, -1] = 1e9
+    counts[1, -1] = 1.0
+    X = sparse.csr_matrix(counts)
+    totals = np.asarray(X.sum(axis=1), dtype=np.float64).ravel()
+    proportions = np.asarray(X.sum(axis=0), dtype=np.float64).ravel() / totals.sum()
+    representation = build_residual_representation(
+        X,
+        totals,
+        proportions,
+        model="binomial",
+        residual="pearson",
+        alpha=None,
+        clip=None,
+        clip_mode="symmetric",
+        clip_max_nnz_ratio=None,
+    )
+
+    operator = SparseLowRankLinearOperator(representation, center=True, dtype="float64")
+
+    dense = operator.S.toarray() + operator.left @ operator.right.T
+    uncentered = math.fsum(
+        math.fsum(dense[:, j] * dense[:, j]) for j in range(dense.shape[1])
+    )
+    centered = math.fsum(
+        math.fsum((dense[:, j] - math.fsum(dense[:, j]) / dense.shape[0]) ** 2)
+        for j in range(dense.shape[1])
+    )
+    tolerance = _STATS_RTOL["float64"]
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        uncentered, rel=tolerance, abs=0.0
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        centered, rel=tolerance, abs=0.0
     )
 
 

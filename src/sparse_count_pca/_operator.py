@@ -20,7 +20,7 @@ _STATS_MEAN_BLOCK_NNZ = 1_000_000
 # The norm sweep materializes factor values and deviations for each stored
 # entry in the current row block, so its smaller target bounds scratch memory.
 _STATS_NORM_BLOCK_NNZ = 100_000
-_STATS_MIN_NORM_TERM_RATIO = math.sqrt(np.finfo(np.float64).eps)
+_STATS_MIN_NORM_TERM_RATIO = 1e-4
 
 
 def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:

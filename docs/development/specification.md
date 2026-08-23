@@ -1775,8 +1775,24 @@ baseline, removed, and added terms above. Recompute a sparse-support column
 directly when its calculated `q = B - D + A` is negative or satisfies
 
 ```math
-q \le \sqrt{\epsilon_{64}}(B + D + A).
+q \le 10^{-4}(B + D + A).
 ```
+
+A column whose identity result falls below `1e-4` of its combined terms is
+recomputed directly rather than trusted. The cutoff is chosen from measurement,
+not from a proven bound. The identity's roundoff is measured at roughly 10 to
+100 `eps_64` of the combined terms, so a column left on the identity path
+carries a relative error of order `1e-10`. That is adequate for the consumers of
+these statistics, which are scree plots and variance-explained ratios.
+
+The measurements behind the cutoff: on real PBMC3k counts the smallest ratio
+over all sparse columns, all shipped transforms, and both centers is about
+`0.38`, and on simulated negative-binomial counts about `0.15`, so the second
+sweep does not run on ordinary data at all. The smallest ratio found on a
+constructed but legal count matrix -- one gene carrying the counts `1e9` and `1`
+under binomial Pearson residuals -- is `4.6e-7`; the earlier
+`\sqrt{\epsilon_{64}}` cutoff admitted that column and returned its centered
+norm with about `8e-13` relative error, while this cutoff recomputes it exactly.
 
 This rare second sweep handles adversarial columns whose stored rows contain
 nearly all baseline squared-deviation mass without imposing dense work on
