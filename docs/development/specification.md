@@ -1783,9 +1783,14 @@ nearly all baseline squared-deviation mass without imposing dense work on
 well-conditioned sparse columns.
 
 Accumulate sparse support sums with vectorized `float64` reductions over
-bounded blocks of complete CSR rows. Ordinary floating-point summation applies:
-block size and CSR order may affect low-order bits when mixed-sign corrections
-cancel severely. Bitwise invariance across block sizes is not required.
+bounded blocks of complete CSR rows. Sparse-column means are plain `float64`
+block sums; block size and CSR order may affect low-order bits, and bitwise
+invariance across block sizes is not required. That reduction needs no
+compensation, because every shipped builder stores nonnegative corrections:
+Pearson residuals clipped and unclipped, deviance residuals, the `log1p`, CLR,
+and Dirichlet families, and correspondence analysis. A sum of nonnegative
+values has condition number one. A hand-built `SparseLowRankMatrix` whose
+stored values cancel its low-rank factors falls outside this accuracy contract.
 
 Statistics describe the post-cast `S`, `U`, `V`, and mean used by the operator
 passed to ARPACK. Before invoking ARPACK, treat the centered matrix as
