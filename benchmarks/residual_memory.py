@@ -410,15 +410,17 @@ def _fixed_row_support_counts(
     for row_start in range(0, n_obs, rows_per_chunk):
         row_stop = min(n_obs, row_start + rows_per_chunk)
         offsets = np.arange(row_start, row_stop, dtype=np.int64) * 104_729 % n_vars
-        block = (offsets[:, None] + base_columns) % n_vars
+        block = np.sort((offsets[:, None] + base_columns) % n_vars, axis=1)
         value_start = row_start * nnz_per_row
         value_stop = row_stop * nnz_per_row
         indices[value_start:value_stop] = block.ravel()
     data = rng.integers(1, 11, size=nnz, dtype=np.int32)
-    return sparse.csr_matrix(
+    counts = sparse.csr_matrix(
         (data, indices, indptr),
         shape=(n_obs, n_vars),
     )
+    assert counts.has_canonical_format, "generated counts must be canonical CSR"
+    return counts
 
 
 def _main(arguments: list[str]) -> int:
