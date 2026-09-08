@@ -187,10 +187,7 @@ None of these change public behavior:
   return an operator can borrow canonical input support during synchronous PCA.
   A persistent `TransformedMatrix` or returned operator must still own one
   support snapshot so later caller mutation cannot change its behavior.
-- Merge clipping corrections directly into CSR rather than concatenating COO
-  arrays and sorting them during conversion.
-- Combine or cache the operator's CSC-based mean and squared-norm traversals;
-  investigate a CSR-native uncentered-statistics path for correspondence
+- Investigate a CSR-native uncentered-statistics path for correspondence
   analysis.
 - Normalize explicit selectors that equal the full ordered axis to the same
   fast path as `obs=None` or `var=None` during materialization.

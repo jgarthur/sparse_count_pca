@@ -34,14 +34,33 @@ uv run python benchmarks/residual_memory.py \
 The probe creates one deterministic sparse count matrix, saves it once, and
 uses fresh workers for every residual family, clipping state, and calculation
 dtype. Each worker loads that saved CSR and imports its selected source tree
-before the parent establishes the RSS baseline. The timed and sampled boundary
-is residual-representation construction alone. BLAS-related thread variables
-are fixed at one for every worker. Clipped cases use
+before the parent establishes the RSS baseline. The default timed and sampled
+boundary is residual-representation construction alone. BLAS-related thread
+variables are fixed at one for every worker. Clipped cases use
 `clip=sqrt(n_obs / 30)` and `clip_max_nnz_ratio=1.0`; `--clip` can override the
 threshold for a custom synthetic input. The threshold is the numeric form of
 the `clip="seurat"` default, passed explicitly to stay comparable with baseline
 trees that predate the clipped default; the unclipped cases likewise pass
 `clip=None`.
+
+Use `--phase operator` to build the residual representation before the memory
+baseline and isolate construction of the centered linear operator and its
+summary statistics. Model, residual, dtype, and clipping filters keep large
+manual runs focused. This example generates exactly 71.8 million stored values:
+
+```bash
+uv run python benchmarks/residual_memory.py \
+  --baseline-source ../sparse_count_pca-main \
+  --candidate-source . \
+  --phase operator \
+  --n-obs 100000 \
+  --n-vars 30000 \
+  --nnz-per-row 718 \
+  --model poisson \
+  --residual pearson \
+  --dtype float64 \
+  --clip-state none
+```
 
 The output reports sampled incremental peak RSS and the process-lifetime high
 water mark as a cross-check. It intentionally has no machine-independent pass

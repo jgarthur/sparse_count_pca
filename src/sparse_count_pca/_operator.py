@@ -1,8 +1,9 @@
-"""Linear operator and stable statistics for implicit transformed matrices."""
+"""Linear operator and bounded statistics for implicit transformed matrices."""
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -11,8 +12,15 @@ from scipy import sparse
 from scipy.sparse.linalg import LinearOperator
 
 from ._representation import SparseLowRankMatrix
+from ._sparse import _support_row_blocks
 
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
+
+_STATS_MEAN_BLOCK_NNZ = 1_000_000
+# The norm sweep materializes factor values and deviations for each stored
+# entry in the current row block, so its smaller target bounds scratch memory.
+_STATS_NORM_BLOCK_NNZ = 100_000
+_STATS_MIN_NORM_TERM_RATIO = 1e-4
 
 
 def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
@@ -39,11 +47,21 @@ def _squared_norm_is_numerically_zero(
     return value <= tolerance
 
 
+def _norm_needs_direct_recalculation(value: float, *, term_scale: float) -> bool:
+    """Return whether cancellation leaves too little reliable precision."""
+    # A zero term scale means B = D = A = 0, so the zero norm needs no fallback.
+    return value < 0.0 or (
+        term_scale > 0.0 and value <= _STATS_MIN_NORM_TERM_RATIO * term_scale
+    )
+
+
 class SparseLowRankLinearOperator(LinearOperator):
     """Represent a sparse-plus-low-rank matrix with optional column centering.
 
     The represented matrix is ``S + U V.T - 1 mean.T`` when centered and
-    ``S + U V.T`` otherwise.
+    ``S + U V.T`` otherwise. The sparse part must be canonical CSR: statistics
+    subtract each stored entry's low-rank baseline once, so duplicate entries
+    at one position would be counted inconsistently.
 
     Args:
         representation: Sparse-plus-low-rank representation.
@@ -83,16 +101,14 @@ class SparseLowRankLinearOperator(LinearOperator):
         self.S = representation.sparse.astype(operator_dtype, copy=copy).tocsr(
             copy=False
         )
+        assert self.S.has_canonical_format, "sparse part must be canonical CSR"
         self.left = representation.left.astype(operator_dtype, copy=copy)
         self.right = representation.right.astype(operator_dtype, copy=copy)
         self.center = bool(center)
         super().__init__(dtype=operator_dtype, shape=self.S.shape)
 
-        self._S_csc = self.S.tocsc()
         self._left_float64 = self.left.astype(np.float64, copy=False)
         self._right_float64 = self.right.astype(np.float64, copy=False)
-        # The representation rank is tiny. Accurate scalar sums are preferable
-        # to a faster reduction whose cancellation depends on array order.
         self._left_sum_float64 = np.array(
             [math.fsum(column) for column in self._left_float64.T]
         )
@@ -100,93 +116,320 @@ class SparseLowRankLinearOperator(LinearOperator):
         left_deviations = self._left_float64 - self._left_mean_float64
         self._left_centered_gram_float64 = left_deviations.T @ left_deviations
 
+        column_counts = np.zeros(self.shape[1], dtype=np.intp)
+        for _, _, value_start, value_stop in _support_row_blocks(
+            self.S, _STATS_MEAN_BLOCK_NNZ
+        ):
+            column_counts += np.bincount(
+                self.S.indices[value_start:value_stop], minlength=self.shape[1]
+            )
+        dense_columns = column_counts > self.shape[0] // 2
+
         if self.center:
-            self._mean_float64 = self._stable_column_means()
+            self._mean_float64 = self._column_means(dense_columns)
             self.mean = self._mean_float64.astype(operator_dtype)
         else:
             self.mean = None
 
         zero = np.zeros(self.shape[1], dtype=operator_dtype)
-        self._frobenius_squared_uncentered_float64 = self._squared_norm_about(zero)
         if self.center:
             assert self.mean is not None
-            self._frobenius_squared_centered_float64 = self._squared_norm_about(
-                self.mean
+            uncentered, centered = self._squared_norms_about(
+                (zero, self.mean),
+                dense_columns,
             )
         else:
-            self._frobenius_squared_centered_float64 = (
-                self._frobenius_squared_uncentered_float64
+            (uncentered,) = self._squared_norms_about(
+                (zero,),
+                dense_columns,
             )
+            centered = uncentered
+        self._frobenius_squared_uncentered_float64 = uncentered
+        self._frobenius_squared_centered_float64 = centered
 
-        del self._S_csc
+    def _csc_row_block(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+    ) -> sparse.csc_matrix:
+        """Group one borrowed CSR row block by column.
 
-    def _stored_column_values(
-        self, column: int, rows: NDArray[np.int32] | NDArray[np.int64]
-    ) -> FloatArray:
-        """Evaluate stored-support values using the operator dtype."""
-        start, stop = self._S_csc.indptr[column : column + 2]
-        baseline = self.left[rows] @ self.right[column]
-        return np.asarray(baseline + self._S_csc.data[start:stop], dtype=self.dtype)
+        A matrix that fits in one block takes the direct whole-matrix shortcut,
+        so dense-column handling may allocate one full CSC copy.
+        """
+        if row_start == 0 and row_stop == self.shape[0]:
+            return self.S.tocsc()
+        indptr = self.S.indptr[row_start : row_stop + 1] - value_start
+        block = sparse.csr_matrix(
+            (
+                self.S.data[value_start:value_stop],
+                self.S.indices[value_start:value_stop],
+                indptr,
+            ),
+            shape=(row_stop - row_start, self.shape[1]),
+            copy=False,
+        )
+        return block.tocsc()
 
-    def _stable_column_means(self) -> NDArray[np.float64]:
-        """Calculate means without cancelling dense support corrections."""
+    def _mean_block_sums(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+        dense_columns: NDArray[np.bool_],
+    ) -> NDArray[np.float64]:
+        """Return one row block's contribution to the column-mean sums.
+
+        Sparse columns contribute their stored corrections only; the analytic
+        baseline sum is added once in _column_means. Dense-majority columns
+        contribute full represented values, which replace the baseline
+        entirely.
+        """
+        columns = self.S.indices[value_start:value_stop]
+        partial = np.bincount(
+            columns,
+            weights=self.S.data[value_start:value_stop].astype(
+                np.float64,
+                copy=False,
+            ),
+            minlength=self.shape[1],
+        )
+        dense_column_indices = np.flatnonzero(dense_columns)
+        if dense_column_indices.size:
+            block = self._csc_row_block(
+                row_start,
+                row_stop,
+                value_start,
+                value_stop,
+            )
+            left = self.left[row_start:row_stop]
+            for column in dense_column_indices:
+                begin, end = block.indptr[column : column + 2]
+                rows = block.indices[begin:end]
+                values = left @ self.right[column]
+                values[rows] += block.data[begin:end]
+                partial[column] = math.fsum(values.astype(np.float64, copy=False))
+        return partial
+
+    def _dense_block_squared_sums(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+        centers: Sequence[FloatArray],
+        dense_column_indices: NDArray[np.intp],
+    ) -> NDArray[np.float64]:
+        """Return direct squared sums for dense columns in one row block."""
+        block = self._csc_row_block(
+            row_start,
+            row_stop,
+            value_start,
+            value_stop,
+        )
+        partial = np.empty(
+            (len(centers), dense_column_indices.size),
+            dtype=np.float64,
+        )
+        left = self.left[row_start:row_stop]
+        for output_column, column in enumerate(dense_column_indices):
+            begin, end = block.indptr[column : column + 2]
+            rows = block.indices[begin:end]
+            values = left @ self.right[column]
+            values[rows] += block.data[begin:end]
+            for center_index, center in enumerate(centers):
+                deviations = (values - center[column]).astype(
+                    np.float64,
+                    copy=False,
+                )
+                partial[center_index, output_column] = math.fsum(
+                    deviations * deviations
+                )
+        return partial
+
+    def _direct_column_squared_sums(
+        self,
+        centers: Sequence[FloatArray],
+        column_indices: NDArray[np.intp],
+    ) -> NDArray[np.float64]:
+        """Return direct squared sums for selected represented columns."""
+        total = np.zeros((len(centers), column_indices.size), dtype=np.float64)
+        for block_bounds in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
+            total += self._dense_block_squared_sums(
+                *block_bounds,
+                centers,
+                column_indices,
+            )
+        return total
+
+    def _column_means(
+        self,
+        dense_columns: NDArray[np.bool_],
+    ) -> NDArray[np.float64]:
+        """Calculate column means in bounded row-major passes."""
         n_obs, n_vars = self.shape
-        means = np.empty(n_vars, dtype=np.float64)
-        for column in range(n_vars):
-            start, stop = self._S_csc.indptr[column : column + 2]
-            rows = self._S_csc.indices[start:stop]
-            if rows.size > n_obs // 2:
-                values = self.left @ self.right[column]
-                values[rows] += self._S_csc.data[start:stop]
-                means[column] = math.fsum(values.astype(np.float64, copy=False)) / n_obs
-            else:
-                sparse_sum = math.fsum(
-                    self._S_csc.data[start:stop].astype(np.float64, copy=False)
-                )
-                baseline_sum = float(
-                    self._left_sum_float64 @ self._right_float64[column]
-                )
-                means[column] = math.fsum((baseline_sum, sparse_sum)) / n_obs
+        total = np.zeros(n_vars, dtype=np.float64)
+
+        for (
+            row_start,
+            row_stop,
+            value_start,
+            value_stop,
+        ) in _support_row_blocks(self.S, _STATS_MEAN_BLOCK_NNZ):
+            partial = self._mean_block_sums(
+                row_start,
+                row_stop,
+                value_start,
+                value_stop,
+                dense_columns,
+            )
+            total += partial
+
+        baseline_sums = self._right_float64 @ self._left_sum_float64
+        means = (baseline_sums + total) / n_obs
+        means[dense_columns] = total[dense_columns] / n_obs
         return means
 
-    def _squared_norm_about(self, center: FloatArray) -> float:
-        """Return ``sum((S + U V.T - center)**2)`` without cancellation."""
+    def _norm_block_squared_sums(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+        centers: Sequence[FloatArray],
+        dense_columns: NDArray[np.bool_],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Return one row block's removed and added support squared sums."""
+        n_vars = self.shape[1]
+        shape = (len(centers), n_vars)
+        removed_partial = np.zeros(shape, dtype=np.float64)
+        added_partial = np.zeros(shape, dtype=np.float64)
+        row_counts = np.diff(self.S.indptr[row_start : row_stop + 1])
+        rows = np.repeat(
+            np.arange(row_start, row_stop, dtype=np.intp),
+            row_counts,
+        )
+        columns = self.S.indices[value_start:value_stop]
+        stored = self.S.data[value_start:value_stop]
+
+        # einsum contracts zero-width factors to zeros, covering rank-0
+        # representations without a guard.
+        baseline_float64 = np.einsum(
+            "ij,ij->i",
+            self._left_float64[rows],
+            self._right_float64[columns],
+        )
+        if self.dtype == np.dtype(np.float64):
+            baseline = baseline_float64
+        else:
+            baseline = np.einsum(
+                "ij,ij->i",
+                self.left[rows],
+                self.right[columns],
+            )
+        actual = np.asarray(baseline + stored, dtype=self.dtype)
+
+        sparse_support = ~dense_columns[columns]
+        sparse_columns = columns[sparse_support]
+        sparse_baseline = baseline_float64[sparse_support]
+        sparse_actual = actual[sparse_support]
+
+        for index, center in enumerate(centers):
+            baseline_deviations = sparse_baseline - center[sparse_columns].astype(
+                np.float64,
+                copy=False,
+            )
+            actual_deviations = (sparse_actual - center[sparse_columns]).astype(
+                np.float64,
+                copy=False,
+            )
+            removed_partial[index] = np.bincount(
+                sparse_columns,
+                weights=baseline_deviations * baseline_deviations,
+                minlength=n_vars,
+            )
+            added_partial[index] = np.bincount(
+                sparse_columns,
+                weights=actual_deviations * actual_deviations,
+                minlength=n_vars,
+            )
+
+        dense_column_indices = np.flatnonzero(dense_columns)
+        if dense_column_indices.size:
+            added_partial[:, dense_column_indices] = self._dense_block_squared_sums(
+                row_start,
+                row_stop,
+                value_start,
+                value_stop,
+                centers,
+                dense_column_indices,
+            )
+        return removed_partial, added_partial
+
+    def _squared_norms_about(
+        self,
+        centers: Sequence[FloatArray],
+        dense_columns: NDArray[np.bool_],
+    ) -> list[float]:
+        """Return stable squared norms about each center in bounded CSR passes.
+
+        Implements the support-replacement identities from the specification
+        section "Explained variance and total variance"
+        (``docs/development/specification.md``).
+        """
         n_obs, n_vars = self.shape
-        center = np.asarray(center, dtype=self.dtype)
-        column_norms: list[float] = []
+        centers_cast = [np.asarray(center, dtype=self.dtype) for center in centers]
+        shape = (len(centers_cast), n_vars)
+        removed_total = np.zeros(shape, dtype=np.float64)
+        added_total = np.zeros(shape, dtype=np.float64)
+
+        for block_bounds in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
+            removed_partial, added_partial = self._norm_block_squared_sums(
+                *block_bounds,
+                centers_cast,
+                dense_columns,
+            )
+            removed_total += removed_partial
+            added_total += added_partial
+
+        column_norms = np.empty(shape, dtype=np.float64)
+        fallback_columns = np.zeros(n_vars, dtype=np.bool_)
         for column in range(n_vars):
-            start, stop = self._S_csc.indptr[column : column + 2]
-            rows = self._S_csc.indices[start:stop]
-            if rows.size > n_obs // 2:
-                values = self.left @ self.right[column]
-                values[rows] += self._S_csc.data[start:stop]
-                deviations = (values - center[column]).astype(np.float64, copy=False)
-                column_norms.append(math.fsum(deviations * deviations))
+            if dense_columns[column]:
+                column_norms[:, column] = added_total[:, column]
                 continue
 
             v = self._right_float64[column]
-            offset = float(v @ self._left_mean_float64) - float(center[column])
-            baseline_total = float(
-                v @ self._left_centered_gram_float64 @ v + n_obs * offset * offset
-            )
-            baseline_support = self._left_float64[rows] @ v - float(center[column])
-            actual_support = (
-                self._stored_column_values(column, rows) - center[column]
-            ).astype(np.float64, copy=False)
-            column_squared = math.fsum(
-                (
-                    baseline_total,
-                    -math.fsum(baseline_support * baseline_support),
-                    math.fsum(actual_support * actual_support),
+            mean_projection = float(v @ self._left_mean_float64)
+            baseline_quadratic = v @ self._left_centered_gram_float64 @ v
+            for index, center in enumerate(centers_cast):
+                offset = mean_projection - float(center[column])
+                baseline_total = float(baseline_quadratic + n_obs * offset * offset)
+                column_squared = (
+                    baseline_total
+                    - removed_total[index, column]
+                    + added_total[index, column]
                 )
+                term_scale = (
+                    baseline_total
+                    + removed_total[index, column]
+                    + added_total[index, column]
+                )
+                fallback_columns[column] |= _norm_needs_direct_recalculation(
+                    column_squared,
+                    term_scale=term_scale,
+                )
+                column_norms[index, column] = max(column_squared, 0.0)
+
+        fallback_column_indices = np.flatnonzero(fallback_columns)
+        if fallback_column_indices.size:
+            column_norms[:, fallback_column_indices] = self._direct_column_squared_sums(
+                centers_cast, fallback_column_indices
             )
-            rounding_bound = (
-                np.finfo(np.float64).eps * max(baseline_total, 1.0) * max(rows.size, 1)
-            )
-            if column_squared < -rounding_bound:
-                raise ArithmeticError("stable squared-norm calculation became negative")
-            column_norms.append(max(column_squared, 0.0))
-        return math.fsum(column_norms)
+        return [math.fsum(norms) for norms in column_norms]
 
     def _matvec(self, z: ArrayLike) -> FloatArray:
         """Multiply the represented matrix by a vector.

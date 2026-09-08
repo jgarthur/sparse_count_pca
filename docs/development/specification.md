@@ -38,8 +38,8 @@ dividing principal coordinates by singular values when needed.
 
 ### Correspondence and experimental residual ordination
 
-For grand total `N`, row totals `n_i`, column proportions `p_j`, and expected
-counts `mu_ij = n_i p_j`, classical correspondence analysis decomposes the
+For grand total $N$, row totals $n_i$, column proportions $p_j$, and expected
+counts $\mu_{ij} = n_i p_j$, classical correspondence analysis decomposes the
 Poisson Pearson residual matrix with an additional total scaling:
 
 ```math
@@ -66,10 +66,10 @@ Z_{ij}^{NB}
        {\sqrt{\mu_{ij}(1 + \alpha_j \bar n p_j)}}.
 ```
 
-Values of `alpha_j < 1e-8` use the Poisson limit, matching residual PCA. The
+Values of $\alpha_j < 10^{-8}$ use the Poisson limit, matching residual PCA. The
 mode requires `alpha`, emits a `UserWarning`, and records
 `experimental=True`. Its `total_inertia` is the squared Frobenius norm of
-`Z_NB`, not Pearson chi-square divided by `N`. Observed count masses still
+$Z^{NB}$, not Pearson chi-square divided by $N$. Observed count masses still
 scale the reported coordinates, but the full chi-square and barycentric
 interpretations of classical CA are not claimed.
 
@@ -206,15 +206,15 @@ Z_{ij}
 = \log(X_{ij}+s_i) - \log s_i,
 ```
 
-where `s_i` is the per-observation size factor. Its shift is fixed at one on
+where $s_i$ is the per-observation size factor. Its shift is fixed at one on
 the normalized-count scale, so no shift parameter is exposed; the effective
-raw-count shift is `s_i` itself, recorded as
+raw-count shift is $s_i$ itself, recorded as
 `effective_count_shift="size_factor"`.
 
 Size factors come from exactly one of two recipes:
 
-* `target_sum=t` sets `s_i = n_i / t` from the row total `n_i`. The default
-  `target_sum=None` resolves `t` to the median row total, so the size factors
+* `target_sum=t` sets $s_i = n_i / t$ from the row total $n_i$. The default
+  `target_sum=None` resolves $t$ to the median row total, so the size factors
   have median one.
 * `size_factors` supplies finite positive per-observation divisors, or an
   `adata.obs` key on the AnnData interfaces, used without rescaling.
@@ -236,8 +236,8 @@ Z_{ij}
 - \frac{1}{G}\sum_k\log(X_{ik}+a).
 ```
 
-Current PFlog is this transform with `a = 1 / (4 * alpha)`, evaluated sparsely
-as row-centered `log1p(4 * alpha * X)`. Although that formula is finite on a
+Current PFlog is this transform with $a = 1 / (4\alpha)$, evaluated sparsely
+as row-centered $\log(1 + 4\alpha X)$. Although that formula is finite on a
 zero-total row, the package-wide input policy rejects empty cells before any
 transform is fitted.
 
@@ -250,20 +250,21 @@ Z_i = \operatorname{clr}(X_i / s_i + \tau\mathbf 1)
     = \operatorname{clr}(X_i + s_i\tau\mathbf 1),
 ```
 
-where `s_i` is the row total. Its effective raw-count shift varies by cell. It
+where $s_i$ is the row total. Its effective raw-count shift varies by cell. It
 is invariant to deterministic row rescaling and rejects zero-total rows.
 
 ### Dirichlet transforms
 
-For total concentration `A` and prior composition `p`, the prior counts are
-`a_j = A p_j`. `dirichlet_log` analyzes
+For total concentration $A$ and prior composition $p$, the prior counts are
+$a_j = A p_j$. `dirichlet_log` analyzes
 
 ```math
 \log\frac{X_{ij}+a_j}{s_i+A},
 ```
 
-and `dirichlet_clr` analyzes `clr(X_i + a)`. Scalar count-scale shifted CLR is
-the uniform-prior special case `A = G * count_shift`.
+and `dirichlet_clr` analyzes $\operatorname{clr}(X_i + a)$. Scalar count-scale
+shifted CLR is the uniform-prior special case $A = G a$, where $a$ is
+`count_shift`.
 
 All normalization quantities and CLR row means use the full selected input
 matrix. `mask_var` is applied only afterward to select PCA columns.
@@ -518,10 +519,11 @@ if np.any(np.asarray(alpha) < 0):
     raise ValueError("alpha must be nonnegative")
 ```
 
-If `alpha_j` is below `alpha_eps = 1e-8`, select the Poisson limit once for
+If $\alpha_j$ is below `alpha_eps = 1e-8`, select the Poisson limit once for
 that gene and use it for Pearson and deviance residuals at every cell. For a
-positive `alpha_j` above the threshold, retain the scaled-NB family even when
-the cell-adjusted `alpha_tilde_ij = alpha_j / s_i` is below the threshold.
+positive $\alpha_j$ above the threshold, retain the scaled-NB family even when
+the cell-adjusted $\widetilde{\alpha}_{ij} = \alpha_j / s_i$ is below the
+threshold.
 
 ### `clip`
 
@@ -551,8 +553,8 @@ Names are matched exactly and are case-sensitive.
 
 #### Named-threshold resolution
 
-A named threshold is `sqrt(n_obs / divisor)`, with divisor `30` for `"seurat"`
-and `1` for `"scanpy"`. `n_obs` is the number of rows of the count matrix the
+A named threshold is $\sqrt{n_{\mathrm{obs}} / d}$, with divisor $d=30$ for
+`"seurat"` and $d=1$ for `"scanpy"`. `n_obs` is the number of rows of the count matrix the
 transform is fitted on, taken as passed; the package never filters
 observations. A named threshold that resolves to a nonpositive value —
 possible only with no rows — raises `ValueError` rather than clipping at
@@ -644,7 +646,7 @@ Explicit `float32` is a lower-memory approximate mode: it changes the stored
 representation and the operator passed to ARPACK, so it lowers calculation
 precision rather than merely downcasting returned arrays.
 
-- Validation and computation of `n_i`, `p_j`, `mean`, total variance, and
+- Validation and computation of $n_i$, $p_j$, the mean, total variance, and
   Frobenius norms are performed in `float64`.
 - Residual support values are evaluated in bounded `float64` blocks and written
   directly into `S.data` in the requested dtype; fitting must not construct a
@@ -854,13 +856,13 @@ Its value is well defined in each family:
 
 | Family | Value at an empty gene | Effect on other genes |
 | --- | --- | --- |
-| Residual (Poisson, binomial, scaled-NB) | `0`, the limit of the residual as the fitted mean goes to zero | none |
-| Correspondence analysis | `0`, the limit of the standardized deviation as column mass goes to zero | none |
-| Size-factor-normalized log1p | `0`, since `log1p` of zero is zero | none |
-| Count-scale shifted CLR | `log(a) - m_i` | scales the log-ratio centering |
+| Residual (Poisson, binomial, scaled-NB) | $0$, the limit of the residual as the fitted mean goes to zero | none |
+| Correspondence analysis | $0$, the limit of the standardized deviation as column mass goes to zero | none |
+| Size-factor-normalized log1p | $0$, since $\log(1+0)=0$ | none |
+| Count-scale shifted CLR | $\log(a) - m_i$ | scales the log-ratio centering |
 | Composition-scale shifted CLR | analogous | scales the log-ratio centering |
-| Dirichlet log | `log(a_j) - log(s_i + A)` for prior counts `a_j = A p_j` | consumes prior mass |
-| Dirichlet CLR | `log(a_j)` minus the row mean of the log posterior counts | consumes prior mass |
+| Dirichlet log | $\log(a_j) - \log(s_i + A)$ for prior counts $a_j = A p_j$ | consumes prior mass |
+| Dirichlet CLR | $\log(a_j)$ minus the row mean of the log posterior counts | consumes prior mass |
 
 For the residual, correspondence, and normalized-log1p families the column is
 **identically zero**. Such a column carries no variance and no inertia, so it contributes
@@ -926,8 +928,8 @@ p_j = \frac{\sum_i X_{ij}}{M}.
 ```
 
 If `mask_var` selects a subset of genes for PCA, residuals are computed only
-for those genes, but `n_i` and `M` are based on the full chosen count
-matrix. Thus selected-gene `p_j` values do not need to sum to one: the null
+for those genes, but $n_i$ and $M$ are based on the full chosen count
+matrix. Thus selected-gene $p_j$ values do not need to sum to one: the null
 model is based on total RNA per cell, not on RNA among selected genes.
 
 Use the following terms consistently in documentation and metadata:
@@ -960,7 +962,7 @@ mask. It is what makes the shifted-CLR and Dirichlet retention effect
 measurable: the log-ratio centering scale is
 `(normalization_n_vars - n_empty_vars) / normalization_n_vars`.
 
-For binomial residuals, `n_i` is also the binomial trial count for cell `i`:
+For binomial residuals, $n_i$ is also the binomial trial count for cell $i$:
 
 ```math
 X_{ij} \sim \mathrm{Binomial}(n_i, p_j).
@@ -968,12 +970,12 @@ X_{ij} \sim \mathrm{Binomial}(n_i, p_j).
 
 There is no separate `n_trials` argument in v1.
 
-For `model="scaled_nb"`, the per-gene overdispersion `alpha_j` is supplied
+For `model="scaled_nb"`, the per-gene overdispersion $\alpha_j$ is supplied
 by the user; it is not estimated in v1. See the `alpha` entry under
 Parameter reference for accepted forms.
 
 For `residual_pca_matrix(X, ...)`, the entire `X` is treated as the
-universe: `n_i`, `M`, and `p_j` are computed from `X` directly.
+universe: $n_i$, $M$, and $p_j$ are computed from `X` directly.
 
 ## Variable masking
 
@@ -1234,7 +1236,7 @@ class SparseLowRankLinearOperator(scipy.sparse.linalg.LinearOperator):
     """
 ```
 
-Fields and shapes (with `N = n_obs`, `G = n_vars_used`):
+Fields and shapes (with $N =$ `n_obs` and $G =$ `n_vars_used`):
 
 ```python
 S: scipy.sparse.csr_matrix     # shape (N, G)
@@ -1317,7 +1319,7 @@ R_{ij}
 \mu_{ij}=n_i p_j.
 ```
 
-Sparse entries on the support of `X` are:
+Sparse entries on the support of $X$ are:
 
 ```math
 S_{ij}
@@ -1334,8 +1336,9 @@ L_{ij}=u_i v_j.
 
 Implementation table:
 
-At a structural zero, `X_ij = 0`, so `R_ij = -mu_ij / sqrt(V_ij)`.
-Substituting each variance below separates this value into `u_i v_j`.
+At a structural zero, $X_{ij}=0$, so
+$R_{ij}=-\mu_{ij}/\sqrt{V_{ij}}$. Substituting each variance below separates
+this value into $u_i v_j$.
 
 ```text
 model: poisson
@@ -1376,7 +1379,7 @@ L_{ij}
 u_i v_j.
 ```
 
-Sparse entries on the support of `X` are:
+Sparse entries on the support of $X$ are:
 
 ```math
 S_{ij}
@@ -1406,7 +1409,8 @@ u_i = -sqrt(n_i)
 v_j = sqrt(2 log(1 + alpha_j mean(n) p_j) / (alpha_j mean(n)))
 ```
 
-For scaled NB deviance, if `alpha_j` is numerically zero, use the Poisson deviance limit.
+For scaled NB deviance, if $\alpha_j$ is numerically zero, use the Poisson
+deviance limit.
 
 ## Numerical implementation
 
@@ -1471,7 +1475,7 @@ h(b,\delta)
 \frac{(-1)^k(\delta/b)^k}{k(k-1)}
 ```
 
-for small relative differences. Poisson deviance is `2 h(mu, x-mu)`;
+for small relative differences. Poisson deviance is $2h(\mu, x-\mu)$;
 binomial deviance is the sum of this contribution for successes and failures.
 Use the `log1p` form outside the series region and test continuity at the
 switch.
@@ -1506,12 +1510,13 @@ For scaled NB:
 alpha_tilde = alpha_j / s_i
 ```
 
-but avoid explicitly forming a dense alpha matrix. For nonzero entries, compute `alpha_tilde` only on the sparse support.
+but avoid explicitly forming a dense alpha matrix. For nonzero entries, compute
+$\widetilde{\alpha}$ only on the sparse support.
 
-Select Poisson versus NB once per gene from `alpha_j`. If `alpha_j` is below
+Select Poisson versus NB once per gene from $\alpha_j$. If $\alpha_j$ is below
 `alpha_eps`, use the Poisson formulas for both zero and nonzero counts. If it
 is above the threshold, use the NB formulas at every cell; do not switch on
-`alpha_tilde`.
+$\widetilde{\alpha}$.
 
 Recommended threshold:
 
@@ -1549,13 +1554,13 @@ For zero-count entries:
 R_{ij}=u_i v_j.
 ```
 
-For every supported residual model, `u_i < 0` and `v_j > 0`, so zero-count
+For every supported residual model, $u_i < 0$ and $v_j > 0$, so zero-count
 residuals are negative. Consequently:
 
 - Upper clipping leaves every zero-count residual unchanged and never expands
   sparse support.
 - Symmetric clipping may clip the lower tail at zero-count locations. Those
-  corrections are included exactly in `S`.
+  corrections are included exactly in $S$.
 
 Symmetric clipping may produce many zero-count corrections. The resource guard
 is:
@@ -1594,7 +1599,7 @@ clip_mode="symmetric"
 clip_max_nnz_ratio=2.0
 ```
 
-The default clips symmetrically at `sqrt(n_obs / 30)` for every residual
+The default clips symmetrically at $\sqrt{n_{\mathrm{obs}}/30}$ for every residual
 family, so the support-growth guard above is reachable under default
 arguments. `clip=None` recovers unclipped residuals.
 
@@ -1665,37 +1670,191 @@ components = Vt
 
 ## Explained variance and total variance
 
-For:
+Total variance comes from the sum of squared entries of the centered transform.
+We also need the corresponding uncentered sum to decide whether the centered
+variance is numerically zero. Calculate both without materializing the full
+transformed matrix
 
 ```math
-R = S + uv^\top,
+R = S + UV^\top.
 ```
 
-calculate column means and squared norms from the actual represented values:
+Work with one column $j$ at a time. There are $N$ observations, and the
+representation has rank $k$: $U$ has shape $N\times k$, and $v_j$ is the
+length-$k$ vector given by row $j$ of $V$, written as a column vector.
+The vector $b_j=Uv_j$ gives a baseline value for every observation. The sparse
+matrix $S$ supplies corrections at the stored rows $P_j$:
 
 ```math
 R_{ij} =
 \begin{cases}
-S_{ij} + u_i v_j & (i,j) \in \operatorname{supp}(S),\\
-u_i v_j & \text{otherwise}.
+b_{ij} + S_{ij} & i \in P_j,\\
+b_{ij} & i \notin P_j.
 \end{cases}
 ```
 
-Do not calculate large sparse and low-rank component norms and then subtract
-them. For sparse-support columns, accumulate the implicit baseline using
-stable moments of `u` and replace values on stored support. For columns with
-more than half their entries stored, evaluate the full column directly; this
-avoids severe subtraction for dense and nearly dense support while retaining
-`O(nnz + n_obs + n_vars)` complexity.
-
-The centered squared norm is accumulated directly about the stored operator
-mean:
+The quantity we want for this column is
 
 ```math
-\|R_c\|_F^2 = \sum_{ij}(R_{ij}-\bar r_j)^2.
+q_j(c_j) = \sum_{i=1}^{N}(R_{ij}-c_j)^2.
 ```
 
-Statistics describe the post-cast `S`, `u`, `v`, and mean used by the operator
+Setting $c_j=0$ gives its uncentered sum of squares. Setting $c_j=\bar r_j$,
+the column mean, gives its centered sum of squares. The same calculation can
+serve both cases once we have the means.
+
+First calculate the mean baseline. Let $\bar u$ contain the means of the $k$
+columns of $U$, and let $\mathbf 1$ be the length-$N$ vector of ones:
+
+```math
+\bar u = \frac{1}{N}U^\top \mathbf 1,
+\qquad
+\bar b_j = \bar u^\top v_j.
+```
+
+The represented column mean is the mean baseline plus the sum of its sparse
+corrections divided by $N$:
+
+```math
+\bar r_j = \bar b_j + \frac{1}{N}\sum_{i \in P_j} S_{ij}.
+```
+
+Next calculate the baseline's sum of squares about $c_j$. It helps to separate
+variation around the baseline's own mean from the offset between that mean and
+$c_j$. Center the columns of $U$ and form the small $k\times k$ Gram matrix
+once, for reuse across all columns:
+
+```math
+U_c = U - \mathbf 1\bar u^\top,
+\qquad
+\Gamma_U = U_c^\top U_c.
+```
+
+For a single observation, add and subtract the baseline mean $\bar b_j$:
+
+```math
+b_{ij} - c_j = (b_{ij} - \bar b_j) + (\bar b_j - c_j).
+```
+
+The first term is that observation's deviation from the baseline mean. The
+second is the same offset for every observation. The vector of first terms is
+$U_c v_j$, because
+
+```math
+U_c v_j
+= (U - \mathbf 1\bar u^\top)v_j
+= b_j - \bar b_j\mathbf 1.
+```
+
+When we square and sum, the cross term vanishes because the entries of
+$U_c v_j$ sum to zero. The result is the baseline's variation around its mean
+plus the squared mean offset, repeated $N$ times:
+
+```math
+B_j(c_j) = \sum_{i=1}^{N}(b_{ij} - c_j)^2
+=
+v_j^\top \Gamma_U v_j
++
+N(\bar b_j - c_j)^2.
+```
+
+This accounts for every row as if it contained only the baseline. At each
+stored row, remove that row's baseline contribution and add its actual
+represented contribution instead. These two corrections require visiting only
+the stored entries:
+
+```math
+\begin{aligned}
+D_j(c_j) &= \sum_{i \in P_j}(b_{ij} - c_j)^2,
+\\
+A_j(c_j) &= \sum_{i \in P_j}(b_{ij} + S_{ij} - c_j)^2.
+\end{aligned}
+```
+
+The represented column's sum of squares is therefore
+
+```math
+q_j(c_j) = B_j(c_j) - D_j(c_j) + A_j(c_j).
+```
+
+Finally, sum over columns to obtain the two squared Frobenius norms:
+
+```math
+\begin{aligned}
+\|R\|_F^2 &= \sum_j q_j(0),
+\\
+\|R-\mathbf 1\bar r^\top\|_F^2 &= \sum_j q_j(\bar r_j).
+\end{aligned}
+```
+
+These are `frobenius_squared_uncentered()` and
+`frobenius_squared_centered()`, respectively. In the implementation, the center
+for the second calculation is the stored operator mean, including its dtype
+rounding.
+
+Do not calculate large sparse and low-rank component norms and then subtract
+them. For columns with more than half their entries stored, calculate means and
+squared deviations from the full represented column directly; this avoids
+severe subtraction for dense and nearly dense support. For the remaining
+columns, use the support-replacement identities above and traverse sparse
+support in $O(\mathit{nnz})$ for fixed representation rank.
+
+The support-replacement combination is itself cancellation limited: its error
+scales with the magnitudes of the three combined terms rather than with the
+result. After the support sweep, let $B$, $D$, and $A$ denote the nonnegative
+baseline, removed, and added terms above. For a column evaluated using these
+terms, replace the calculated sum of squares when $q=B-D+A$ is negative or
+satisfies
+
+```math
+q \le 10^{-4}(B + D + A).
+```
+
+To obtain the replacement, make another pass over bounded CSR row blocks.
+For each affected column, evaluate $b_{ij}=U_{i,:}v_j$ at every row, including
+rows without stored entries, and add $S_{ij}$ wherever a correction is stored.
+Subtract the center $c_j$ from each represented value and sum the squared
+deviations over all rows. This evaluates $\sum_i(R_{ij}-c_j)^2$ without
+subtracting the aggregate baseline and support terms. If either the centered
+or uncentered calculation triggers the fallback, recompute both sums for that
+column when both were requested. Only one row block's values are materialized
+at a time.
+
+The cutoff is chosen from measurement, not from a proven error bound. In the
+measurements used to choose it, the absolute error in the calculated
+$q=B-D+A$ was roughly $10\epsilon_{64}(B+D+A)$ to
+$100\epsilon_{64}(B+D+A)$. Dividing by $q$ gives the relative error: at the
+cutoff $q/(B+D+A)=10^{-4}$, those measured error levels correspond to roughly
+$2\times10^{-11}$ to $2\times10^{-10}$. This motivates an expected relative
+error of order $10^{-10}$ for columns that keep the identity result; it does
+not guarantee that accuracy for every input. Such errors are small enough for
+scree plots and variance-explained ratios.
+
+The measurements behind the cutoff: on real PBMC3k counts the smallest ratio
+over all sparse columns, all shipped transforms, and both centers is about
+$0.38$, and on simulated negative-binomial counts about $0.15$, so the fallback
+second sweep does not run on ordinary data at all. The smallest ratio found on a
+constructed but legal count matrix -- one gene carrying the counts $10^9$ and
+$1$ under binomial Pearson residuals -- is $4.6\times10^{-7}$; the earlier
+$\sqrt{\epsilon_{64}}$ cutoff admitted that column and returned its centered
+norm with about $8\times10^{-13}$ relative error, while this cutoff recomputes
+it exactly.
+
+This rare second sweep handles adversarial columns whose stored rows contain
+nearly all baseline squared-deviation mass without imposing dense work on
+well-conditioned sparse columns.
+
+Accumulate sparse support sums with vectorized `float64` reductions over
+bounded blocks of complete CSR rows. Sparse-column means are plain `float64`
+block sums; block size and CSR order may affect low-order bits, and bitwise
+invariance across block sizes is not required. That reduction needs no
+compensation, because every shipped builder stores nonnegative corrections:
+Pearson residuals clipped and unclipped, deviance residuals, the `log1p`, CLR,
+and Dirichlet families, and correspondence analysis. A sum of nonnegative
+values has condition number one. A hand-built `SparseLowRankMatrix` whose
+stored values cancel its low-rank factors falls outside this accuracy contract.
+
+Statistics describe the post-cast `S`, `U`, `V`, and mean used by the operator
 passed to ARPACK. Before invoking ARPACK, treat the centered matrix as
 numerically zero when:
 
@@ -1807,7 +1966,7 @@ loglik_sat = scipy.stats.binom.logpmf(x, n_i, p_hat)
 
 Handle boundary cases `p_hat=0` and `p_hat=1`.
 
-Negative binomial with variance `mu + alpha * mu**2`:
+Negative binomial with variance $\mu + \alpha\mu^2$:
 
 ```python
 r = 1 / alpha

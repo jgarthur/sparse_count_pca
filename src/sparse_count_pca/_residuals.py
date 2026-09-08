@@ -14,6 +14,7 @@ from ._clip import ClipMode, _guarded_clipped_zero_locations
 from ._counts import BoolArray
 from ._operator import _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
+from ._sparse import _support_row_blocks as _bounded_support_row_blocks
 
 ALPHA_EPS = 1e-8
 RELATIVE_DEVIANCE_SERIES_THRESHOLD = 0.125
@@ -40,18 +41,7 @@ def _support_row_blocks(
     X: sparse.csr_matrix,
 ) -> Iterator[tuple[int, int, int, int]]:
     """Yield whole-row blocks containing about the configured number of values."""
-    row_start = 0
-    while row_start < X.shape[0]:
-        target = min(
-            int(X.indptr[row_start]) + _RESIDUAL_SUPPORT_BLOCK_SIZE,
-            X.nnz,
-        )
-        row_stop = int(np.searchsorted(X.indptr, target, side="right")) - 1
-        row_stop = min(X.shape[0], max(row_start + 1, row_stop))
-        value_start = int(X.indptr[row_start])
-        value_stop = int(X.indptr[row_stop])
-        yield row_start, row_stop, value_start, value_stop
-        row_start = row_stop
+    yield from _bounded_support_row_blocks(X, _RESIDUAL_SUPPORT_BLOCK_SIZE)
 
 
 def _clipped_zero_corrections(

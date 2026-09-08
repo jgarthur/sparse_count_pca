@@ -18,6 +18,17 @@ All notable user-facing changes are recorded here.
   exact rank-zero sparse representation verified against Scanpy. Composition-
   scale shifted CLR now also rejects row-divisor overflow instead of silently
   collapsing transformed nonzero counts to zero.
+- For large sparse inputs, compute operator means and Frobenius norms from
+  bounded CSR row blocks instead of a full CSC copy, reducing PCA peak memory
+  while keeping results within floating-point roundoff.
+- Recompute a sparse column's Frobenius terms directly when the
+  support-replacement identity returns less than `1e-4` of its combined terms,
+  replacing a much smaller cutoff that admitted columns whose norms were only
+  accurate to about eight digits.
+- Require the sparse part of an operator's representation to be canonical CSR.
+  Public entry points already canonicalize their counts; calling an internal
+  representation builder with unsorted or duplicated entries now fails loudly
+  instead of returning wrong statistics.
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially
   reducing construction peak RSS when clipping is enabled.

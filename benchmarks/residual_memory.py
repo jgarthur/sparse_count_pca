@@ -1,10 +1,12 @@
-"""Compare residual-construction peak RSS between two source trees.
+"""Compare residual or operator-construction peak RSS between source trees.
 
 This is a manual maintainer probe rather than a CI test. Each measurement runs
 in a fresh process, loads the same saved CSR matrix before establishing its RSS
-baseline, and constructs one residual representation without PCA. The parent
-polls current RSS while the worker also reports its process-lifetime high-water
-mark as a cross-check.
+baseline, and measures either residual-representation construction or operator
+statistics. In operator mode the representation is built before the baseline
+so the measured increment isolates memory used to center the operator and
+calculate its summary statistics. The parent polls current RSS while the worker
+also reports its process-lifetime high-water mark as a cross-check.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ FAMILIES = (
     ("scaled_nb", "deviance"),
 )
 DTYPES = ("float32", "float64")
+PHASES = ("representation", "operator")
 
 
 def _ru_maxrss_bytes() -> int:
@@ -53,8 +56,9 @@ def _ru_maxrss_bytes() -> int:
 
 
 def _worker_main(arguments: list[str]) -> int:
-    """Load one saved matrix and construct one residual representation."""
+    """Load one saved matrix and run one isolated measurement phase."""
     parser = argparse.ArgumentParser()
+    parser.add_argument("--phase", choices=PHASES, required=True)
     parser.add_argument("--matrix", type=Path, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--residual", required=True)
@@ -66,6 +70,7 @@ def _worker_main(arguments: list[str]) -> int:
     from scipy import sparse
 
     import sparse_count_pca
+    from sparse_count_pca._operator import SparseLowRankLinearOperator
     from sparse_count_pca._residuals import build_residual_representation
 
     counts = sparse.load_npz(args.matrix).tocsr()
@@ -79,17 +84,6 @@ def _worker_main(arguments: list[str]) -> int:
     )
     clip = None if args.clip == "none" else float(args.clip)
 
-    ready = {
-        "event": "ready",
-        "pid": os.getpid(),
-        "module_path": str(Path(sparse_count_pca.__file__).resolve()),
-        "ru_maxrss_bytes": _ru_maxrss_bytes(),
-    }
-    print("MEMORY_READY " + json.dumps(ready), flush=True)
-    if sys.stdin.readline().strip() != "go":
-        raise RuntimeError("Memory worker did not receive the go signal")
-
-    started = time.perf_counter()
     keywords = {
         "model": args.model,
         "residual": args.residual,
@@ -100,19 +94,54 @@ def _worker_main(arguments: list[str]) -> int:
     }
     if "dtype" in inspect.signature(build_residual_representation).parameters:
         keywords["dtype"] = args.dtype
-    representation = build_residual_representation(
-        counts,
-        row_totals,
-        proportions,
-        **keywords,
-    )
+
+    def build_representation():
+        return build_residual_representation(
+            counts,
+            row_totals,
+            proportions,
+            **keywords,
+        )
+
+    representation = build_representation() if args.phase == "operator" else None
+
+    ready = {
+        "event": "ready",
+        "phase": args.phase,
+        "pid": os.getpid(),
+        "module_path": str(Path(sparse_count_pca.__file__).resolve()),
+        "ru_maxrss_bytes": _ru_maxrss_bytes(),
+    }
+    print("MEMORY_READY " + json.dumps(ready), flush=True)
+    if sys.stdin.readline().strip() != "go":
+        raise RuntimeError("Memory worker did not receive the go signal")
+
+    started = time.perf_counter()
+    if args.phase == "representation":
+        representation = build_representation()
+        output_checksum = None
+    else:
+        assert representation is not None
+        operator = SparseLowRankLinearOperator(
+            representation,
+            center=True,
+            dtype=args.dtype,
+            copy=False,
+        )
+        output_checksum = (
+            operator.frobenius_squared_uncentered()
+            + operator.frobenius_squared_centered()
+        )
     elapsed = time.perf_counter() - started
+    assert representation is not None
     done = {
         "event": "done",
+        "phase": args.phase,
         "elapsed_seconds": elapsed,
         "ru_maxrss_bytes": _ru_maxrss_bytes(),
         "output_nnz": representation.sparse.nnz,
         "output_dtype": str(representation.sparse.dtype),
+        "output_checksum": output_checksum,
     }
     print("MEMORY_DONE " + json.dumps(done), flush=True)
     return 0
@@ -151,6 +180,7 @@ def _run_worker(
     label: str,
     source: Path,
     matrix: Path,
+    phase: str,
     model: str,
     residual: str,
     dtype: str,
@@ -163,6 +193,8 @@ def _run_worker(
         sys.executable,
         str(Path(__file__).resolve()),
         "--worker",
+        "--phase",
+        phase,
         "--matrix",
         str(matrix),
         "--model",
@@ -255,7 +287,7 @@ def _run_worker(
             if remaining <= 0:
                 stdout, stderr = collect_output(kill=True)
                 raise TimeoutError(
-                    f"{label} {model}/{residual}/{dtype} worker exceeded "
+                    f"{label} {phase} {model}/{residual}/{dtype} worker exceeded "
                     f"{timeout_seconds:g} seconds:\n{stderr}\n{stdout}"
                 )
             current = _current_rss_bytes(process.pid)
@@ -266,7 +298,8 @@ def _run_worker(
         stdout, stderr = collect_output(kill=False)
         if process.returncode != 0:
             raise RuntimeError(
-                f"{label} {model}/{residual}/{dtype} worker failed:\n{stderr}\n{stdout}"
+                f"{label} {phase} {model}/{residual}/{dtype} worker failed:\n"
+                f"{stderr}\n{stdout}"
             )
         done_lines = [
             line for line in stdout.splitlines() if line.startswith("MEMORY_DONE ")
@@ -278,6 +311,7 @@ def _run_worker(
         ready_lifetime_peak = int(ready["ru_maxrss_bytes"])
     return {
         "source": label,
+        "phase": phase,
         "model": model,
         "residual": residual,
         "clip": "none" if clip is None else "symmetric",
@@ -301,7 +335,8 @@ def _format_mib(value: float) -> str:
 def _print_run(record: dict[str, Any], repeat: int) -> None:
     """Print one compact measurement row."""
     print(
-        f"{record['source']:9} r{repeat} {record['model']:9} "
+        f"{record['source']:9} r{repeat} {record['phase']:14} "
+        f"{record['model']:9} "
         f"{record['residual']:8} {record['clip']:9} {record['dtype']:7} "
         f"stored={record['output_dtype']:7} "
         f"peak+={_format_mib(record['incremental_peak_bytes']):>7} MiB "
@@ -312,14 +347,19 @@ def _print_run(record: dict[str, Any], repeat: int) -> None:
 
 def _print_comparison(records: list[dict[str, Any]]) -> None:
     """Print median candidate-versus-baseline incremental peak RSS."""
-    print("\nMedian sampled incremental peak RSS")
+    print(f"\nMedian sampled incremental peak RSS ({records[0]['phase']})")
     print("model     residual clip      dtype    baseline  candidate  reduction")
-    keys = [
-        (model, residual, clip, dtype)
-        for model, residual in FAMILIES
-        for clip in ("none", "symmetric")
-        for dtype in DTYPES
-    ]
+    keys = list(
+        dict.fromkeys(
+            (
+                record["model"],
+                record["residual"],
+                record["clip"],
+                record["dtype"],
+            )
+            for record in records
+        )
+    )
     for model, residual, clip, dtype in keys:
         selected = [
             record
@@ -352,23 +392,83 @@ def _print_comparison(records: list[dict[str, Any]]) -> None:
         )
 
 
+def _fixed_row_support_counts(
+    n_obs: int,
+    n_vars: int,
+    nnz_per_row: int,
+    rng: Any,
+):
+    """Build deterministic counts with exactly ``nnz_per_row`` entries per row."""
+    import numpy as np
+    from scipy import sparse
+
+    nnz = n_obs * nnz_per_row
+    indptr = np.arange(n_obs + 1, dtype=np.int64) * nnz_per_row
+    indices = np.empty(nnz, dtype=np.int32)
+    base_columns = np.arange(nnz_per_row, dtype=np.int64)
+    rows_per_chunk = max(1, 1_000_000 // nnz_per_row)
+    for row_start in range(0, n_obs, rows_per_chunk):
+        row_stop = min(n_obs, row_start + rows_per_chunk)
+        offsets = np.arange(row_start, row_stop, dtype=np.int64) * 104_729 % n_vars
+        block = np.sort((offsets[:, None] + base_columns) % n_vars, axis=1)
+        value_start = row_start * nnz_per_row
+        value_stop = row_stop * nnz_per_row
+        indices[value_start:value_stop] = block.ravel()
+    data = rng.integers(1, 11, size=nnz, dtype=np.int32)
+    counts = sparse.csr_matrix(
+        (data, indices, indptr),
+        shape=(n_obs, n_vars),
+    )
+    assert counts.has_canonical_format, "generated counts must be canonical CSR"
+    return counts
+
+
 def _main(arguments: list[str]) -> int:
     """Generate one input and run every paired memory configuration."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--phase", choices=PHASES, default="representation")
     parser.add_argument("--baseline-source", type=Path, required=True)
     parser.add_argument("--candidate-source", type=Path, required=True)
     parser.add_argument("--n-obs", type=int, default=3000)
     parser.add_argument("--n-vars", type=int, default=3750)
-    parser.add_argument("--density", type=float, default=0.16)
+    parser.add_argument("--density", type=float)
+    parser.add_argument("--nnz-per-row", type=int)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--poll-ms", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--clip", type=float)
+    parser.add_argument(
+        "--clip-state",
+        choices=("none", "symmetric", "both"),
+        default="both",
+    )
+    parser.add_argument(
+        "--model",
+        choices=tuple(dict.fromkeys(model for model, _ in FAMILIES)),
+        action="append",
+        dest="models",
+    )
+    parser.add_argument(
+        "--residual",
+        choices=tuple(dict.fromkeys(residual for _, residual in FAMILIES)),
+        action="append",
+        dest="residuals",
+    )
+    parser.add_argument(
+        "--dtype",
+        choices=DTYPES,
+        action="append",
+        dest="dtypes",
+    )
     args = parser.parse_args(arguments)
     if args.n_obs <= 0 or args.n_vars <= 0 or args.repeats <= 0:
         parser.error("matrix dimensions and repeats must be positive")
-    if not 0.0 < args.density <= 1.0:
+    if args.density is not None and args.nnz_per_row is not None:
+        parser.error("density and nnz-per-row are mutually exclusive")
+    if args.density is not None and not 0.0 < args.density <= 1.0:
         parser.error("density must be in (0, 1]")
+    if args.nnz_per_row is not None and not 1 <= args.nnz_per_row <= args.n_vars:
+        parser.error("nnz-per-row must be in [1, n_vars]")
     if args.poll_ms <= 0:
         parser.error("poll-ms must be positive")
     if args.timeout <= 0:
@@ -384,26 +484,45 @@ def _main(arguments: list[str]) -> int:
     from scipy import sparse
 
     rng = np.random.default_rng(20260813)
-    counts = sparse.random(
-        args.n_obs,
-        args.n_vars,
-        density=args.density,
-        format="csr",
-        dtype=np.int32,
-        random_state=rng,
-        data_rvs=lambda size: rng.integers(1, 11, size=size, dtype=np.int32),
-    )
+    if args.nnz_per_row is None:
+        density = 0.16 if args.density is None else args.density
+        counts = sparse.random(
+            args.n_obs,
+            args.n_vars,
+            density=density,
+            format="csr",
+            dtype=np.int32,
+            random_state=rng,
+            data_rvs=lambda size: rng.integers(1, 11, size=size, dtype=np.int32),
+        )
+    else:
+        counts = _fixed_row_support_counts(
+            args.n_obs,
+            args.n_vars,
+            args.nnz_per_row,
+            rng,
+        )
     if np.asarray(counts.sum(axis=1)).min() == 0:
         raise RuntimeError(
             "Generated matrix contains an empty row; choose more density"
         )
 
     records: list[dict[str, Any]] = []
+    selected_models = set(args.models or (model for model, _ in FAMILIES))
+    selected_residuals = set(args.residuals or (residual for _, residual in FAMILIES))
+    selected_dtypes = args.dtypes or DTYPES
+    if args.clip_state == "none":
+        clip_values = (None,)
+    elif args.clip_state == "symmetric":
+        clip_values = (clip_value,)
+    else:
+        clip_values = (None, clip_value)
     configurations = [
         (model, residual, clip, dtype)
         for model, residual in FAMILIES
-        for clip in (None, clip_value)
-        for dtype in DTYPES
+        if model in selected_models and residual in selected_residuals
+        for clip in clip_values
+        for dtype in selected_dtypes
     ]
     total_runs = args.repeats * len(configurations) * 2
     print(
@@ -430,6 +549,7 @@ def _main(arguments: list[str]) -> int:
                         label=label,
                         source=source,
                         matrix=matrix,
+                        phase=args.phase,
                         model=model,
                         residual=residual,
                         dtype=dtype,
