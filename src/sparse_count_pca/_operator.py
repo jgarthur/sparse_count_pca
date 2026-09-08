@@ -413,12 +413,10 @@ class SparseLowRankLinearOperator(LinearOperator):
                     - removed_total[index, column]
                     + added_total[index, column]
                 )
-                term_scale = math.fsum(
-                    (
-                        baseline_total,
-                        removed_total[index, column],
-                        added_total[index, column],
-                    )
+                term_scale = (
+                    baseline_total
+                    + removed_total[index, column]
+                    + added_total[index, column]
                 )
                 fallback_columns[column] |= _norm_needs_direct_recalculation(
                     column_squared,
