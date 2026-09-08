@@ -116,7 +116,13 @@ class SparseLowRankLinearOperator(LinearOperator):
         left_deviations = self._left_float64 - self._left_mean_float64
         self._left_centered_gram_float64 = left_deviations.T @ left_deviations
 
-        column_counts = np.bincount(self.S.indices, minlength=self.shape[1])
+        column_counts = np.zeros(self.shape[1], dtype=np.intp)
+        for _, _, value_start, value_stop in _support_row_blocks(
+            self.S, _STATS_MEAN_BLOCK_NNZ
+        ):
+            column_counts += np.bincount(
+                self.S.indices[value_start:value_stop], minlength=self.shape[1]
+            )
         dense_columns = column_counts > self.shape[0] // 2
 
         if self.center:
