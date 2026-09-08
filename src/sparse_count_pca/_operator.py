@@ -381,15 +381,15 @@ class SparseLowRankLinearOperator(LinearOperator):
         (``docs/development/specification.md``).
         """
         n_obs, n_vars = self.shape
-        cast = [np.asarray(center, dtype=self.dtype) for center in centers]
-        shape = (len(cast), n_vars)
+        centers_cast = [np.asarray(center, dtype=self.dtype) for center in centers]
+        shape = (len(centers_cast), n_vars)
         removed_total = np.zeros(shape, dtype=np.float64)
         added_total = np.zeros(shape, dtype=np.float64)
 
         for block_bounds in _support_row_blocks(self.S, _STATS_NORM_BLOCK_NNZ):
             removed_partial, added_partial = self._norm_block_squared_sums(
                 *block_bounds,
-                cast,
+                centers_cast,
                 dense_columns,
             )
             removed_total += removed_partial
@@ -405,15 +405,13 @@ class SparseLowRankLinearOperator(LinearOperator):
             v = self._right_float64[column]
             mean_projection = float(v @ self._left_mean_float64)
             baseline_quadratic = v @ self._left_centered_gram_float64 @ v
-            for index, center in enumerate(cast):
+            for index, center in enumerate(centers_cast):
                 offset = mean_projection - float(center[column])
                 baseline_total = float(baseline_quadratic + n_obs * offset * offset)
-                column_squared = math.fsum(
-                    (
-                        baseline_total,
-                        -removed_total[index, column],
-                        added_total[index, column],
-                    )
+                column_squared = (
+                    baseline_total
+                    - removed_total[index, column]
+                    + added_total[index, column]
                 )
                 term_scale = math.fsum(
                     (
@@ -431,7 +429,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         fallback_column_indices = np.flatnonzero(fallback_columns)
         if fallback_column_indices.size:
             column_norms[:, fallback_column_indices] = self._direct_column_squared_sums(
-                cast, fallback_column_indices
+                centers_cast, fallback_column_indices
             )
         return [math.fsum(norms) for norms in column_norms]
 
