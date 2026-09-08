@@ -1670,15 +1670,20 @@ components = Vt
 
 ## Explained variance and total variance
 
-For a rank-$k$ representation
+Total variance comes from the sum of squared entries of the centered transform.
+We also need the corresponding uncentered sum to decide whether the centered
+variance is numerically zero. Calculate both without materializing the full
+transformed matrix
 
 ```math
-R = S + UV^\top,
+R = S + UV^\top.
 ```
 
-let $v_j$ be column $j$ of $V^\top$, let $b_j=Uv_j$ be that column's low-rank
-baseline, and let $P_j$ contain the row indices stored in column $j$ of $S$.
-The represented values are
+Work with one column $j$ at a time. There are $N$ observations, and the
+representation has rank $k$: $U$ has shape $N\times k$, and $v_j$ is the
+length-$k$ vector given by row $j$ of $V$, written as a column vector.
+The vector $b_j=Uv_j$ gives a baseline value for every observation. The sparse
+matrix $S$ supplies corrections at the stored rows $P_j$:
 
 ```math
 R_{ij} =
@@ -1688,35 +1693,36 @@ b_{ij} & i \notin P_j.
 \end{cases}
 ```
 
-Both required Frobenius norms measure squared deviations of the columns of $R$
-from a per-column scalar center $c_j$: $c=0$ for the uncentered norm, and $c$
-equal to the column means of $R$ for the centered norm. Compute the column
-means first.
-
-With $\mathbf 1$ the length-$N$ vector of ones, let
+The quantity we want for this column is
 
 ```math
-\bar u = \frac{1}{N}U^\top \mathbf 1
+q_j(c_j) = \sum_{i=1}^{N}(R_{ij}-c_j)^2.
 ```
 
-hold the column means of $U$. Averaging column $j$ of $R$ averages the
-baseline $b_j=Uv_j$ and adds the stored corrections, giving the represented
-mean
+Setting $c_j=0$ gives its uncentered sum of squares. Setting $c_j=\bar r_j$,
+the column mean, gives its centered sum of squares. The same calculation can
+serve both cases once we have the means.
+
+First calculate the mean baseline. Let $\bar u$ contain the means of the $k$
+columns of $U$, and let $\mathbf 1$ be the length-$N$ vector of ones:
 
 ```math
-\bar r_j
-=
-\frac{1}{N}\mathbf 1^\top U v_j
-+
-\frac{1}{N}\sum_{i \in P_j} S_{ij}
-=
-\bar u^\top v_j
-+
-\frac{1}{N}\sum_{i \in P_j} S_{ij}.
+\bar u = \frac{1}{N}U^\top \mathbf 1,
+\qquad
+\bar b_j = \bar u^\top v_j.
 ```
 
-For the squared deviations, center the low-rank factor and form its Gram
-matrix:
+The represented column mean is the mean baseline plus the sum of its sparse
+corrections divided by $N$:
+
+```math
+\bar r_j = \bar b_j + \frac{1}{N}\sum_{i \in P_j} S_{ij}.
+```
+
+Next calculate the baseline's sum of squares about $c_j$. It helps to separate
+variation around the baseline's own mean from the offset between that mean and
+$c_j$. Center the columns of $U$ and form the small $k\times k$ Gram matrix
+once, for reuse across all columns:
 
 ```math
 U_c = U - \mathbf 1\bar u^\top,
@@ -1724,47 +1730,67 @@ U_c = U - \mathbf 1\bar u^\top,
 \Gamma_U = U_c^\top U_c.
 ```
 
-For any scalar center $c_j$, the baseline decomposes as
+For a single observation, add and subtract the baseline mean $\bar b_j$:
 
 ```math
-b_j - c_j\mathbf 1
-=
-U_c v_j
-+
-(\bar u^\top v_j - c_j)\mathbf 1,
+b_{ij} - c_j = (b_{ij} - \bar b_j) + (\bar b_j - c_j).
 ```
 
-and $\mathbf 1^\top U_c=0$ eliminates the cross term, so the baseline squared deviation
-over all rows is
+The first term is that observation's deviation from the baseline mean. The
+second is the same offset for every observation. The vector of first terms is
+$U_c v_j$, because
 
 ```math
-\sum_i (b_{ij} - c_j)^2
+U_c v_j
+= (U - \mathbf 1\bar u^\top)v_j
+= b_j - \bar b_j\mathbf 1.
+```
+
+When we square and sum, the cross term vanishes because the entries of
+$U_c v_j$ sum to zero. The result is the baseline's variation around its mean
+plus the squared mean offset, repeated $N$ times:
+
+```math
+B_j(c_j) = \sum_{i=1}^{N}(b_{ij} - c_j)^2
 =
 v_j^\top \Gamma_U v_j
 +
-N(\bar u^\top v_j - c_j)^2.
+N(\bar b_j - c_j)^2.
 ```
 
-Replace that baseline on stored support to obtain the represented column norm:
+This accounts for every row as if it contained only the baseline. At each
+stored row, remove that row's baseline contribution and add its actual
+represented contribution instead. These two corrections require visiting only
+the stored entries:
 
 ```math
-q_j(c_j)
-=
-\sum_i (b_{ij} - c_j)^2
--
-\sum_{i \in P_j}(b_{ij} - c_j)^2
-+
-\sum_{i \in P_j}(b_{ij} + S_{ij} - c_j)^2.
+\begin{aligned}
+D_j(c_j) &= \sum_{i \in P_j}(b_{ij} - c_j)^2,
+\\
+A_j(c_j) &= \sum_{i \in P_j}(b_{ij} + S_{ij} - c_j)^2.
+\end{aligned}
 ```
 
-Summing over columns gives both norms:
+The represented column's sum of squares is therefore
 
 ```math
-\|R - \mathbf 1 c^\top\|_F^2 = \sum_j q_j(c_j),
+q_j(c_j) = B_j(c_j) - D_j(c_j) + A_j(c_j).
 ```
 
-using $c=0$ for `frobenius_squared_uncentered()` and the stored operator mean
-$c=\bar r$ for `frobenius_squared_centered()`.
+Finally, sum over columns to obtain the two squared Frobenius norms:
+
+```math
+\begin{aligned}
+\|R\|_F^2 &= \sum_j q_j(0),
+\\
+\|R-\mathbf 1\bar r^\top\|_F^2 &= \sum_j q_j(\bar r_j).
+\end{aligned}
+```
+
+These are `frobenius_squared_uncentered()` and
+`frobenius_squared_centered()`, respectively. In the implementation, the center
+for the second calculation is the stored operator mean, including its dtype
+rounding.
 
 Do not calculate large sparse and low-rank component norms and then subtract
 them. For columns with more than half their entries stored, calculate means and
@@ -1776,24 +1802,38 @@ support in $O(\mathit{nnz})$ for fixed representation rank.
 The support-replacement combination is itself cancellation limited: its error
 scales with the magnitudes of the three combined terms rather than with the
 result. After the support sweep, let $B$, $D$, and $A$ denote the nonnegative
-baseline, removed, and added terms above. Recompute a sparse-support column
-directly when its calculated $q=B-D+A$ is negative or satisfies
+baseline, removed, and added terms above. For a column evaluated using these
+terms, replace the calculated sum of squares when $q=B-D+A$ is negative or
+satisfies
 
 ```math
 q \le 10^{-4}(B + D + A).
 ```
 
-A column whose identity result falls below $10^{-4}$ of its combined terms is
-recomputed directly rather than trusted. The cutoff is chosen from measurement,
-not from a proven bound. The identity's roundoff is measured at roughly 10 to
-100 $\epsilon_{64}$ of the combined terms, so a column left on the identity path
-carries a relative error of order $10^{-10}$. That is adequate for the consumers of
-these statistics, which are scree plots and variance-explained ratios.
+To obtain the replacement, make another pass over bounded CSR row blocks.
+For each affected column, evaluate $b_{ij}=U_{i,:}v_j$ at every row, including
+rows without stored entries, and add $S_{ij}$ wherever a correction is stored.
+Subtract the center $c_j$ from each represented value and sum the squared
+deviations over all rows. This evaluates $\sum_i(R_{ij}-c_j)^2$ without
+subtracting the aggregate baseline and support terms. If either the centered
+or uncentered calculation triggers the fallback, recompute both sums for that
+column when both were requested. Only one row block's values are materialized
+at a time.
+
+The cutoff is chosen from measurement, not from a proven error bound. In the
+measurements used to choose it, the absolute error in the calculated
+$q=B-D+A$ was roughly $10\epsilon_{64}(B+D+A)$ to
+$100\epsilon_{64}(B+D+A)$. Dividing by $q$ gives the relative error: at the
+cutoff $q/(B+D+A)=10^{-4}$, those measured error levels correspond to roughly
+$2\times10^{-11}$ to $2\times10^{-10}$. This motivates an expected relative
+error of order $10^{-10}$ for columns that keep the identity result; it does
+not guarantee that accuracy for every input. Such errors are small enough for
+scree plots and variance-explained ratios.
 
 The measurements behind the cutoff: on real PBMC3k counts the smallest ratio
 over all sparse columns, all shipped transforms, and both centers is about
-$0.38$, and on simulated negative-binomial counts about $0.15$, so the second
-sweep does not run on ordinary data at all. The smallest ratio found on a
+$0.38$, and on simulated negative-binomial counts about $0.15$, so the fallback
+second sweep does not run on ordinary data at all. The smallest ratio found on a
 constructed but legal count matrix -- one gene carrying the counts $10^9$ and
 $1$ under binomial Pearson residuals -- is $4.6\times10^{-7}$; the earlier
 $\sqrt{\epsilon_{64}}$ cutoff admitted that column and returned its centered
