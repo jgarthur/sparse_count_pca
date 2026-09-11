@@ -187,8 +187,6 @@ None of these change public behavior:
   return an operator can borrow canonical input support during synchronous PCA.
   A persistent `TransformedMatrix` or returned operator must still own one
   support snapshot so later caller mutation cannot change its behavior.
-- Investigate a CSR-native uncentered-statistics path for correspondence
-  analysis.
 - Normalize explicit selectors that equal the full ordered axis to the same
   fast path as `obs=None` or `var=None` during materialization.
 - Revisit the full `adata.var` snapshot retained by `TransformedMatrix`.
@@ -241,6 +239,5 @@ clearly identified normative API/specification entry point.
 - Quick recipes to reproduce Seurat, Cell Ranger, scanpy, BHGP, correspondence analysis recommendations
 - Skill.md for agentic usage. recommend shifted clr and possibly correpondence analysis
 - Highly variable gene selection based on residual variance.
-- Supplied arbitrary size factors, including scran-derived factors.
 - Dask-backed inputs and block-aware transformations.
 - Additional SVD solvers if they preserve deterministic and dtype contracts.

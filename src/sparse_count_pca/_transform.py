@@ -348,6 +348,22 @@ class Log1pNormalized(Transform):
     raw-count pseudocount because
     ``log1p(x_ij / s_i) = log(x_ij + s_i) - log(s_i)``.
 
+    Fitting rejects zero-total observations, including when size factors are
+    supplied. Filter empty rows from the selected count matrix first.
+
+    Fitted transform and PCA ``params`` record:
+
+    - ``target_sum``: the requested target, or ``None``.
+    - ``resolved_target_sum``: the explicit or median target used, or ``None``
+      when factors were supplied.
+    - ``size_factors``: the supplied vector or observation-column name, or
+      ``None`` when factors were calculated from a target.
+    - ``size_factor_source``: ``"median_target_sum"``, ``"target_sum"``, or
+      ``"supplied"``.
+    - ``size_factor_median``: the median of the divisors actually used.
+    - ``effective_count_shift``: ``"size_factor"``, indicating that each
+      observation's size factor is its effective raw-count pseudocount.
+
     Attributes:
         target_sum: Positive target total, or ``None`` to use the median
             observation total. Mutually exclusive with ``size_factors``.
@@ -584,7 +600,9 @@ class TransformedMatrix(LinearOperator):
             many of those have no counts, and, for the shifted transforms,
             ``shift_domain``, naming the scale the shift was applied on. For
             residual transforms it also records ``clip_threshold``, the numeric
-            threshold this fit resolved ``clip`` to.
+            threshold this fit resolved ``clip`` to. Normalized-log1p metadata
+            includes the resolved target and factor source described in
+            ``Log1pNormalized``.
         obs_names: Copied AnnData observation names, or ``None`` for matrix
             input.
         var_names: Copied AnnData variable names, or ``None`` for matrix input.

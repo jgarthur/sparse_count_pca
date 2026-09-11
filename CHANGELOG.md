@@ -15,19 +15,20 @@ All notable user-facing changes are recorded here.
   transform and PCA metadata, alongside the request in `clip`.
 - Add size-factor-normalized `log1p` PCA with median-depth or explicit target
   totals, supplied size factors, AnnData observation-key alignment, and an
-  exact rank-zero sparse representation verified against Scanpy. Composition-
-  scale shifted CLR now also rejects row-divisor overflow instead of silently
+  exact rank-zero sparse representation verified against Scanpy.
+- Reject extreme composition-scale shifted-CLR shifts when multiplying the
+  shift by a cell's total count overflows float64, instead of silently
   collapsing transformed nonzero counts to zero.
 - For large sparse inputs, compute operator means and Frobenius norms from
   bounded CSR row blocks instead of a full CSC copy, reducing PCA peak memory
   while keeping results within floating-point roundoff.
 - Recompute a sparse column's Frobenius terms directly when the
-  support-replacement identity returns less than `1e-4` of its combined terms,
+  support-replacement identity returns at most `1e-4` of its combined terms,
   replacing a much smaller cutoff that admitted columns whose norms were only
   accurate to about eight digits.
 - Require the sparse part of an operator's representation to be canonical CSR.
-  Public entry points already canonicalize their counts; calling an internal
-  representation builder with unsorted or duplicated entries now fails loudly
+  Public entry points already canonicalize their counts; constructing an internal
+  operator from CSR with unsorted or duplicated entries now fails loudly
   instead of returning wrong statistics.
 - Build every residual family's sparse correction in bounded support blocks
   and write it directly in the requested calculation dtype, substantially

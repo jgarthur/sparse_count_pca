@@ -252,6 +252,9 @@ Z_i = \operatorname{clr}(X_i / s_i + \tau\mathbf 1)
 
 where $s_i$ is the row total. Its effective raw-count shift varies by cell. It
 is invariant to deterministic row rescaling and rejects zero-total rows.
+Reject with `ValueError` if the effective count shift $s_i\tau$ is nonfinite
+or rounds to zero in float64, or if $X_{ij}/(s_i\tau)$ overflows. A huge
+shift must not silently collapse transformed nonzero counts to zero.
 
 ### Dirichlet transforms
 

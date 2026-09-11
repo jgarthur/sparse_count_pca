@@ -2,7 +2,9 @@
 
 ## Residual clipping is on by default and exact
 
-Residual transforms clip by default. The threshold applies to the computed
+Residual transforms clip by default, a change from `1.0.0rc1`. Pass
+`clip=None` to restore the previous unclipped behavior; see the
+[release notes](../changelog.md). The threshold applies to the computed
 residual values before column centering, and `clip` accepts four kinds of
 value:
 
@@ -76,6 +78,13 @@ numerical accuracy and parity testing.
 Explicit `dtype="float32"` is a lower-memory approximate calculation mode. It
 changes the matrix presented to the SVD solver; it is not merely an output
 storage conversion. No other representation dtype is supported.
+
+Count margins and normalization factors are fitted in float64 regardless of
+`dtype`. Means, squared norms, and variance statistics are accumulated in
+float64 from the representation stored at the requested dtype. Residual
+values are evaluated in float64 blocks and written into that dtype, so
+choosing float32 reduces storage and operator precision while retaining
+float64 accumulation.
 
 ## Degenerate inputs
 

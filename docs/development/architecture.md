@@ -244,7 +244,9 @@ and block order under severe mixed-sign cancellation. Columns with more than
 half their entries stored instead use direct represented values grouped by a
 block-local CSC. After the norm sweep, sparse columns whose result is too small
 relative to the combined support-replacement terms are recomputed directly in
-a second sweep. Centered operators require one sweep for means followed by one
+a second sweep. Correspondence analysis uses this same bounded CSR path for
+its uncentered statistics. Centered operators require one sweep for means
+followed by one
 sweep that computes both uncentered and centered norms; expanding centered
 squares from raw moments would save a pass but reintroduce cancellation.
 

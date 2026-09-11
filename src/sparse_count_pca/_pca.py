@@ -40,6 +40,15 @@ class PCAResult:
             all selected variables, not only the returned components. It is the
             denominator of ``explained_variance_ratio``.
         params: Transform, solver, dtype, masking, and reproducibility metadata.
+            Includes ``normalization_n_vars`` (variables used to fit normalization),
+            ``pca_n_vars`` (variables selected for PCA), ``n_empty_vars`` (genes
+            with no counts in the normalization input), ``n_comps``, ``solver``,
+            ``random_state``, ``tol``, ``dtype``, and ``package_version``.
+            Residual results record the requested ``clip`` and resolved numeric
+            ``clip_threshold`` (``None`` when clipping is disabled). Normalized-log1p
+            results also record ``target_sum``, ``resolved_target_sum``,
+            ``size_factors``, ``size_factor_source``, ``size_factor_median``,
+            and ``effective_count_shift``; see ``Log1pNormalized`` for their meanings.
         operator: Centered operator passed to ARPACK when
             ``return_operator=True``; otherwise ``None``.
     """

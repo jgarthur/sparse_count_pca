@@ -1,5 +1,13 @@
 # PCA and correspondence analysis of sparse counts without dense matrices
 
+!!! info "1.0.0 release: residual clipping has changed"
+
+    If you used residual normalization in `1.0.0rc1`, residuals now clip
+    symmetrically by default at `clip="seurat"` (`sqrt(n_obs / 30)`). Pass
+    `clip=None` to restore the previous unclipped behavior. See the
+    [changelog](changelog.md) and [clipping guide](concepts/clipping-and-precision.md)
+    for the available thresholds.
+
 `sparse-count-pca` computes PCA and correspondence analysis directly from
 sparse count matrices, avoiding the dense normalized or residual matrices these
 analyses would ordinarily require.
@@ -33,7 +41,7 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
 
 ## Choose your path
 
-- **I already use Scanpy's Pearson-residual preprocessing.** See
+- **I already use Scanpy preprocessing.** See
   [coming from Scanpy](reference/compatibility.md#coming-from-scanpy) for what
   each call maps to and where the models differ.
 - **I want to compare the transforms.** The [transform catalog](transforms.md)
@@ -42,6 +50,7 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
   describes the options rather than recommending one.
 - **I know which analysis I want.** Guides cover
   [residual PCA](guides/residual-pca.md),
+  [normalized log1p](guides/log1p-normalization.md),
   [shifted CLR](guides/shifted-clr.md), and
   [correspondence analysis](guides/correspondence-analysis.md);
   [AnnData workflows](guides/anndata-workflows.md) covers count sources,

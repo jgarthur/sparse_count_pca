@@ -110,6 +110,8 @@ fewer variables and Scanpy would otherwise read `.X` directly.
 
 - Read the [transform catalog](transforms.md) before switching
   normalization families.
+- Use the [normalized-log1p guide](guides/log1p-normalization.md) for
+  library-size normalization or supplied size factors followed by PCA.
 - Use the [residual PCA guide](guides/residual-pca.md) for model, residual,
   clipping, and masking options.
 - Use [AnnData workflows](guides/anndata-workflows.md) for `.X`, layers, raw

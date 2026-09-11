@@ -315,11 +315,11 @@ def correspondence_analysis_matrix(
             variance ``mu_ij``, or ``"scaled_nb"`` for the experimental residual
             ordination, standardizing by ``mu_ij * (1 + alpha_j * mean_n *
             p_j)`` with ``mean_n`` the mean row total.
-        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
-            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
-            only). Larger values mean more variance, and values below ``1e-8`` use the
-            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
-            models. Values for variables with no counts are replaced with zero.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar or
+            length-``n_vars`` array. Larger values mean more variance, and values
+            below ``1e-8`` use the Poisson limit. Required for ``model="scaled_nb"``
+            and rejected for the other models. Values for variables with no
+            counts are replaced with zero.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or

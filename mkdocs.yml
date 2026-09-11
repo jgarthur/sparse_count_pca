@@ -42,7 +42,7 @@ markdown_extensions:
       generic: true
   - pymdownx.details
   - pymdownx.snippets:
-      base_path: [docs]
+      base_path: [CHANGELOG.md, docs]
       check_paths: true
   - pymdownx.superfences:
       custom_fences:
@@ -72,9 +72,11 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Changelog: changelog.md
   - Transforms: transforms.md
   - Guides:
       - Residual PCA: guides/residual-pca.md
+      - Normalized log1p: guides/log1p-normalization.md
       - Shifted CLR: guides/shifted-clr.md
       - Transform once, reuse: guides/transform-reuse.md
       - Correspondence analysis: guides/correspondence-analysis.md
@@ -82,7 +84,7 @@ nav:
   - Concepts:
       - Sparse plus low rank: concepts/sparse-plus-low-rank.md
       - Normalization, masking, and centering: concepts/normalization-masking-and-centering.md
-      - Clipping and precision: concepts/clipping-and-precision.md
+      - Clipping and numerical precision: concepts/clipping-and-precision.md
   - Reference:
       - Compatibility: reference/compatibility.md
       - Scaled-NB null model: reference/scaled-nb-model.md

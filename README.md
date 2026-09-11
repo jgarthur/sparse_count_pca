@@ -65,9 +65,7 @@ to `adata.varm["PCs"]`, and variance statistics and parameters to
 maturity](https://sparse-count-pca.readthedocs.io/en/latest/transforms/)
 
 Already using Scanpy? See [coming from Scanpy][scanpy-compatibility] for what
-each call maps to, including the `normalize_total` + `log1p` + `pca` pipeline,
-and [what this package does not do][omitted-transforms] for the recipes it
-deliberately omits.
+each call maps to, including the `normalize_total` + `log1p` + `pca` pipeline.
 
 `scaled_nb` is a package-specific name for a negative-binomial model that
 scales overdispersion inversely with cell depth, as in the sSeq model from
@@ -173,7 +171,6 @@ for project invariants and documentation expectations.
 [clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
 [correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
-[omitted-transforms]: https://sparse-count-pca.readthedocs.io/en/latest/transforms/#what-this-package-does-not-do
 [pflog-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#shifted-clr-pflog-and-cleartools
 [scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
 [scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
