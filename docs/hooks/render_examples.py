@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -128,6 +129,7 @@ def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
     import jupytext
     from nbconvert import MarkdownExporter
     from nbconvert.preprocessors import ExecutePreprocessor
+    from traitlets.config import Config
 
     notebook = jupytext.read(source, fmt="py:percent")
     notebook.metadata.kernelspec = {
@@ -136,14 +138,19 @@ def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
         "name": "python3",
     }
 
-    executor = ExecutePreprocessor(
-        timeout=60,
-        kernel_name="python3",
-    )
-    executor.preprocess(
-        notebook,
-        resources={"metadata": {"path": str(REPOSITORY_ROOT)}},
-    )
+    with TemporaryDirectory(prefix="scp-") as kernel_directory:
+        config = Config()
+        config.KernelManager.transport = "ipc"
+        config.KernelManager.ip = str(Path(kernel_directory) / "kernel")
+        executor = ExecutePreprocessor(
+            timeout=60,
+            kernel_name="python3",
+            config=config,
+        )
+        executor.preprocess(
+            notebook,
+            resources={"metadata": {"path": str(REPOSITORY_ROOT)}},
+        )
 
     resources: dict[str, Any] = {
         "metadata": {"path": str(source.parent)},
