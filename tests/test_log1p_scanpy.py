@@ -41,9 +41,10 @@ def test_log1p_norm_matches_scanpy_transform(target_sum):
     np.testing.assert_allclose(actual_values, expected_values, rtol=0.0, atol=1e-12)
 
 
+@pytest.mark.parametrize("target_nnz", [32, 1_000_000])
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
-def test_batched_log1p_pca_matches_scanpy(monkeypatch, dtype):
-    """Batched statistics preserve Scanpy PCA scores, loadings, and variance."""
+def test_rank_zero_log1p_pca_matches_scanpy(monkeypatch, target_nnz, dtype):
+    """CSR statistics preserve Scanpy PCA scores, loadings, and variance."""
     rng = np.random.default_rng(318)
     counts = rng.integers(1, 20, size=(32, 19))
     counts[rng.random(counts.shape) < 0.2] = 0
@@ -55,9 +56,18 @@ def test_batched_log1p_pca_matches_scanpy(monkeypatch, dtype):
     scanpy.pp.log1p(explicit)
     explicit.X = explicit.X.astype(dtype)
     scanpy.pp.pca(explicit, n_comps=5, svd_solver="arpack", random_state=0, dtype=dtype)
-    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 64)
-    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 32)
-    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 9)
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", target_nnz)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", target_nnz)
+
+    def reject_dense_batches(*args, **kwargs):
+        """Reject direct dense reconstruction for normalized-log1p statistics."""
+        raise AssertionError("log1p statistics must use the rank-zero CSR path")
+
+    monkeypatch.setattr(
+        operator_module.SparseLowRankLinearOperator,
+        "_represented_column_batches",
+        reject_dense_batches,
+    )
 
     actual = log1p_norm_pca_matrix(counts, n_comps=5, dtype=dtype, random_state=0)
     expected_scores = explicit.obsm["X_pca"]

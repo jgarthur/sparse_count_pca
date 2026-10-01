@@ -127,8 +127,8 @@ For each sparse-plus-low-rank representation, compare:
 - matrix-matrix products where exposed;
 - centered means and Frobenius-norm statistics.
 
-Statistics tests cross both CSR row-block and dense column-batch boundaries
-for ranks zero, one, and three, both operator dtypes, and centered and
+Statistics tests cross CSR row-block boundaries for rank zero and both CSR
+and dense column-batch boundaries for ranks one and three, both operator dtypes, and centered and
 uncentered operators. Include empty, sparse, exactly-half-supported, and
 dense-majority columns, constant and nearly constant columns, and signed
 means with severe cancellation. Verify that dense batches respect their
@@ -136,14 +136,17 @@ represented-value target, with a one-column exception when a row block alone
 exceeds that target. Existing cancellation-fallback and numerical-zero tests
 remain part of the contract. A small normalized-log1p PCA comparison against
 Scanpy checks aligned scores and loadings, singular values, total variance,
-and explained-variance ratios.
+and explained-variance ratios, while rejecting dense reconstruction. Rank-zero
+tests also cover explicit stored zeros, read-only borrowed data, skipped mean
+work for uncentered operators, and subtraction rounding in float32.
 
 Transpose products are independent contracts. A correct forward product does
 not establish a correct adjoint.
 
 ### Operator batch-size measurements
 
-The 2026-10-01 dense-batch sweep used deterministic 2,000 × 1,500 and
+Before the rank-zero CSR path was introduced, the 2026-10-01 dense-batch sweep
+used deterministic 2,000 × 1,500 and
 4,000 × 3,000 count matrices with 20% of genes stored in 75% of rows and the
 others in 2%. Their stored-entry counts were 498,000 and 1,992,000. Both
 normalized log1p (rank zero) and unclipped Poisson Pearson residuals (rank one)
@@ -177,7 +180,9 @@ typical norm block's direct reconstruction fits in one 262,144-value batch.
 Mean blocks require multiple batches. This reasoning supports the conservative
 batch target without allocating a matrix at that scale. Uniformly sparse genes
 do not use direct dense batching; dense-majority means still incur per-column
-`math.fsum` calls, which increasing the batch target does not eliminate.
+`math.fsum` calls for nonzero-rank representations, which increasing the batch
+target does not eliminate. Nonnegative rank-zero representations now bypass
+that mean calculation and dense batching entirely.
 
 These small local measurements support a conservative default, not an optimum
 for every machine or support distribution, nor a prediction of full PBMC

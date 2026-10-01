@@ -1796,8 +1796,22 @@ These are `frobenius_squared_uncentered()` and
 for the second calculation is the stored operator mean, including its dtype
 rounding.
 
-Do not calculate large sparse and low-rank component norms and then subtract
-them. For columns with more than half their entries stored, calculate means and
+For rank-zero representations, use bounded CSR reductions directly. When
+centering, one pass accumulates column sums and stored-entry counts, computes
+means in float64, and casts them to the operator dtype. A second pass sums
+stored squares in float64 and subtracts the stored mean in the operator dtype
+before squaring centered deviations in float64. Add
+`(n_obs - stored_count_j) * float64(mean_j)**2` for implicit zeros. Explicit
+stored zeros are included in the stored-entry count and deviation sweep.
+This avoids subtracting large moments even for constant or nearly constant
+fully supported columns. Uncentered rank-zero operators need only the norm
+pass. Dense-majority columns containing negative stored values retain the
+existing batched `math.fsum` mean calculation as a signed-sum backstop;
+nonnegative log1p statistics require no CSC conversion or dense reconstruction.
+
+For nonzero-rank representations, do not calculate large sparse and low-rank
+component norms and then subtract them. For columns with more than half their
+entries stored, calculate means and
 squared deviations from the full represented column directly; this avoids
 severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
@@ -1807,8 +1821,8 @@ Direct reconstruction groups each CSR row block by column in a block-local
 CSC matrix, then processes selected columns in bounded dense batches. Each
 batch stores columns as contiguous rows of a dense array and computes
 `right[selected] @ left[row_start:row_stop].T` in the operator dtype before
-adding the sparse corrections. Zero-width factors use the same reconstruction
-path; there is no rank-zero statistics branch.
+adding the sparse corrections. The rank-zero signed-mean backstop can also
+use this reconstruction with zero-width factors.
 
 CSR blocks target 1,000,000 stored entries for means and 100,000 for norms;
 their row counts depend on the input's sparsity. Dense batches separately

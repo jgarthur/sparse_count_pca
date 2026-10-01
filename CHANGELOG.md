@@ -5,8 +5,11 @@ All notable user-facing changes are recorded here.
 ## Unreleased
 
 - Batch direct operator statistics in bounded NumPy arrays to reduce PCA setup
-  overhead, including for normalized log1p. Retain direct centered deviations,
-  signed mean summation, and cancellation fallback without a rank-zero branch.
+  overhead. Retain direct centered deviations, signed mean summation, and
+  cancellation fallback for low-rank representations.
+- Compute rank-zero statistics directly in bounded CSR passes, speeding up
+  normalized-log1p PCA without reconstructing dense columns or subtracting
+  large moments when calculating centered variance.
 
 ## 1.0.0 - 2026-10-01
 

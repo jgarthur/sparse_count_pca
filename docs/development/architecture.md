@@ -237,7 +237,15 @@ sparse and nearly dense columns differently instead of subtracting large
 component norms. The precise mean and squared-norm contracts are specified in
 [Explained variance and total variance](specification.md#explained-variance-and-total-variance).
 
-The support terms are accumulated from bounded blocks of complete CSR rows.
+Rank-zero operators compute statistics directly from bounded CSR blocks.
+Centered operators accumulate sums and stored counts in the mean pass, then
+sum stored squared deviations and add implicit-zero contributions analytically.
+Center subtraction uses the operator dtype and squared sums use float64.
+Uncentered operators need only a norm pass. Nonnegative log1p data avoid dense
+reconstruction entirely; dense signed columns retain the batched mean backstop.
+
+For nonzero-rank operators, the support terms are accumulated from bounded
+blocks of complete CSR rows.
 Sparse-column corrections and nonnegative squared terms use vectorized
 `float64` reductions over each block. Their low-order bits may depend on CSR
 and block order under severe mixed-sign cancellation. Columns with more than
@@ -248,8 +256,7 @@ norms subtract the stored center in the operator dtype, then square and reduce
 nonnegative deviations in `float64`. The existing CSR row blocks target
 1,000,000 stored entries for means and 100,000 for norms. The new column batches
 separately target 262,144 dense represented values (`rows_in_block * columns`),
-or one column if the CSR row block alone exceeds that target. Zero-width
-factors follow the same path as nonzero-rank factors.
+or one column if the CSR row block alone exceeds that target.
 
 The column-batch target caps each `float64` dense buffer at 2 MiB, with several
 buffers live during statistics. A small synthetic sweep found diminishing
