@@ -22,60 +22,35 @@ pinned reference artifacts is provenance, not a runtime test dependency.
 ## Count validation and log-construction memory
 
 Validate count-check boundaries with invalid, fractional, and precision-limited
-values in later blocks, preserving error precedence and input arrays. Existing
-tests also cover canonical borrowing, copied noncanonical inputs, explicit
-zeros, empty rows, extended precision, and the integer tolerance boundary.
+values in later blocks, preserving error precedence and input arrays. Tests
+also cover canonical borrowing, copied noncanonical inputs, explicit zeros,
+empty rows, extended precision, and the integer tolerance boundary.
 
 For all five log builders and both storage dtypes, compare bounded construction
 with independent dense oracles and verify that fitted factors agree exactly
-with float64 storage. Tiny block targets exercise multi-block inputs and rows
-longer than the target. Check late ratio overflow, float64 ratios exceeding
-float32 range, read-only input arrays, int32/int64 input structure, owned output
-structure, and reuse of the
-builder's sparse matrix by the public transform. Compare each public log PCA
-with a dense SVD of the requested-dtype representation using float64-fitted
-factors, including aligned scores/loadings, mean, singular values, total
-variance, and variance ratios. Existing returned-operator isolation checks
-remain required.
+with float64 storage. Tiny block targets exercise multi-block inputs, rows
+longer than the target, and row sums across empty rows and blocks with no
+stored entries. Check late ratio overflow, float64 ratios exceeding float32
+range, read-only input arrays, int32/int64 input structure, owned output
+structure, and reuse of the builder's sparse matrix by the public transform.
+Compare each public log PCA with a dense SVD of the requested-dtype
+representation using float64-fitted factors, including aligned
+scores/loadings, mean, singular values, total variance, and variance ratios.
+Returned-operator isolation checks also apply.
 
 For allocation diagnostics, create input before starting tracemalloc and
-reset tracing separately for validation and each construction stage. Compare
-two small nnz scales, varied size factors, and vector priors, distinguishing
-retained output from temporary allocation. Cross-check with sampled RSS and
-process high-water marks in fresh workers. Keep all thread limits at one;
+reset tracing separately for validation and each construction stage. Use
+canonical float32 counts with a fixed number of positive entries per row at
+two nnz scales (for example one and two million), size factors varying across
+rows, and a varying vector prior for Dirichlet CLR. Report the median of three
+separately traced runs and distinguish retained output from temporary
+allocation: peak allocation above retained output should stay roughly constant
+as nnz doubles. Cross-check with sampled RSS and process high-water marks in
+fresh workers with tracing disabled. Keep all thread limits at one;
 generate/load input outside timed regions and report three-repeat timings for
 validation, transform construction, and PCA independently. These measurements
-describe small synthetic inputs rather than predicting full-data RSS.
-
-The 2026-10-01 comparison against `8efc261` used canonical float32 counts with
-1,000 positive entries per row: 1,000 × 1,500 and 2,000 × 1,500 matrices with
-one and two million stored entries. Size factors varied from 0.5 to 1.5;
-Dirichlet CLR also used a varying vector prior. Each allocation result is the
-median of three separately traced runs. Log measurements include public
-transform fitting and storage casting, with input loaded before tracing.
-
-| Stage | Storage dtype | nnz | Old peak MiB | New peak MiB | Retained MiB |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Validation, integer check enabled | — | 1M | 15.26 | 1.53 | ~0 |
-| Validation, integer check enabled | — | 2M | 30.52 | 1.53 | ~0 |
-| Normalized log1p | float32 | 1M | 19.10 | 9.17 | 7.65 |
-| Normalized log1p | float32 | 2M | 38.18 | 16.81 | 15.29 |
-| Normalized log1p | float64 | 1M | 19.09 | 12.99 | 11.46 |
-| Normalized log1p | float64 | 2M | 38.17 | 24.44 | 22.92 |
-
-Retained storage stayed the same; construction temporaries above that output
-were about 1.5 MiB at both scales and dtypes. Dirichlet CLR showed the same
-bounded temporary trend. With integrality disabled, validation peak fell from
-0.95/1.91 MiB at the two scales to about 0.10 MiB at either scale.
-
-Fresh workers cross-checked RSS and process high-water marks with three timed
-calls per stage and 5 ms RSS polling. On the 2M-nnz input, incremental peak RSS
-for normalized-log1p fitting fell from about 64 MiB to 16 MiB (float32) and
-23 MiB (float64). Complete PCA peaks fell from about 64 MiB to 32 MiB in both
-dtypes. Validation and fitting timings were similar or slightly faster; PCA
-times varied by less than 4%. Allocation tracing was disabled for RSS/timing
-workers. These RSS figures include allocator behavior across repeated calls
-and are not estimates obtained by summing theoretical buffer sizes.
+describe small synthetic inputs rather than predicting full-data RSS, and RSS
+figures include allocator behavior across repeated calls.
 
 ## Manual residual-memory probe
 
@@ -186,13 +161,13 @@ For each sparse-plus-low-rank representation, compare:
 - centered means and Frobenius-norm statistics.
 
 Statistics tests cross CSR row-block boundaries for rank zero and both CSR
-and dense column-batch boundaries for ranks one and three, both operator dtypes, and centered and
-uncentered operators. Include empty, sparse, exactly-half-supported, and
+and dense column-batch boundaries for ranks one and three, with both operator
+dtypes and centered and uncentered operators. Include empty, sparse, exactly-half-supported, and
 dense-majority columns, constant and nearly constant columns, and signed
 means with severe cancellation. Verify that dense batches respect their
 represented-value target, with a one-column exception when a row block alone
-exceeds that target. Existing cancellation-fallback and numerical-zero tests
-remain part of the contract. A small normalized-log1p PCA comparison against
+exceeds that target. Cancellation-fallback and numerical-zero tests are also
+part of the contract. A small normalized-log1p PCA comparison against
 Scanpy checks aligned scores and loadings, singular values, total variance,
 and explained-variance ratios, while rejecting dense reconstruction. Rank-zero
 tests also cover explicit stored zeros, read-only borrowed data, skipped mean
@@ -203,49 +178,44 @@ not establish a correct adjoint.
 
 ### Operator batch-size measurements
 
-Before the rank-zero CSR path was introduced, the 2026-10-01 dense-batch sweep
-used deterministic 2,000 × 1,500 and
-4,000 × 3,000 count matrices with 20% of genes stored in 75% of rows and the
-others in 2%. Their stored-entry counts were 498,000 and 1,992,000. Both
-normalized log1p (rank zero) and unclipped Poisson Pearson residuals (rank one)
-were tested in float32 and float64. All thread limits were one, representation
-construction was outside the timed region, and the existing CSR block targets
-were held fixed. Times are medians of five repeats with randomized batch-target
-order, measuring operator construction rather than PCA or transformation.
+The dense-batch target was chosen from a sweep over deterministic
+2,000 × 1,500 and 4,000 × 3,000 count matrices with 20% of genes stored in 75%
+of rows and the others in 2% (498,000 and 1,992,000 stored entries). Unclipped
+Poisson Pearson residuals (rank one) were measured in float32 and float64. All
+thread limits were one, representation construction was outside the timed
+region, and CSR block targets were held fixed. Times are medians of five
+repeats with randomized batch-target order, measuring operator construction
+rather than PCA or transformation. Nonnegative rank-zero representations do
+not use dense batches, so they do not inform this target.
 
 Representative results for the larger fixture:
 
-| Transform | Dtype | 100,000 values | 262,144 values | 1,048,576 values |
-| --- | --- | ---: | ---: | ---: |
-| Normalized log1p | float32 | 119 ms | 115 ms | 114 ms |
-| Normalized log1p | float64 | 121 ms | 118 ms | 117 ms |
-| Pearson residuals | float32 | 113 ms | 112 ms | 110 ms |
-| Pearson residuals | float64 | 122 ms | 118 ms | 118 ms |
+| Dtype | 100,000 values | 262,144 values | 1,048,576 values |
+| --- | ---: | ---: | ---: |
+| float32 | 113 ms | 112 ms | 110 ms |
+| float64 | 122 ms | 118 ms | 118 ms |
 
 The sweep also included targets of 16,384, 65,536, and 4,194,304 values. The
 262,144-value target stayed within about 2% of the fastest tested target
-across both sizes, transforms, and dtypes. It caps each float64 dense buffer
-at 2 MiB, except for the indivisible one-column case. Larger targets multiply
-that buffer budget for small additional speed gains; smaller targets incur
-more reconstruction and sparse-slicing calls. Means dominated the remaining
-setup time, so increasing the norm row-block target was not pursued.
+across both sizes and dtypes, and bounds each float64 dense buffer at 2 MiB
+except for the indivisible one-column case. Larger targets multiply that
+buffer budget for small additional speed gains; smaller targets incur more
+reconstruction and sparse-slicing calls. Means dominated the remaining setup
+time.
 
 For a nominal 1,000,000-cell × 20,000-gene input at 10% density, there are
-about two billion stored entries. Assuming similar row depths, the existing
+about two billion stored entries. Assuming similar row depths, the default
 mean and norm targets produce roughly 500-row and 50-row blocks, respectively.
 Fewer than 4,000 genes can be dense-majority at that overall density, so a
-typical norm block's direct reconstruction fits in one 262,144-value batch.
-Mean blocks require multiple batches. This reasoning supports the conservative
-batch target without allocating a matrix at that scale. Uniformly sparse genes
-do not use direct dense batching; dense-majority means still incur per-column
-`math.fsum` calls for nonzero-rank representations, which increasing the batch
-target does not eliminate. Nonnegative rank-zero representations now bypass
-that mean calculation and dense batching entirely.
+typical norm block's direct reconstruction fits in one batch, while mean
+blocks require several. Uniformly sparse genes do not use direct dense
+batching; dense-majority means of nonzero-rank representations still incur
+per-column `math.fsum` calls, which a larger batch target does not eliminate.
 
 These small local measurements support a conservative default, not an optimum
-for every machine or support distribution, nor a prediction of full PBMC
-runtime. Batch targets preserve the existing numerical tolerances but may
-change low-order bits of factor products and reductions.
+for every machine or support distribution, nor a prediction of full-data
+runtime. Batch targets do not affect the numerical tolerances but may change
+low-order bits of factor products and reductions.
 
 ## PCA and subspace equality
 

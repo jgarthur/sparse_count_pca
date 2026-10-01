@@ -70,13 +70,13 @@ statistics batches similarly allow at least one column of the current row
 block. The shared `_sparse._support_row_blocks` helper supplies row boundaries;
 it has no additional default budget.
 
-All budgets balance temporary memory against Python dispatch, but the tuning
-evidence differs. The dense statistics budget was swept across small fixtures
-and chosen near the runtime plateau. The validation and log budgets were
-checked for bounded allocations and runtime at two nnz scales. The remaining
-defaults were retained rather than retuned in this change. Means use larger
-blocks than norms because the norm path needs more temporary arrays per entry.
-See [testing strategy](testing.md) for the measurement protocols and results.
+Other pages refer to these controls by name rather than restating their
+defaults. All budgets balance temporary memory against
+Python dispatch. The dense statistics batch sits near the runtime plateau of a
+small synthetic sweep; see the
+[batch-size measurements](testing.md#operator-batch-size-measurements). Means
+use larger blocks than norms because the norm path needs more temporary arrays
+per entry. See [testing strategy](testing.md) for the measurement protocols.
 
 ## 1. Public surface
 
@@ -182,15 +182,17 @@ S_ij = log1p(X_ij / prior_count_j),
 which is zero on structural zeros and therefore preserves sparse support.
 
 The log builders allocate sparse data in the requested storage dtype and
-evaluate corrections in float64 blocks targeting 100,000 stored entries.
-Row divisors and vector prior counts are expanded only for the current block;
-a single longer CSR row can exceed the target. CLR row sums are calculated
-from each float64 block before its values are cast, preserving fitted-factor
-precision. Output indices and indptr are copied once for ownership, using the
-CSR constructor's required int32/int64 width to avoid an extra conversion copy.
-`_transform.py`
-passes storage dtype into every log builder, so `TransformedMatrix` can reuse
-the owned sparse result rather than casting a full float64 CSR.
+evaluate corrections in float64 blocks of complete CSR rows sized by
+`_LOG_TRANSFORM_BLOCK_NNZ`. Each wrapper supplies a function that gathers the
+current block's divisors, so row divisors and vector prior counts are expanded
+only for that block; a single longer CSR row can exceed the target. The shared
+helper also returns float64 row sums taken from each block before its values
+are cast, which the CLR builders use to fit row means at full precision.
+Output indices and indptr are copied once for ownership, using the CSR
+constructor's required int32/int64 width to avoid an extra conversion copy.
+`_transform.py` passes storage dtype into every log builder, so
+`TransformedMatrix` can reuse the owned sparse result rather than casting a
+full float64 CSR.
 
 For size-factor-normalized log1p, that sparse correction is the entire
 transform: `build_log1p_norm_representation` divides each stored count by its
@@ -282,29 +284,25 @@ Centered operators accumulate sums and stored counts in the mean pass, then
 sum stored squared deviations and add implicit-zero contributions analytically.
 Center subtraction uses the operator dtype and squared sums use float64.
 Uncentered operators need only a norm pass. Nonnegative log1p data avoid dense
-reconstruction entirely; dense signed columns retain the batched mean backstop.
+reconstruction entirely. Dense-majority columns with negative stored values
+use the batched direct `math.fsum` mean as a signed-sum backstop.
 
 For nonzero-rank operators, the support terms are accumulated from bounded
-blocks of complete CSR rows.
-Sparse-column corrections and nonnegative squared terms use vectorized
+blocks of complete CSR rows. Sparse-column corrections and nonnegative squared terms use vectorized
 `float64` reductions over each block. Their low-order bits may depend on CSR
 and block order under severe mixed-sign cancellation. Columns with more than
 half their entries stored instead use direct represented values grouped by a
 block-local CSC and reconstructed in bounded NumPy column batches. Each column
-is contiguous in the dense batch. Direct means retain `math.fsum`; direct
-norms subtract the stored center in the operator dtype, then square and reduce
-nonnegative deviations in `float64`. The existing CSR row blocks target
-1,000,000 stored entries for means and 100,000 for norms. The new column batches
-separately target 262,144 dense represented values (`rows_in_block * columns`),
-or one column if the CSR row block alone exceeds that target.
+is contiguous in the dense batch. Direct means use `math.fsum`; direct norms
+subtract the stored center in the operator dtype, then square and reduce
+nonnegative deviations in `float64`. CSR row blocks are sized by
+`_STATS_MEAN_BLOCK_NNZ` and `_STATS_NORM_BLOCK_NNZ`. Column batches are
+sized separately by `_STATS_DENSE_BATCH_VALUES`, counted as
+`rows_in_block * columns`, or hold one column if the CSR row block alone
+exceeds that target. That target bounds each dense buffer, with several
+buffers live during statistics.
 
-The column-batch target caps each `float64` dense buffer at 2 MiB, with several
-buffers live during statistics. A small synthetic sweep found diminishing
-runtime improvements beyond this size; see the
-[batch-size measurements](testing.md#operator-batch-size-measurements).
-
-After the norm sweep, sparse columns whose result is too small
-relative to the combined support-replacement terms are recomputed directly in
+After the norm sweep, sparse columns whose result is too small relative to the combined support-replacement terms are recomputed directly in
 a second sweep. Correspondence analysis uses this same bounded CSR path for
 its uncentered statistics. Centered operators require one sweep for means
 followed by one sweep that computes both uncentered and centered norms;

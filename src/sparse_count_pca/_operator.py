@@ -110,8 +110,14 @@ class SparseLowRankLinearOperator(LinearOperator):
 
         if self.right.shape[1] == 0:
             self._rank_zero_statistics()
-            return
+        else:
+            self._low_rank_statistics()
 
+    def _low_rank_statistics(self) -> None:
+        """Compute means and norms using support replacement and direct columns.
+
+        Sets the float64 factor summaries that only nonzero-rank statistics use.
+        """
         self._left_float64 = self.left.astype(np.float64, copy=False)
         self._right_float64 = self.right.astype(np.float64, copy=False)
         self._left_sum_float64 = np.array(
@@ -132,11 +138,11 @@ class SparseLowRankLinearOperator(LinearOperator):
 
         if self.center:
             self._mean_float64 = self._column_means(dense_columns)
-            self.mean = self._mean_float64.astype(operator_dtype)
+            self.mean = self._mean_float64.astype(self.dtype)
         else:
             self.mean = None
 
-        zero = np.zeros(self.shape[1], dtype=operator_dtype)
+        zero = np.zeros(self.shape[1], dtype=self.dtype)
         if self.center:
             assert self.mean is not None
             uncentered, centered = self._squared_norms_about(
@@ -153,7 +159,12 @@ class SparseLowRankLinearOperator(LinearOperator):
         self._frobenius_squared_centered_float64 = centered
 
     def _rank_zero_statistics(self) -> None:
-        """Compute sparse means and direct norms without low-rank reconstruction."""
+        """Compute sparse means and direct norms without low-rank reconstruction.
+
+        Dense-majority columns with negative stored values reuse the direct mean
+        sums, whose zero-width factors reduce them to ``math.fsum`` over each
+        column's stored values.
+        """
         n_obs, n_vars = self.shape
         if self.center:
             column_counts = np.zeros(n_vars, dtype=np.intp)
@@ -251,6 +262,11 @@ class SparseLowRankLinearOperator(LinearOperator):
 
         Each batch targets at most ``_STATS_DENSE_BATCH_VALUES`` values, or
         one column when the row block alone exceeds that target.
+
+        Yields:
+            The batch's offset into ``column_indices``, its selected column
+            indices, and represented values with shape
+            ``(len(columns), row_stop - row_start)`` in the operator dtype.
         """
         block = self._csc_row_block(
             row_start,

@@ -185,6 +185,24 @@ def test_blocked_logs_reject_late_ratio_overflow(monkeypatch, dtype, by_row):
             )
 
 
+@pytest.mark.parametrize("target_nnz", [1, 2, 100_000])
+@pytest.mark.parametrize(
+    "dense",
+    [
+        np.array([[0, 0], [1, 2], [0, 0], [0, 0], [3, 0], [0, 0]], dtype=np.float64),
+        np.zeros((3, 2)),
+    ],
+)
+def test_log_row_sums_leave_empty_rows_zero(monkeypatch, target_nnz, dense):
+    """Row sums are zero for empty rows, including blocks with no stored entries."""
+    monkeypatch.setattr(log_module, "_LOG_TRANSFORM_BLOCK_NNZ", target_nnz)
+    _, row_sums = log_module.log1p_count_correction(sparse.csr_matrix(dense), 0.5)
+
+    np.testing.assert_allclose(
+        row_sums, np.log1p(dense / 0.5).sum(axis=1), rtol=1e-15, atol=0.0
+    )
+
+
 def test_float32_log_storage_uses_float64_ratios():
     """A ratio exceeding float32 range remains valid when its logged value fits."""
     counts = sparse.csr_matrix(np.array([[1e30]], dtype=np.float32))

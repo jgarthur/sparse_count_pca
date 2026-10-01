@@ -422,8 +422,6 @@ def test_rank_zero_statistics_use_direct_csr(monkeypatch, target_nnz, center, dt
         matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
     )
     _set_stats_block_nnz(monkeypatch, target_nnz)
-    if not center:
-        monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 0)
 
     def reject_csc(*args, **kwargs):
         """Reject dense grouping on the nonnegative rank-zero path."""
@@ -453,6 +451,34 @@ def test_rank_zero_statistics_use_direct_csr(monkeypatch, target_nnz, center, dt
         rtol=_STATS_RTOL[dtype],
         atol=_STATS_RTOL[dtype],
     )
+
+
+@pytest.mark.parametrize(
+    ("center", "expected_targets"), [(False, [13]), (True, [11, 13])]
+)
+def test_rank_zero_statistics_sweep_only_needed_blocks(
+    monkeypatch, center, expected_targets
+):
+    """Rank-zero operators make a mean sweep only when centering."""
+    support_row_blocks = operator_module._support_row_blocks
+    targets = []
+
+    def record_target(matrix, target_nnz):
+        """Record each statistics sweep's row-block target."""
+        targets.append(target_nnz)
+        return support_row_blocks(matrix, target_nnz)
+
+    monkeypatch.setattr(operator_module, "_support_row_blocks", record_target)
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 11)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 13)
+    matrix = abs(_statistics_fixture().sparse)
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
+    )
+
+    SparseLowRankLinearOperator(representation, center=center)
+
+    assert targets == expected_targets
 
 
 @pytest.mark.parametrize("target_values", [5, 40])

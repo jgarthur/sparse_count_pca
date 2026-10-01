@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TypeAlias
 
 import numpy as np
@@ -79,48 +80,48 @@ def validate_size_factors(
 
 def _log1p_sparse_correction(
     X: sparse.csr_matrix,
-    divisors: Float64Array | float,
+    block_divisors: Callable[[int, int, int, int], Float64Array | float],
     *,
-    by_row: bool,
     dtype: DTypeLike,
     overflow_message: str,
-    row_sums: Float64Array | None,
-) -> sparse.csr_matrix:
+) -> tuple[sparse.csr_matrix, Float64Array]:
     """Write owned sparse log corrections from bounded float64 row blocks.
 
-    A single CSR row may exceed the stored-entry target. Optional row sums
-    use float64 values before they are cast to the output storage dtype.
+    ``block_divisors(row_start, row_stop, value_start, value_stop)`` returns
+    the divisor for each stored entry in one block of complete CSR rows, or a
+    scalar shared by all of them. A single CSR row may exceed the stored-entry
+    target.
+
+    Returns:
+        The corrections stored in ``dtype`` with owned CSR arrays, and float64
+        row sums of the corrections computed before storage casting.
+
+    Raises:
+        ValueError: With ``overflow_message`` if any ratio overflows float64.
     """
     data = np.empty(X.nnz, dtype=dtype)
+    row_sums = np.zeros(X.shape[0], dtype=np.float64)
     for row_start, row_stop, start, stop in _support_row_blocks(
         X, _LOG_TRANSFORM_BLOCK_NNZ
     ):
         values = X.data[start:stop].astype(np.float64, copy=True)
-        if by_row:
-            denominator = np.repeat(
-                divisors[row_start:row_stop],
-                np.diff(X.indptr[row_start : row_stop + 1]),
-            )
-        elif np.ndim(divisors) == 0:
-            denominator = divisors
-        else:
-            denominator = np.asarray(divisors)[X.indices[start:stop]]
+        denominator = block_divisors(row_start, row_stop, start, stop)
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
             np.divide(values, denominator, out=values)
         if not np.isfinite(values).all():
             raise ValueError(overflow_message)
         np.log1p(values, out=values)
-        if row_sums is not None:
-            indptr = X.indptr[row_start : row_stop + 1] - start
-            nonempty = np.diff(indptr) > 0
-            row_sums[row_start:row_stop][nonempty] = np.add.reduceat(
-                values, indptr[:-1][nonempty]
-            )
+        indptr = X.indptr[row_start : row_stop + 1] - start
+        # reduceat yields values[i], not zero, for an empty segment.
+        nonempty = np.diff(indptr) > 0
+        row_sums[row_start:row_stop][nonempty] = np.add.reduceat(
+            values, indptr[:-1][nonempty]
+        )
         data[start:stop] = values
     index_dtype = (
         np.int64 if max(X.shape + (X.nnz,)) > np.iinfo(np.int32).max else np.int32
     )
-    return sparse.csr_matrix(
+    correction = sparse.csr_matrix(
         (
             data,
             X.indices.astype(index_dtype, copy=True),
@@ -129,6 +130,7 @@ def _log1p_sparse_correction(
         shape=X.shape,
         copy=False,
     )
+    return correction, row_sums
 
 
 def log1p_count_correction(
@@ -136,16 +138,25 @@ def log1p_count_correction(
     prior_counts: Float64Array | float,
     *,
     dtype: DTypeLike = "float64",
-    row_sums: Float64Array | None = None,
-) -> sparse.csr_matrix:
-    """Return sparse ``log1p(x_ij / prior_count_j)`` corrections."""
+) -> tuple[sparse.csr_matrix, Float64Array]:
+    """Return sparse ``log1p(x_ij / prior_count_j)`` corrections and row sums.
+
+    ``prior_counts`` is a scalar or one value per variable. Row sums are
+    float64 and computed before the corrections are cast to ``dtype``.
+    """
+    prior = np.asarray(prior_counts)
+
+    def column_divisors(
+        row_start: int, row_stop: int, start: int, stop: int
+    ) -> Float64Array | float:
+        """Gather each stored entry's variable prior count."""
+        return prior if prior.ndim == 0 else prior[X.indices[start:stop]]
+
     return _log1p_sparse_correction(
         X,
-        prior_counts,
-        by_row=False,
+        column_divisors,
         dtype=dtype,
         overflow_message="Count-to-prior ratios overflow float64",
-        row_sums=row_sums,
     )
 
 
@@ -155,18 +166,28 @@ def log1p_row_scaled_counts(
     *,
     overflow_message: str,
     dtype: DTypeLike = "float64",
-    row_sums: Float64Array | None = None,
-) -> sparse.csr_matrix:
-    """Return sparse ``log1p(x_ij / row_divisor_i)`` values."""
+) -> tuple[sparse.csr_matrix, Float64Array]:
+    """Return sparse ``log1p(x_ij / row_divisor_i)`` values and row sums.
+
+    Row sums are float64 and computed before the values are cast to ``dtype``.
+    """
     if not np.isfinite(row_divisors).all() or (row_divisors <= 0).any():
         raise ValueError(overflow_message)
+
+    def repeated_row_divisors(
+        row_start: int, row_stop: int, start: int, stop: int
+    ) -> Float64Array:
+        """Repeat each row's divisor across its stored entries."""
+        return np.repeat(
+            row_divisors[row_start:row_stop],
+            np.diff(X.indptr[row_start : row_stop + 1]),
+        )
+
     return _log1p_sparse_correction(
         X,
-        row_divisors,
-        by_row=True,
+        repeated_row_divisors,
         dtype=dtype,
         overflow_message=overflow_message,
-        row_sums=row_sums,
     )
 
 
@@ -178,7 +199,7 @@ def build_log1p_norm_representation(
 ) -> SparseLowRankMatrix:
     """Represent size-factor-normalized ``log1p`` values as rank-zero sparse."""
     divisors = validate_size_factors(size_factors, X.shape[0])
-    sparse_part = log1p_row_scaled_counts(
+    sparse_part, _ = log1p_row_scaled_counts(
         X,
         divisors,
         overflow_message="Count-to-size-factor ratios overflow float64",
@@ -199,8 +220,7 @@ def build_shifted_clr_representation(
 ) -> SparseLowRankMatrix:
     """Represent count-scale shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    row_sums = np.zeros(X.shape[0], dtype=np.float64)
-    sparse_part = log1p_count_correction(X, count_shift, dtype=dtype, row_sums=row_sums)
+    sparse_part, row_sums = log1p_count_correction(X, count_shift, dtype=dtype)
     row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
         sparse_part,
@@ -229,13 +249,11 @@ def build_proportion_shifted_clr_representation(
         )
     with np.errstate(over="ignore", under="ignore"):
         row_divisors = row_totals * composition_shift
-    row_sums = np.zeros(X.shape[0], dtype=np.float64)
-    sparse_part = log1p_row_scaled_counts(
+    sparse_part, row_sums = log1p_row_scaled_counts(
         X,
         row_divisors,
         overflow_message="Count-to-composition ratios overflow float64",
         dtype=dtype,
-        row_sums=row_sums,
     )
     row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
@@ -259,7 +277,7 @@ def build_dirichlet_log_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    sparse_part = log1p_count_correction(X, prior_counts, dtype=dtype)
+    sparse_part, _ = log1p_count_correction(X, prior_counts, dtype=dtype)
     row_totals = _sum_counts(X, axis=1)
     if not np.isfinite(row_totals).all():
         raise ValueError("Cell totals overflow float64")
@@ -296,10 +314,7 @@ def build_dirichlet_clr_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    row_sums = np.zeros(X.shape[0], dtype=np.float64)
-    sparse_part = log1p_count_correction(
-        X, prior_counts, dtype=dtype, row_sums=row_sums
-    )
+    sparse_part, row_sums = log1p_count_correction(X, prior_counts, dtype=dtype)
     sparse_row_mean = row_sums / X.shape[1]
     log_prior_counts = np.log(prior_counts)
     centered_log_prior = log_prior_counts - np.mean(log_prior_counts)

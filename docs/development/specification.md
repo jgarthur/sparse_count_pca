@@ -658,9 +658,9 @@ precision rather than merely downcasting returned arrays.
   written directly into the requested storage dtype. Row and vector-prior
   divisors are gathered only within each block. CLR row means and fitted
   low-rank factors use float64 pre-cast values, including when storage is
-  float32. Counts and transformed matrices own separate CSR data, indices,
-  and indptr arrays; no full-nnz float64 representation followed by a sparse
-  dtype conversion is required.
+  float32. Transformed matrices own CSR data, indices, and indptr arrays
+  separate from the counts; no full-nnz float64 representation followed by a
+  sparse dtype conversion is required.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
@@ -670,15 +670,17 @@ precision rather than merely downcasting returned arrays.
 
 `dtype` controls representation and operator output, not accumulation.
 
-Count-data validation uses views of at most 100,000 stored entries for finite,
-nonnegative, integrality, explicit-zero, and exact-float64-conversion checks.
-Error precedence, the `1e-8` integrality tolerance, and canonicalization
-warnings and ownership rules are independent of these block boundaries.
-Log construction targets 100,000 stored entries per block of complete CSR
-rows. A single longer row can exceed that target, so arithmetic scratch is
-$O(\max(100{,}000, \mathit{max\_row\_nnz}))$, in addition to final owned output
-storage and per-cell or per-gene fitted vectors. Construction checks ratio
-overflow in float64 before applying log1p or casting output storage.
+Count-data validation runs its finite, nonnegative, integrality,
+explicit-zero, and exact-float64-conversion checks over fixed-size views of
+the stored data. Error precedence, the `1e-8` integrality tolerance, and
+canonicalization warnings and ownership rules are independent of the view
+boundaries. Log construction processes blocks of complete CSR rows with a
+fixed stored-entry target $T$. A single longer row can exceed that target, so
+arithmetic scratch is $O(\max(T, \mathit{max\_row\_nnz}))$, in addition to
+final owned output storage and per-cell or per-gene fitted vectors.
+Construction checks ratio overflow in float64 before applying log1p or casting
+output storage. The default view and block sizes are listed under
+[bounded computation budgets](architecture.md#bounded-computation-budgets).
 
 Users who want float64 computation with more compact persisted scores or
 components may downcast those arrays after PCA. Such a post-computation cast
@@ -1822,14 +1824,14 @@ before squaring centered deviations in float64. Add
 stored zeros are included in the stored-entry count and deviation sweep.
 This avoids subtracting large moments even for constant or nearly constant
 fully supported columns. Uncentered rank-zero operators need only the norm
-pass. Dense-majority columns containing negative stored values retain the
-existing batched `math.fsum` mean calculation as a signed-sum backstop;
-nonnegative log1p statistics require no CSC conversion or dense reconstruction.
+pass. Dense-majority columns containing negative stored values use the
+batched direct `math.fsum` mean as a signed-sum backstop; nonnegative log1p
+statistics require no CSC conversion or dense reconstruction.
 
 For nonzero-rank representations, do not calculate large sparse and low-rank
 component norms and then subtract them. For columns with more than half their
-entries stored, calculate means and
-squared deviations from the full represented column directly; this avoids
+entries stored, calculate means and squared deviations from the full
+represented column directly; this avoids
 severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
 support in $O(\mathit{nnz})$ for fixed representation rank.
@@ -1841,27 +1843,27 @@ batch stores columns as contiguous rows of a dense array and computes
 adding the sparse corrections. The rank-zero signed-mean backstop can also
 use this reconstruction with zero-width factors.
 
-CSR blocks target 1,000,000 stored entries for means and 100,000 for norms;
-their row counts depend on the input's sparsity. Dense batches separately
-target at most 262,144 represented values: their column width is
-`max(1, 262_144 // rows_in_block)`. This caps each dense `float64` buffer at
-2 MiB independently of the existing sparse row blocks. Several buffers may
-coexist during reconstruction and reduction. If a row block has more than
-262,144 rows, a batch contains one column.
-Reconstruction and deviation buffers therefore
-require $O(\max(262{,}144, N_{\mathrm{block}}))$ values, alongside the block-local
-CSC and per-gene accumulators; no full dense transformed matrix is allocated.
-When all CSR rows fit in one block, its CSC conversion can still copy the
-whole sparse matrix.
+CSR blocks for means and norms each have a fixed stored-entry target; their
+row counts depend on the input's sparsity. Dense batches separately target at
+most $V$ represented values, so their column width is
+`max(1, V // rows_in_block)` and each dense buffer is bounded independently of
+the sparse row blocks. Several buffers may coexist during reconstruction and
+reduction. If a row block has more than $V$ rows, a batch contains one column.
+Reconstruction and deviation buffers therefore require
+$O(\max(V, N_{\mathrm{block}}))$ values, alongside the block-local CSC and
+per-gene accumulators; no full dense transformed matrix is allocated. When all
+CSR rows fit in one block, its CSC conversion can still copy the whole sparse
+matrix. The default targets are listed under
+[bounded computation budgets](architecture.md#bounded-computation-budgets).
 
-Direct means retain `math.fsum` for each reconstructed column because its
+Direct means use `math.fsum` for each reconstructed column because its
 represented values may have mixed signs. For direct squared norms, subtract
 the stored center in the operator dtype, convert deviations to `float64`,
 square them, and reduce along each contiguous column with NumPy's pairwise
-sum. These terms are nonnegative. Batching factor products and changing the
-squared-term reduction may change low-order bits; bitwise equivalence with
-per-column reconstruction or across batch sizes is not required. The
-numerical-zero criterion and accuracy checks still apply.
+sum. These terms are nonnegative. Low-order bits may depend on the batch size
+and on how factor products are evaluated; bitwise equivalence across batch
+sizes is not required. The numerical-zero criterion and accuracy checks still
+apply.
 
 The support-replacement combination is itself cancellation limited: its error
 scales with the magnitudes of the three combined terms rather than with the

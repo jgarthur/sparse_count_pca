@@ -4,16 +4,17 @@ All notable user-facing changes are recorded here.
 
 ## Unreleased
 
-- Batch direct operator statistics in bounded NumPy arrays to reduce PCA setup
-  overhead. Retain direct centered deviations, signed mean summation, and
-  cancellation fallback for low-rank representations.
-- Compute rank-zero statistics directly in bounded CSR passes, speeding up
-  normalized-log1p PCA without reconstructing dense columns or subtracting
-  large moments when calculating centered variance.
-- Bound count-validation temporaries and log-transform arithmetic. Log builders
-  write directly into the requested storage dtype while preserving float64
-  fitted factors and owned sparse output, reducing construction memory use
-  especially for float32 workflows.
+### Performance
+
+- PCA setup is faster, most for normalized `log1p`, whose variance statistics
+  are now computed directly from the sparse data.
+- Count validation and the log, CLR, and Dirichlet transforms use much less
+  temporary memory while fitting, especially with `dtype="float32"`. Peak
+  memory above the stored result no longer grows with the number of stored
+  counts.
+- PCA results, means, and variance statistics may differ from 1.0.0 in their
+  last few digits because sums are accumulated in a different order. They
+  remain within the documented float32 and float64 tolerances.
 
 ## 1.0.0 - 2026-10-01
 
