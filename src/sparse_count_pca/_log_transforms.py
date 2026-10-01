@@ -5,16 +5,18 @@ from __future__ import annotations
 from typing import TypeAlias
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike, DTypeLike, NDArray
 from scipy import sparse
 
 from ._counts import _sum_counts
 from ._representation import SparseLowRankMatrix
+from ._sparse import _support_row_blocks
 
 PriorProportions: TypeAlias = ArrayLike | None
 Float64Array = NDArray[np.float64]
 PRIOR_SUM_RTOL = 1e-8
 PRIOR_SUM_ATOL = 1e-12
+_LOG_TRANSFORM_BLOCK_NNZ = 100_000
 
 
 def validate_positive_scalar(value: float, *, name: str) -> float:
@@ -75,24 +77,75 @@ def validate_size_factors(
     return result
 
 
+def _log1p_sparse_correction(
+    X: sparse.csr_matrix,
+    divisors: Float64Array | float,
+    *,
+    by_row: bool,
+    dtype: DTypeLike,
+    overflow_message: str,
+    row_sums: Float64Array | None,
+) -> sparse.csr_matrix:
+    """Write owned sparse log corrections from bounded float64 row blocks.
+
+    A single CSR row may exceed the stored-entry target. Optional row sums
+    use float64 values before they are cast to the output storage dtype.
+    """
+    data = np.empty(X.nnz, dtype=dtype)
+    for row_start, row_stop, start, stop in _support_row_blocks(
+        X, _LOG_TRANSFORM_BLOCK_NNZ
+    ):
+        values = X.data[start:stop].astype(np.float64, copy=True)
+        if by_row:
+            denominator = np.repeat(
+                divisors[row_start:row_stop],
+                np.diff(X.indptr[row_start : row_stop + 1]),
+            )
+        elif np.ndim(divisors) == 0:
+            denominator = divisors
+        else:
+            denominator = np.asarray(divisors)[X.indices[start:stop]]
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            np.divide(values, denominator, out=values)
+        if not np.isfinite(values).all():
+            raise ValueError(overflow_message)
+        np.log1p(values, out=values)
+        if row_sums is not None:
+            indptr = X.indptr[row_start : row_stop + 1] - start
+            nonempty = np.diff(indptr) > 0
+            row_sums[row_start:row_stop][nonempty] = np.add.reduceat(
+                values, indptr[:-1][nonempty]
+            )
+        data[start:stop] = values
+    index_dtype = (
+        np.int64 if max(X.shape + (X.nnz,)) > np.iinfo(np.int32).max else np.int32
+    )
+    return sparse.csr_matrix(
+        (
+            data,
+            X.indices.astype(index_dtype, copy=True),
+            X.indptr.astype(index_dtype, copy=True),
+        ),
+        shape=X.shape,
+        copy=False,
+    )
+
+
 def log1p_count_correction(
     X: sparse.csr_matrix,
     prior_counts: Float64Array | float,
+    *,
+    dtype: DTypeLike = "float64",
+    row_sums: Float64Array | None = None,
 ) -> sparse.csr_matrix:
     """Return sparse ``log1p(x_ij / prior_count_j)`` corrections."""
-    data = X.data.astype(np.float64, copy=True)
-    denominator = (
-        prior_counts
-        if np.ndim(prior_counts) == 0
-        else np.asarray(prior_counts)[X.indices]
-    )
-    with np.errstate(over="ignore"):
-        np.divide(data, denominator, out=data)
-    if not np.isfinite(data).all():
-        raise ValueError("Count-to-prior ratios overflow float64")
-    np.log1p(data, out=data)
-    return sparse.csr_matrix(
-        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    return _log1p_sparse_correction(
+        X,
+        prior_counts,
+        by_row=False,
+        dtype=dtype,
+        overflow_message="Count-to-prior ratios overflow float64",
+        row_sums=row_sums,
     )
 
 
@@ -101,19 +154,19 @@ def log1p_row_scaled_counts(
     row_divisors: Float64Array,
     *,
     overflow_message: str,
+    dtype: DTypeLike = "float64",
+    row_sums: Float64Array | None = None,
 ) -> sparse.csr_matrix:
     """Return sparse ``log1p(x_ij / row_divisor_i)`` values."""
     if not np.isfinite(row_divisors).all() or (row_divisors <= 0).any():
         raise ValueError(overflow_message)
-    denominators = np.repeat(row_divisors, np.diff(X.indptr))
-    data = X.data.astype(np.float64, copy=True)
-    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-        np.divide(data, denominators, out=data)
-    if not np.isfinite(data).all():
-        raise ValueError(overflow_message)
-    np.log1p(data, out=data)
-    return sparse.csr_matrix(
-        (data, X.indices.copy(), X.indptr.copy()), shape=X.shape, copy=False
+    return _log1p_sparse_correction(
+        X,
+        row_divisors,
+        by_row=True,
+        dtype=dtype,
+        overflow_message=overflow_message,
+        row_sums=row_sums,
     )
 
 
@@ -121,6 +174,7 @@ def build_log1p_norm_representation(
     X: sparse.csr_matrix,
     *,
     size_factors: ArrayLike,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Represent size-factor-normalized ``log1p`` values as rank-zero sparse."""
     divisors = validate_size_factors(size_factors, X.shape[0])
@@ -128,6 +182,7 @@ def build_log1p_norm_representation(
         X,
         divisors,
         overflow_message="Count-to-size-factor ratios overflow float64",
+        dtype=dtype,
     )
     return SparseLowRankMatrix(
         sparse_part,
@@ -140,11 +195,13 @@ def build_shifted_clr_representation(
     X: sparse.csr_matrix,
     *,
     count_shift: float,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Represent count-scale shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    sparse_part = log1p_count_correction(X, count_shift)
-    row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
+    row_sums = np.zeros(X.shape[0], dtype=np.float64)
+    sparse_part = log1p_count_correction(X, count_shift, dtype=dtype, row_sums=row_sums)
+    row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
         sparse_part,
         -row_mean,
@@ -156,6 +213,7 @@ def build_proportion_shifted_clr_representation(
     X: sparse.csr_matrix,
     *,
     composition_shift: float,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Represent composition-scale shifted CLR as sparse plus rank one."""
     composition_shift = validate_positive_scalar(
@@ -171,12 +229,15 @@ def build_proportion_shifted_clr_representation(
         )
     with np.errstate(over="ignore", under="ignore"):
         row_divisors = row_totals * composition_shift
+    row_sums = np.zeros(X.shape[0], dtype=np.float64)
     sparse_part = log1p_row_scaled_counts(
         X,
         row_divisors,
         overflow_message="Count-to-composition ratios overflow float64",
+        dtype=dtype,
+        row_sums=row_sums,
     )
-    row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
+    row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
         sparse_part,
         -row_mean,
@@ -189,6 +250,7 @@ def build_dirichlet_log_representation(
     *,
     concentration: float,
     prior_proportions: PriorProportions = None,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Represent log Dirichlet posterior-mean proportions implicitly."""
     concentration, proportions = validate_dirichlet_prior(
@@ -197,7 +259,7 @@ def build_dirichlet_log_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    sparse_part = log1p_count_correction(X, prior_counts)
+    sparse_part = log1p_count_correction(X, prior_counts, dtype=dtype)
     row_totals = _sum_counts(X, axis=1)
     if not np.isfinite(row_totals).all():
         raise ValueError("Cell totals overflow float64")
@@ -225,6 +287,7 @@ def build_dirichlet_clr_representation(
     *,
     concentration: float,
     prior_proportions: PriorProportions = None,
+    dtype: DTypeLike = "float64",
 ) -> SparseLowRankMatrix:
     """Represent CLR of Dirichlet posterior-mean proportions implicitly."""
     concentration, proportions = validate_dirichlet_prior(
@@ -233,8 +296,11 @@ def build_dirichlet_clr_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    sparse_part = log1p_count_correction(X, prior_counts)
-    sparse_row_mean = np.asarray(sparse_part.sum(axis=1)).ravel() / X.shape[1]
+    row_sums = np.zeros(X.shape[0], dtype=np.float64)
+    sparse_part = log1p_count_correction(
+        X, prior_counts, dtype=dtype, row_sums=row_sums
+    )
+    sparse_row_mean = row_sums / X.shape[1]
     log_prior_counts = np.log(prior_counts)
     centered_log_prior = log_prior_counts - np.mean(log_prior_counts)
     left = np.column_stack(

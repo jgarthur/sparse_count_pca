@@ -49,6 +49,35 @@ The central boundary is the representation. Transform code decides what
 matrix is being analyzed. The operator and SVD code know only how to multiply,
 center, measure, and decompose `S + U @ V.T`.
 
+### Bounded computation budgets
+
+There are seven internal size controls and one public materialization default.
+Their units differ because each operation creates different temporary arrays.
+
+| Operation | Control | Default | Unit |
+| --- | --- | ---: | --- |
+| Count validation | `_COUNT_CHECK_BLOCK_SIZE` | 100,000 | Stored entries |
+| Log construction | `_LOG_TRANSFORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
+| Statistics means | `_STATS_MEAN_BLOCK_NNZ` | 1,000,000 | Nonzeros in complete CSR rows |
+| Statistics norms | `_STATS_NORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
+| Dense statistics reconstruction | `_STATS_DENSE_BATCH_VALUES` | 262,144 | Represented dense values |
+| Residual construction | `_RESIDUAL_SUPPORT_BLOCK_SIZE` | 1,000,000 | Nonzeros in complete CSR rows |
+| Clipping candidates | `_CANDIDATE_CHUNK_SIZE` | 65,536 | Candidate columns per row |
+| Explicit materialization | `materialize(block_size=...)` | 1,024 | Selected observation rows |
+
+Complete-row targets allow a single longer row to exceed the target. Dense
+statistics batches similarly allow at least one column of the current row
+block. The shared `_sparse._support_row_blocks` helper supplies row boundaries;
+it has no additional default budget.
+
+All budgets balance temporary memory against Python dispatch, but the tuning
+evidence differs. The dense statistics budget was swept across small fixtures
+and chosen near the runtime plateau. The validation and log budgets were
+checked for bounded allocations and runtime at two nnz scales. The remaining
+defaults were retained rather than retuned in this change. Means use larger
+blocks than norms because the norm path needs more temporary arrays per entry.
+See [testing strategy](testing.md) for the measurement protocols and results.
+
 ## 1. Public surface
 
 Start with [`src/sparse_count_pca/__init__.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/__init__.py).
@@ -151,6 +180,17 @@ S_ij = log1p(X_ij / prior_count_j),
 ```
 
 which is zero on structural zeros and therefore preserves sparse support.
+
+The log builders allocate sparse data in the requested storage dtype and
+evaluate corrections in float64 blocks targeting 100,000 stored entries.
+Row divisors and vector prior counts are expanded only for the current block;
+a single longer CSR row can exceed the target. CLR row sums are calculated
+from each float64 block before its values are cast, preserving fitted-factor
+precision. Output indices and indptr are copied once for ownership, using the
+CSR constructor's required int32/int64 width to avoid an extra conversion copy.
+`_transform.py`
+passes storage dtype into every log builder, so `TransformedMatrix` can reuse
+the owned sparse result rather than casting a full float64 CSR.
 
 For size-factor-normalized log1p, that sparse correction is the entire
 transform: `build_log1p_norm_representation` divides each stored count by its

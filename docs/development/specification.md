@@ -654,6 +654,13 @@ precision rather than merely downcasting returned arrays.
 - Residual support values are evaluated in bounded `float64` blocks and written
   directly into `S.data` in the requested dtype; fitting must not construct a
   full-`nnz` float64 intermediate for each term.
+- Log support values are also evaluated in bounded float64 CSR row blocks and
+  written directly into the requested storage dtype. Row and vector-prior
+  divisors are gathered only within each block. CLR row means and fitted
+  low-rank factors use float64 pre-cast values, including when storage is
+  float32. Counts and transformed matrices own separate CSR data, indices,
+  and indptr arrays; no full-nnz float64 representation followed by a sparse
+  dtype conversion is required.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
@@ -662,6 +669,16 @@ precision rather than merely downcasting returned arrays.
   `total_variance` are returned as `float64`.
 
 `dtype` controls representation and operator output, not accumulation.
+
+Count-data validation uses views of at most 100,000 stored entries for finite,
+nonnegative, integrality, explicit-zero, and exact-float64-conversion checks.
+Error precedence, the `1e-8` integrality tolerance, and canonicalization
+warnings and ownership rules are independent of these block boundaries.
+Log construction targets 100,000 stored entries per block of complete CSR
+rows. A single longer row can exceed that target, so arithmetic scratch is
+$O(\max(100{,}000, \mathit{max\_row\_nnz}))$, in addition to final owned output
+storage and per-cell or per-gene fitted vectors. Construction checks ratio
+overflow in float64 before applying log1p or casting output storage.
 
 Users who want float64 computation with more compact persisted scores or
 components may downcast those arrays after PCA. Such a post-computation cast

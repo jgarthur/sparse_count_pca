@@ -275,7 +275,7 @@ class ShiftedCLR(Transform):
     def _build(self, counts, *, obs, var, columns, dtype):
         count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
         representation = build_shifted_clr_representation(
-            counts, count_shift=count_shift
+            counts, count_shift=count_shift, dtype=dtype
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -318,7 +318,7 @@ class ProportionShiftedCLR(Transform):
             self.composition_shift, name="composition_shift"
         )
         representation = build_proportion_shifted_clr_representation(
-            counts, composition_shift=composition_shift
+            counts, composition_shift=composition_shift, dtype=dtype
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -422,6 +422,7 @@ class Log1pNormalized(Transform):
         representation = build_log1p_norm_representation(
             counts,
             size_factors=size_factors,
+            dtype=dtype,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -476,6 +477,7 @@ class DirichletLog(Transform):
             counts,
             concentration=concentration,
             prior_proportions=proportions,
+            dtype=dtype,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -530,6 +532,7 @@ class DirichletCLR(Transform):
             counts,
             concentration=concentration,
             prior_proportions=proportions,
+            dtype=dtype,
         )
         if columns is not None:
             representation = representation.select_columns(columns)

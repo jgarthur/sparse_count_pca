@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterator
 from typing import TypeAlias
 
 import numpy as np
@@ -18,7 +19,13 @@ BoolArray: TypeAlias = NDArray[np.bool_]
 Float64Array: TypeAlias = NDArray[np.float64]
 COUNT_INTEGER_ATOL = 1e-8
 _MAX_EXACT_CONSECUTIVE_FLOAT64_INTEGER = 2**53
-_ROUND_TRIP_BLOCK_SIZE = 1_000_000
+_COUNT_CHECK_BLOCK_SIZE = 100_000
+
+
+def _count_data_blocks(values: NDArray[np.generic]) -> Iterator[NDArray[np.generic]]:
+    """Yield fixed-size views for count validation with bounded scratch storage."""
+    for start in range(0, values.size, _COUNT_CHECK_BLOCK_SIZE):
+        yield values[start : start + _COUNT_CHECK_BLOCK_SIZE]
 
 
 def _validate_boolean_mask(mask: ArrayLike, n_vars: int, *, name: str) -> BoolArray:
@@ -36,8 +43,7 @@ def _validate_boolean_mask(mask: ArrayLike, n_vars: int, *, name: str) -> BoolAr
 
 def _round_trips_through_float64(values: NDArray[np.generic]) -> bool:
     """Check exact float64 conversion with bounded temporary memory."""
-    for start in range(0, values.size, _ROUND_TRIP_BLOCK_SIZE):
-        block = values[start : start + _ROUND_TRIP_BLOCK_SIZE]
+    for block in _count_data_blocks(values):
         with np.errstate(over="ignore", invalid="ignore"):
             converted = block.astype(np.float64)
             restored = converted.astype(values.dtype)
@@ -68,26 +74,30 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
         if X.format != "csr":
             # Converting another sparse format necessarily creates a private CSR.
             X = X.tocsr()
-        elif not X.has_canonical_format or (X.data == 0).any():
-            reasons = []
-            remedies = []
-            if not X.has_canonical_format:
-                reasons.append("duplicate or unsorted column indices")
-                remedies.append("sum_duplicates() and sort_indices()")
-            if (X.data == 0).any():
-                reasons.append("explicitly stored zeros")
-                remedies.append("eliminate_zeros()")
-            warnings.warn(
-                "CSR input was copied for canonicalization ("
-                + " and ".join(reasons)
-                + "), leading to increased memory usage. Run "
-                + " and ".join(remedies)
-                + " on the input to avoid this.",
-                UserWarning,
-                stacklevel=3,
+        else:
+            has_stored_zeros = any(
+                (block == 0).any() for block in _count_data_blocks(X.data)
             )
-            # Canonicalization mutates CSR, so copy only inputs that need it.
-            X = X.copy()
+            if not X.has_canonical_format or has_stored_zeros:
+                reasons = []
+                remedies = []
+                if not X.has_canonical_format:
+                    reasons.append("duplicate or unsorted column indices")
+                    remedies.append("sum_duplicates() and sort_indices()")
+                if has_stored_zeros:
+                    reasons.append("explicitly stored zeros")
+                    remedies.append("eliminate_zeros()")
+                warnings.warn(
+                    "CSR input was copied for canonicalization ("
+                    + " and ".join(reasons)
+                    + "), leading to increased memory usage. Run "
+                    + " and ".join(remedies)
+                    + " on the input to avoid this.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                # Canonicalization mutates CSR, so copy only inputs that need it.
+                X = X.copy()
     else:
         X = np.asarray(X)
         if not (
@@ -107,9 +117,9 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
         X.sum_duplicates()
         # Canonical CSR keeps each row's column indices in ascending order.
         X.sort_indices()
-    if not np.isfinite(X.data).all():
+    if any(not np.isfinite(block).all() for block in _count_data_blocks(X.data)):
         raise ValueError("Input contains NaN or inf")
-    if (X.data < 0).any():
+    if any((block < 0).any() for block in _count_data_blocks(X.data)):
         raise ValueError("Input contains negative values")
     if np.issubdtype(X.dtype, np.integer) and X.dtype.itemsize > 4:
         maximum = int(np.max(X.data)) if X.data.size else 0
@@ -127,12 +137,15 @@ def _canonicalize_counts(X: CountMatrix, *, check_values: bool) -> CSRMatrix:
     if (
         check_values
         and np.issubdtype(X.dtype, np.floating)
-        and not np.allclose(X.data, np.rint(X.data), rtol=0.0, atol=COUNT_INTEGER_ATOL)
+        and any(
+            not np.allclose(block, np.rint(block), rtol=0.0, atol=COUNT_INTEGER_ATOL)
+            for block in _count_data_blocks(X.data)
+        )
     ):
         raise ValueError(
             "Input contains non-integer values; pass check_values=False to skip"
         )
-    if (X.data == 0).any():
+    if any((block == 0).any() for block in _count_data_blocks(X.data)):
         X.eliminate_zeros()
     # Counts are nonnegative and explicit zeros are gone, so an empty CSR row
     # is exactly a cell with zero total counts. Inspecting indptr avoids another

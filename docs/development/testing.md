@@ -19,6 +19,64 @@ apply it rather than wrapping lines by hand.
 Normal tests are offline. External R and Python tooling used to regenerate
 pinned reference artifacts is provenance, not a runtime test dependency.
 
+## Count validation and log-construction memory
+
+Validate count-check boundaries with invalid, fractional, and precision-limited
+values in later blocks, preserving error precedence and input arrays. Existing
+tests also cover canonical borrowing, copied noncanonical inputs, explicit
+zeros, empty rows, extended precision, and the integer tolerance boundary.
+
+For all five log builders and both storage dtypes, compare bounded construction
+with independent dense oracles and verify that fitted factors agree exactly
+with float64 storage. Tiny block targets exercise multi-block inputs and rows
+longer than the target. Check late ratio overflow, float64 ratios exceeding
+float32 range, read-only input arrays, int32/int64 input structure, owned output
+structure, and reuse of the
+builder's sparse matrix by the public transform. Compare each public log PCA
+with a dense SVD of the requested-dtype representation using float64-fitted
+factors, including aligned scores/loadings, mean, singular values, total
+variance, and variance ratios. Existing returned-operator isolation checks
+remain required.
+
+For allocation diagnostics, create input before starting tracemalloc and
+reset tracing separately for validation and each construction stage. Compare
+two small nnz scales, varied size factors, and vector priors, distinguishing
+retained output from temporary allocation. Cross-check with sampled RSS and
+process high-water marks in fresh workers. Keep all thread limits at one;
+generate/load input outside timed regions and report three-repeat timings for
+validation, transform construction, and PCA independently. These measurements
+describe small synthetic inputs rather than predicting full-data RSS.
+
+The 2026-10-01 comparison against `8efc261` used canonical float32 counts with
+1,000 positive entries per row: 1,000 × 1,500 and 2,000 × 1,500 matrices with
+one and two million stored entries. Size factors varied from 0.5 to 1.5;
+Dirichlet CLR also used a varying vector prior. Each allocation result is the
+median of three separately traced runs. Log measurements include public
+transform fitting and storage casting, with input loaded before tracing.
+
+| Stage | Storage dtype | nnz | Old peak MiB | New peak MiB | Retained MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Validation, integer check enabled | — | 1M | 15.26 | 1.53 | ~0 |
+| Validation, integer check enabled | — | 2M | 30.52 | 1.53 | ~0 |
+| Normalized log1p | float32 | 1M | 19.10 | 9.17 | 7.65 |
+| Normalized log1p | float32 | 2M | 38.18 | 16.81 | 15.29 |
+| Normalized log1p | float64 | 1M | 19.09 | 12.99 | 11.46 |
+| Normalized log1p | float64 | 2M | 38.17 | 24.44 | 22.92 |
+
+Retained storage stayed the same; construction temporaries above that output
+were about 1.5 MiB at both scales and dtypes. Dirichlet CLR showed the same
+bounded temporary trend. With integrality disabled, validation peak fell from
+0.95/1.91 MiB at the two scales to about 0.10 MiB at either scale.
+
+Fresh workers cross-checked RSS and process high-water marks with three timed
+calls per stage and 5 ms RSS polling. On the 2M-nnz input, incremental peak RSS
+for normalized-log1p fitting fell from about 64 MiB to 16 MiB (float32) and
+23 MiB (float64). Complete PCA peaks fell from about 64 MiB to 32 MiB in both
+dtypes. Validation and fitting timings were similar or slightly faster; PCA
+times varied by less than 4%. Allocation tracing was disabled for RSS/timing
+workers. These RSS figures include allocator behavior across repeated calls
+and are not estimates obtained by summing theoretical buffer sizes.
+
 ## Manual residual-memory probe
 
 Memory-sensitive residual-construction changes should be checked with the

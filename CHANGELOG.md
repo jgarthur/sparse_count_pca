@@ -10,6 +10,10 @@ All notable user-facing changes are recorded here.
 - Compute rank-zero statistics directly in bounded CSR passes, speeding up
   normalized-log1p PCA without reconstructing dense columns or subtracting
   large moments when calculating centered variance.
+- Bound count-validation temporaries and log-transform arithmetic. Log builders
+  write directly into the requested storage dtype while preserving float64
+  fitted factors and owned sparse output, reducing construction memory use
+  especially for float32 workflows.
 
 ## 1.0.0 - 2026-10-01
 
