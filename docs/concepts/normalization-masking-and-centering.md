@@ -6,8 +6,8 @@ those roles separate.
 
 ## The PCA transform order
 
-For residual, count-scale shifted-CLR, and composition-scale shifted-CLR
-transforms, the order is:
+For residual, normalized-log1p, shifted-CLR, and Dirichlet transforms, the
+order is:
 
 ```text
 select the count matrix (`.X` or a layer)
@@ -24,8 +24,10 @@ run truncated SVD
 This ordering means `mask_var` is a PCA mask, not a preprocessing filter.
 
 For residual transforms, cell totals and gene proportions come from the full
-chosen count matrix. For CLR transforms, row log means use the full variable
-universe.
+chosen count matrix. For normalized log1p, cell totals and the default median
+target also use the full count matrix; supplied size factors are used as-is.
+For CLR transforms, row log means use the full variable universe, and
+Dirichlet prior counts are defined over that same universe.
 
 Consequently, these two operations need not agree:
 

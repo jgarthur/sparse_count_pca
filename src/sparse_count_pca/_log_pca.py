@@ -172,7 +172,10 @@ def proportion_shifted_clr_pca_matrix(
         the centered operator.
 
     Raises:
-        ValueError: If counts, dimensions, shift, or dtype are invalid.
+        ValueError: If counts, dimensions, shift, or dtype are invalid; if
+            ``cell_total * composition_shift`` overflows or rounds to zero in
+            float64; or if dividing a count by that product overflows. Check
+            the count scale and shift value.
 
     Examples:
         >>> result = proportion_shifted_clr_pca_matrix(
@@ -213,6 +216,11 @@ def log1p_norm_pca_matrix(
     ``s_i = n_i / t``. By default, ``t`` is the median observation total, so
     size factors have median one. Alternatively, pass positive size factors
     directly; they are used without rescaling.
+
+    Zero-total observations are rejected, even with supplied size factors;
+    filter empty rows from the selected count matrix first. Fitted metadata
+    records the resolved target and factor source; see ``Log1pNormalized``
+    for the ``params`` keys and their meanings.
 
     Args:
         X: Dense, SciPy sparse, or backed sparse count matrix with observations in rows
@@ -333,6 +341,11 @@ def log1p_norm_pca(
     ``s_i = n_i / t``. By default, ``t`` is the median observation total, so a
     typical observation has a size factor and effective pseudocount near one.
     Supplied size factors are used without rescaling.
+
+    Zero-total observations are rejected, even with supplied size factors;
+    filter empty rows from the selected count matrix first. Fitted metadata
+    records the resolved target and factor source; see ``Log1pNormalized``
+    for the ``params`` keys and their meanings.
 
     Args:
         adata: AnnData object with observations in rows and variables in columns.
@@ -532,7 +545,10 @@ def proportion_shifted_clr_pca(
         A modified AnnData object when ``copy=True``; otherwise ``None``.
 
     Raises:
-        ValueError: If counts, dimensions, mask, shift, or dtype are invalid.
+        ValueError: If counts, dimensions, mask, shift, or dtype are invalid; if
+            ``cell_total * composition_shift`` overflows or rounds to zero in
+            float64; or if dividing a count by that product overflows. Check
+            the count scale and shift value.
         KeyError: If a requested layer or mask key is absent.
 
     Examples:

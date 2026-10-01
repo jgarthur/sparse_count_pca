@@ -222,7 +222,7 @@ Size factors come from exactly one of two recipes:
 An explicit `target_sum` and `size_factors` are mutually exclusive. Result
 metadata records the requested `target_sum`, `resolved_target_sum` (`None`
 for supplied factors), `size_factor_source` (`"median_target_sum"`,
-`"target_sum"`, or `"supplied"`), and `size_factor_median`. The
+`"explicit_target_sum"`, or `"supplied_size_factors"`), and `size_factor_median`. The
 representation has rank zero: zeros map to zero, and only PCA centering adds
 a low-rank term.
 
@@ -252,6 +252,9 @@ Z_i = \operatorname{clr}(X_i / s_i + \tau\mathbf 1)
 
 where $s_i$ is the row total. Its effective raw-count shift varies by cell. It
 is invariant to deterministic row rescaling and rejects zero-total rows.
+Reject with `ValueError` if the effective count shift $s_i\tau$ is nonfinite
+or rounds to zero in float64, or if $X_{ij}/(s_i\tau)$ overflows. A huge
+shift must not silently collapse transformed nonzero counts to zero.
 
 ### Dirichlet transforms
 
@@ -1104,6 +1107,7 @@ adata.uns[uns_key] = {
         "tol": tol,
         "check_values": check_values,
         "dtype": resolved_dtype,
+        "package_name": "sparse-count-pca",
         "package_version": __version__,
     },
 }

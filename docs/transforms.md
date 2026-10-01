@@ -40,25 +40,6 @@ not make methods scientifically interchangeable outside the stated conditions.
 The [testing guide](development/testing.md) describes the oracle hierarchy and
 tolerances.
 
-## What this package does not do
-
-The table above is the complete set of transforms.
-
-Size-factor-normalized log1p is a boundary case for the package's
-representation. Dividing by a size factor and taking `log1p` maps zero to
-zero, so the normalized matrix stays sparse and only PCA centering makes it
-dense — a rank-one correction that iterative sparse PCA implementations
-already handle. It is included anyway, as most common count normalization.
-
-Two log-normalization recipes are deliberately absent. Seurat's "CLR"
-is not a CLR coordinate transform and adds a data-dependent shift rule. The
-Ahlmann-Eltze and Huber normalized Anscombe log divides by a size factor before
-adding \(1/(4\alpha)\), which is a cell-specific raw-count shift
-\(r_i/(4\alpha)\) rather than the count-scale shift used here.
-
-For a mapping from the Scanpy functions you may be replacing, see
-[coming from Scanpy](reference/compatibility.md#coming-from-scanpy).
-
 ## Notation
 
 Let \(X_{ij}\) be the count for observation \(i\) and variable \(j\). Define
@@ -230,6 +211,8 @@ Transformed values are
 [tested directly against those Scanpy functions](https://github.com/jgarthur/sparse_count_pca/blob/main/tests/test_log1p_scanpy.py)
 for both the median and explicit `target_sum` recipes, and against an
 independent dense formula oracle.
+
+For a complete workflow, see the [normalized-log1p guide](guides/log1p-normalization.md).
 
 ### Caveats
 
@@ -453,10 +436,6 @@ APIs. The `scaled_nb` extension is experimental. See the
 
 
 ## Further reading
-
-[Ahlmann-Eltze and Huber (2023), *Comparison of transformations for single-cell
-RNA-seq data*](https://doi.org/10.1038/s41592-023-01814-1) benchmarks
-transformations and comments on the rationale of different methods.
 
 [Booeshaghi et al. (2026), *Normalization for sampled count
 data*](https://doi.org/10.1101/2022.05.06.490859) proposes the

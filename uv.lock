@@ -3181,7 +3181,7 @@ wheels = [
 
 [[package]]
 name = "sparse-count-pca"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "anndata", version = "0.11.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },

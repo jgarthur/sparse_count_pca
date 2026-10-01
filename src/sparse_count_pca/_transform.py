@@ -348,6 +348,22 @@ class Log1pNormalized(Transform):
     raw-count pseudocount because
     ``log1p(x_ij / s_i) = log(x_ij + s_i) - log(s_i)``.
 
+    Fitting rejects zero-total observations, including when size factors are
+    supplied. Filter empty rows from the selected count matrix first.
+
+    Fitted transform and PCA ``params`` record:
+
+    - ``target_sum``: the requested target, or ``None``.
+    - ``resolved_target_sum``: the explicit or median target used, or ``None``
+      when factors were supplied.
+    - ``size_factors``: the supplied vector or observation-column name, or
+      ``None`` when factors were calculated from a target.
+    - ``size_factor_source``: ``"median_target_sum"``,
+      ``"explicit_target_sum"``, or ``"supplied_size_factors"``.
+    - ``size_factor_median``: the median of the divisors actually used.
+    - ``effective_count_shift``: ``"size_factor"``, indicating that each
+      observation's size factor is its effective raw-count pseudocount.
+
     Attributes:
         target_sum: Positive target total, or ``None`` to use the median
             observation total. Mutually exclusive with ``size_factors``.
@@ -382,7 +398,7 @@ class Log1pNormalized(Transform):
                 name="size_factors",
             )
             size_factors = validate_size_factors(size_factor_input, counts.shape[0])
-            size_factor_source = "supplied"
+            size_factor_source = "supplied_size_factors"
             resolved_target_sum = None
         else:
             if self.target_sum is None:
@@ -393,7 +409,7 @@ class Log1pNormalized(Transform):
                     self.target_sum, name="target_sum"
                 )
                 resolved_target_sum = requested_target_sum
-                size_factor_source = "target_sum"
+                size_factor_source = "explicit_target_sum"
             with np.errstate(over="ignore", under="ignore"):
                 size_factors = row_totals / resolved_target_sum
             if not np.isfinite(size_factors).all() or (size_factors <= 0).any():
@@ -584,7 +600,9 @@ class TransformedMatrix(LinearOperator):
             many of those have no counts, and, for the shifted transforms,
             ``shift_domain``, naming the scale the shift was applied on. For
             residual transforms it also records ``clip_threshold``, the numeric
-            threshold this fit resolved ``clip`` to.
+            threshold this fit resolved ``clip`` to. Normalized-log1p metadata
+            includes the resolved target and factor source described in
+            ``Log1pNormalized``.
         obs_names: Copied AnnData observation names, or ``None`` for matrix
             input.
         var_names: Copied AnnData variable names, or ``None`` for matrix input.
@@ -696,8 +714,53 @@ class TransformedMatrix(LinearOperator):
                 is invalid.
 
         Examples:
-            >>> row = transformed.materialize(obs=10)
-            >>> block = transformed.materialize(obs=[10, 3], var=[25, 2, 8])
+            A small AnnData input provides names as well as positions:
+
+            >>> import numpy as np
+            >>> from anndata import AnnData
+            >>> from scipy.sparse import csr_matrix
+            >>> adata = AnnData(csr_matrix([[2, 0, 1], [0, 3, 1], [1, 1, 2]]))
+            >>> adata.obs_names = ["cell_a", "cell_b", "cell_c"]
+            >>> adata.var_names = ["gene_a", "gene_b", "gene_c"]
+            >>> transformed = transform(adata, Log1pNormalized())
+
+            Omitted selectors include the whole axis; integers retain an axis:
+
+            >>> transformed.materialize().shape
+            (3, 3)
+            >>> transformed.materialize(obs=0).shape
+            (1, 3)
+            >>> transformed.materialize(obs=0, var=1).shape
+            (1, 1)
+
+            Positional slices have an exclusive stop. Lists preserve order and
+            can repeat positions. Selecting both axes returns their rectangular
+            intersection, not paired entries:
+
+            >>> transformed.materialize(obs=slice(0, 2), var=slice(1, 3)).shape
+            (2, 2)
+            >>> transformed.materialize(obs=[2, 0, 2], var=[2, 0]).shape
+            (3, 2)
+            >>> transformed.materialize(obs=-1).shape
+            (1, 3)
+
+            Boolean masks must match the length of their axis:
+
+            >>> transformed.materialize(obs=[True, False, True]).shape
+            (2, 3)
+
+            Names require an AnnData-derived transform with unique names on
+            the selected axis. Use individual names or lists, not name slices:
+
+            >>> transformed.materialize(obs="cell_b", var=["gene_c", "gene_a"]).shape
+            (1, 2)
+
+            A supplied output array must have the selected shape. ``block_size``
+            limits the number of selected observations processed at once:
+
+            >>> out = np.empty((2, 3), dtype="float32")
+            >>> transformed.materialize(obs=[2, 0], out=out, block_size=1) is out
+            True
         """
         if not isinstance(block_size, int) or block_size <= 0:
             raise ValueError("block_size must be a positive integer")

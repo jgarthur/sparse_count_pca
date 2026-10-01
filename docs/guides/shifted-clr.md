@@ -59,6 +59,21 @@ this transform or `ProportionShiftedCLR`. See
 [compatibility](../reference/compatibility.md#shifted-clr-pflog-and-cleartools)
 for the scope of this relationship.
 
+### Choosing the count-scale shift
+
+This package requires an explicit `count_shift` and does not estimate
+dispersion. If you have no independently justified dispersion estimate, a
+practical starting point is `count_shift=1`. To assess sensitivity, try shifts
+of `0.25`, `0.5`, `1`, and `2.5`. Through the Anscombe-derived relation
+`count_shift = 1 / (4 * alpha)` used by PFlog, these correspond to
+`alpha = 1`, `0.5`, `0.25`, and `0.1`, respectively. This is a range to explore,
+not an estimate of your dataset's dispersion.
+
+If your results depend strongly on the chosen shift, consider dispersion
+estimation as a serious problem to explore. Observed variation includes both
+technical noise and biological differences, and separating them requires
+additional assumptions or information.
+
 ## Composition-scale shifted CLR
 
 `ProportionShiftedCLR` is a distinct historical transform:

@@ -87,8 +87,8 @@ def test_default_and_explicit_masks(adata):
     assert explicit.uns["pca"]["params"]["mask_var_details"]["kind"] == "array"
 
 
-def test_reproducibility_metadata_matches_matrix_result(adata):
-    """AnnData and matrix APIs record matching reproducibility metadata."""
+def test_reproducibility_metadata_matches_matrix_result(adata, tmp_path):
+    """Matrix and saved AnnData results retain matching producer and run metadata."""
     keywords = dict(
         random_state=7,
         tol=1e-6,
@@ -100,18 +100,27 @@ def test_reproducibility_metadata_matches_matrix_result(adata):
     matrix = residual_pca_matrix(adata.X, 2, **keywords)
     annotated = residual_pca(adata, 2, copy=True, **keywords)
 
-    for params in (matrix.params, annotated.uns["pca"]["params"]):
-        assert params["zero_center"] is True
+    path = tmp_path / "pca.h5ad"
+    annotated.write_h5ad(path)
+    reloaded = ad.read_h5ad(path)
+
+    for params in (
+        matrix.params,
+        annotated.uns["pca"]["params"],
+        reloaded.uns["pca"]["params"],
+    ):
+        assert params["zero_center"]
         assert params["n_comps"] == 2
         assert params["random_state"] == 7
         assert params["tol"] == 1e-6
-        assert params["check_values"] is False
+        assert not params["check_values"]
         assert params["dtype"] == "float64"
+        assert params["package_name"] == "sparse-count-pca"
         assert params["package_version"] == __version__
         assert params["clip"] == "scanpy"
         assert params["clip_threshold"] == pytest.approx(np.sqrt(adata.n_obs))
         assert params["clip_mode"] == "upper"
-        assert params["clip_max_nnz_ratio"] is None
+        assert params.get("clip_max_nnz_ratio") is None
 
 
 @pytest.mark.parametrize(

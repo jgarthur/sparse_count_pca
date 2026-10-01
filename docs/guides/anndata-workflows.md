@@ -83,6 +83,10 @@ a particular input scale; any boolean `var` column works here.
 
 ## Output keys
 
+Result parameters identify the producer as
+`adata.uns["pca"]["params"]["package_name"] == "sparse-count-pca"`, alongside
+`package_version`. Custom output keys retain the same provenance fields.
+
 PCA functions use these defaults:
 
 ```text

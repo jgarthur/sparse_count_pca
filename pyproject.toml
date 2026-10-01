@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sparse-count-pca"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "PCA of implicitly represented sparse count transforms"
 readme = "README.md"
 requires-python = ">=3.10"

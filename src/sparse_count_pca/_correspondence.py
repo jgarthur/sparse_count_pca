@@ -37,7 +37,7 @@ from ._residuals import (
     build_pearson_residual_representation,
 )
 from ._svd import Solver, compute_truncated_svd
-from ._version import __version__
+from ._version import PACKAGE_NAME, __version__
 
 Float64Array = NDArray[np.float64]
 CorrespondenceModel: TypeAlias = Literal["poisson", "scaled_nb"]
@@ -74,7 +74,8 @@ class CorrespondenceAnalysisResult:
             so they sum to one.
         column_masses: Column totals of the analyzed table divided by its grand
             total, so they sum to one.
-        params: Model, solver, dtype, and reproducibility metadata.
+        params: Model, solver, dtype, and reproducibility metadata, including
+            ``package_name="sparse-count-pca"`` and ``package_version``.
         operator: Uncentered operator passed to ARPACK when
             ``return_operator=True``; otherwise ``None``.
     """
@@ -270,6 +271,7 @@ def _compute_correspondence_analysis(
         "tol": tol,
         "check_values": check_values,
         "dtype": str(dtype),
+        "package_name": PACKAGE_NAME,
         "package_version": __version__,
     }
     return CorrespondenceAnalysisResult(
@@ -315,11 +317,11 @@ def correspondence_analysis_matrix(
             variance ``mu_ij``, or ``"scaled_nb"`` for the experimental residual
             ordination, standardizing by ``mu_ij * (1 + alpha_j * mean_n *
             p_j)`` with ``mean_n`` the mean row total.
-        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar, a
-            length-``n_vars`` array, or an AnnData variable key (AnnData entry points
-            only). Larger values mean more variance, and values below ``1e-8`` use the
-            Poisson limit. Required for ``model="scaled_nb"`` and rejected for the other
-            models. Values for variables with no counts are replaced with zero.
+        alpha: Overdispersion of the ``scaled_nb`` model, as a nonnegative scalar or
+            length-``n_vars`` array. Larger values mean more variance, and values
+            below ``1e-8`` use the Poisson limit. Required for ``model="scaled_nb"``
+            and rejected for the other models. Values for variables with no
+            counts are replaced with zero.
         check_values: When ``True``, reject floating-point input whose values are not
             within ``1e-8`` of integers.
         dtype: Representation and ARPACK calculation dtype, either ``"float64"`` or
