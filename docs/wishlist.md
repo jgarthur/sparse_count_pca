@@ -229,6 +229,12 @@ repurposing the review guide. Put numerical contracts and oracle policy in
 focused `numerics.md` and `verification.md` documents, while preserving one
 clearly identified normative API/specification entry point.
 
+### Retire the 1.0.0 clipping notice
+
+Remove the "1.0.0 release: residual clipping has changed" admonition from the
+top of `docs/index.md` in the first release after 1.0.0. The changelog and
+clipping guide keep the migration note.
+
 ## Unscoped ideas
 
 - Check whether `corral` uses sparse tricks worth borrowing.

@@ -72,3 +72,22 @@ def test_render_examples_prunes_only_unaccounted_outputs(tmp_path, monkeypatch) 
     assert not stale_markdown.exists()
     assert not stale_asset.exists()
     assert not stale_asset.parent.exists()
+
+
+@pytest.mark.parametrize(
+    ("ipc_supported", "path_limit", "expect_ipc"),
+    [(True, 96, True), (False, 96, False), (True, 0, False)],
+    ids=["ipc", "windows", "long-temp-path"],
+)
+def test_render_examples_kernel_transport(
+    monkeypatch, ipc_supported, path_limit, expect_ipc
+) -> None:
+    """Kernels use ipc sockets only on supporting platforms with short enough paths."""
+    pytest.importorskip("traitlets")
+    monkeypatch.setattr(render_examples, "IPC_SUPPORTED", ipc_supported)
+    monkeypatch.setattr(render_examples, "IPC_BASE_PATH_LIMIT", path_limit)
+
+    with render_examples._kernel_config() as config:
+        uses_ipc = config.KernelManager.get("transport") == "ipc"
+
+    assert uses_ipc is expect_ipc

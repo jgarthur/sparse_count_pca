@@ -11,7 +11,7 @@ from numpy.typing import DTypeLike, NDArray
 from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
 from ._svd import Solver, compute_truncated_svd
-from ._version import __version__
+from ._version import PACKAGE_NAME, __version__
 
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
@@ -161,7 +161,7 @@ def compute_pca_from_representation(
         "tol": tol,
         "check_values": check_values,
         "dtype": str(operator_dtype),
-        "package_name": "sparse-count-pca",
+        "package_name": PACKAGE_NAME,
         "package_version": __version__,
     }
     assert operator.mean is not None

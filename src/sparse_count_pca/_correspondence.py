@@ -37,7 +37,7 @@ from ._residuals import (
     build_pearson_residual_representation,
 )
 from ._svd import Solver, compute_truncated_svd
-from ._version import __version__
+from ._version import PACKAGE_NAME, __version__
 
 Float64Array = NDArray[np.float64]
 CorrespondenceModel: TypeAlias = Literal["poisson", "scaled_nb"]
@@ -271,7 +271,7 @@ def _compute_correspondence_analysis(
         "tol": tol,
         "check_values": check_values,
         "dtype": str(dtype),
-        "package_name": "sparse-count-pca",
+        "package_name": PACKAGE_NAME,
         "package_version": __version__,
     }
     return CorrespondenceAnalysisResult(

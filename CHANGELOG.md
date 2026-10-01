@@ -13,8 +13,9 @@ Changes since 1.0.0rc1:
   behavior. The symmetric default can trigger the existing support-growth
   guard; `clip_mode` and `clip_max_nnz_ratio` are unchanged.
 - **Stricter validation:** composition-scale shifted CLR now raises `ValueError`
-  when multiplying the shift by a cell's total count overflows float64, instead
-  of silently collapsing transformed nonzero counts to zero.
+  when a cell's total count times the shift overflows or rounds to zero in
+  float64, or when dividing a count by that product overflows, instead of
+  silently producing zero or infinite transformed values.
 
 ### New features
 

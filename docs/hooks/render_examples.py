@@ -14,6 +14,8 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -24,6 +26,10 @@ OUTPUT_DIRECTORY = REPOSITORY_ROOT / "docs" / "examples"
 CACHE_PATH = OUTPUT_DIRECTORY / ".render-cache.json"
 CACHE_VERSION = 1
 LOGGER = logging.getLogger("mkdocs.plugins.render_examples")
+IPC_SUPPORTED = os.name != "nt"
+# Unix socket paths are limited to 104 bytes on macOS (108 on Linux), and
+# jupyter_client appends "-<port>" to the ipc base path for each kernel channel.
+IPC_BASE_PATH_LIMIT = 96
 
 
 def _digest_files(paths: list[Path]) -> str:
@@ -123,13 +129,26 @@ def _prune_stale_outputs(cache: dict[str, dict[str, Any]]) -> int:
     return len(stale_paths)
 
 
+@contextmanager
+def _kernel_config() -> Iterator[Any]:
+    """Yield kernel settings that use local ipc sockets where they can be bound."""
+    from traitlets.config import Config
+
+    config = Config()
+    with TemporaryDirectory(prefix="scp-") as kernel_directory:
+        ipc_base = Path(kernel_directory) / "kernel"
+        if IPC_SUPPORTED and len(os.fsencode(ipc_base)) <= IPC_BASE_PATH_LIMIT:
+            config.KernelManager.transport = "ipc"
+            config.KernelManager.ip = str(ipc_base)
+        yield config
+
+
 def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
     """Execute one percent notebook and export its cells and outputs to Markdown."""
     # Keep docs-only dependencies lazy so test-only environments can import the hook.
     import jupytext
     from nbconvert import MarkdownExporter
     from nbconvert.preprocessors import ExecutePreprocessor
-    from traitlets.config import Config
 
     notebook = jupytext.read(source, fmt="py:percent")
     notebook.metadata.kernelspec = {
@@ -138,10 +157,7 @@ def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
         "name": "python3",
     }
 
-    with TemporaryDirectory(prefix="scp-") as kernel_directory:
-        config = Config()
-        config.KernelManager.transport = "ipc"
-        config.KernelManager.ip = str(Path(kernel_directory) / "kernel")
+    with _kernel_config() as config:
         executor = ExecutePreprocessor(
             timeout=60,
             kernel_name="python3",
