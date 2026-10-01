@@ -21,6 +21,7 @@ counts = csr_matrix(
             [0, 2, 5, 1, 0],
             [2, 0, 1, 4, 1],
             [1, 3, 2, 0, 3],
+            [2, 1, 0, 2, 1],
         ],
         dtype=np.int32,
     )
@@ -35,7 +36,8 @@ adata.layers["counts"] = counts
 # %%
 scp.log1p_norm_pca(adata, layer="counts", n_comps=2)
 
-print("observation totals:", np.asarray(counts.sum(axis=1)).ravel())
+totals = np.asarray(counts.sum(axis=1)).ravel()
+print("sorted observation totals:", np.sort(totals))
 print("resolved target:", adata.uns["pca"]["params"]["resolved_target_sum"])
 print("scores:", adata.obsm["X_pca"].shape)
 print("components:", adata.varm["PCs"].shape)
@@ -51,10 +53,11 @@ print("singular values:", explicit.singular_values.round(3))
 
 # %% [markdown]
 # **Supplied factors are used as-is.** These illustrative factors are stored
-# in `.obs` so their observation alignment follows AnnData slicing.
+# in `adata.obs["size_factor"]`. PCA scores are stored separately in
+# `adata.obsm["supplied"]`, using the `key_added` value below.
 
 # %%
-adata.obs["size_factor"] = np.array([0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
+adata.obs["size_factor"] = np.array([0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 0.8])
 scp.log1p_norm_pca(
     adata,
     layer="counts",
@@ -63,7 +66,7 @@ scp.log1p_norm_pca(
     key_added="supplied",
 )
 print("factor source:", adata.uns["supplied"]["params"]["size_factor_source"])
-print("supplied-factor scores:", adata.obsm["supplied"].shape)
+print('PCA scores in adata.obsm["supplied"]:', adata.obsm["supplied"].shape)
 
 # %% [markdown]
 # **Inspect transformed values** through the two-step API. This small slice
@@ -84,8 +87,9 @@ print("first two normalized observations:")
 print(values.round(3))
 
 # %% [markdown]
-# **Reuse normalization for a PCA mask.** Fitting used all genes, and selecting
-# PCA columns leaves that fitted state unchanged.
+# **Run PCA on selected genes.** The log1p values above were computed using
+# the supplied size factors. Selecting four genes for PCA does not recalculate
+# those normalized values.
 
 # %%
 mask = np.array([True, True, True, True, False])

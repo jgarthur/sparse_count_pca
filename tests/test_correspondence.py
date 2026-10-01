@@ -206,6 +206,8 @@ def test_experimental_scaled_nb_ca_resolves_anndata_alpha_after_masking(adata):
         rtol=0.0,
         atol=1e-12,
     )
+    assert expected.params["package_name"] == "sparse-count-pca"
+    assert result.uns["nb_coords"]["params"]["package_name"] == "sparse-count-pca"
     assert result.uns["nb_coords"]["params"]["alpha"] == "overdispersion"
     assert result.uns["nb_coords"]["params"]["experimental"] is True
 

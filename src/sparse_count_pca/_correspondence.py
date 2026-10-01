@@ -74,7 +74,8 @@ class CorrespondenceAnalysisResult:
             so they sum to one.
         column_masses: Column totals of the analyzed table divided by its grand
             total, so they sum to one.
-        params: Model, solver, dtype, and reproducibility metadata.
+        params: Model, solver, dtype, and reproducibility metadata, including
+            ``package_name="sparse-count-pca"`` and ``package_version``.
         operator: Uncentered operator passed to ARPACK when
             ``return_operator=True``; otherwise ``None``.
     """
@@ -270,6 +271,7 @@ def _compute_correspondence_analysis(
         "tol": tol,
         "check_values": check_values,
         "dtype": str(dtype),
+        "package_name": "sparse-count-pca",
         "package_version": __version__,
     }
     return CorrespondenceAnalysisResult(

@@ -300,9 +300,6 @@ to that
 This transform is invariant to deterministic rescaling of each observation,
 unlike count-scale shifted CLR. It should not be described as the current
 PFlog formula / count-scale shifted CLR, which is recommended by the original authors.
-Extremely large or small shifts can exceed float64's numerical range and
-raise `ValueError`; see the [shifted-CLR guide](guides/shifted-clr.md#composition-scale-shifted-clr)
-for the checks and how to address them.
 
 ## Dirichlet log and Dirichlet CLR
 

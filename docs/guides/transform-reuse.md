@@ -50,8 +50,29 @@ gene = transformed.materialize(var=25)
 subset = transformed.materialize(obs=[10, 3], var=[25, 2, 8])
 ```
 
-For AnnData input, observation and variable names are also accepted. Slices,
-boolean masks, and ordered integer arrays are supported.
+Use positional slices or boolean masks for larger selections:
+
+```python
+first_cells = transformed.materialize(obs=slice(0, 5))
+selected_cells = transformed.materialize(obs=adata.obs["cell_type"] == "B cell")
+selected_genes = transformed.materialize(
+    obs=slice(0, 5), var=adata.var["highly_variable"].to_numpy()
+)
+```
+
+The metadata columns in these examples must exist in your AnnData object.
+For a transform fitted from AnnData, names work too:
+
+```python
+named = transformed.materialize(
+    obs=adata.obs_names[:3].tolist(), var=adata.var_names[:2].tolist()
+)
+```
+
+Lists preserve order and may repeat entries. Selecting both axes returns a
+rectangular block, not paired entries. See the
+[`materialize` API examples](../reference/api/transforms.md#sparse_count_pca.TransformedMatrix.materialize)
+for single values, negative indices, repeated positions, and output buffers.
 
 The current backend is observation-oriented CSR. Observation blocks are the
 efficient access direction. Selecting variables across every observation may

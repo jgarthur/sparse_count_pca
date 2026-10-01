@@ -284,7 +284,7 @@ def test_log_pca_metadata(counts, pca, kwargs, transform, domain, parameter):
     ("target_sum", "source"),
     [
         (None, "median_target_sum"),
-        (1e4, "target_sum"),
+        (1e4, "explicit_target_sum"),
     ],
     ids=["median-target", "explicit-target"],
 )
@@ -314,7 +314,7 @@ def test_log1p_norm_uses_supplied_size_factors_without_rescaling(counts):
         rtol=0.0,
         atol=1e-15,
     )
-    assert transformed.params["size_factor_source"] == "supplied"
+    assert transformed.params["size_factor_source"] == "supplied_size_factors"
     np.testing.assert_array_equal(transformed.params["size_factors"], size_factors)
 
 
@@ -337,7 +337,7 @@ def test_log1p_norm_transform_resolves_size_factors_from_obs(adata):
         atol=1e-15,
     )
     assert transformed.params["size_factors"] == "scran_size_factor"
-    assert transformed.params["size_factor_source"] == "supplied"
+    assert transformed.params["size_factor_source"] == "supplied_size_factors"
 
 
 def test_log1p_norm_explicit_mask_is_not_replaced_by_highly_variable(adata):

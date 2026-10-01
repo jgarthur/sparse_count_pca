@@ -40,16 +40,18 @@ This uses the same normalization formula as Scanpy's `pp.normalize_total`
 followed by `pp.log1p`. The package keeps transformed values implicit and
 writes PCA results rather than replacing `.X` with normalized values. See
 [Scanpy compatibility](../reference/compatibility.md#coming-from-scanpy) for
-numerical tolerances and differences in supported options.
-
-The target changes values before the logarithm, so changing it can change the
-PCA. To inspect the target actually used, read
-`adata.uns["pca"]["params"]["resolved_target_sum"]`.
+the scope of the comparison and differences in supported options.
 
 ## Supply size factors
 
-If you already have size factors, pass a positive finite vector of length
-`n_obs`, or the name of an `adata.obs` column:
+Without supplied factors, the package divides each observation's total count
+by the median total to obtain its size factor. For totals of 500, 1000, and
+2000, the default factors are 0.5, 1, and 2. An explicit `target_sum` replaces
+the median in that calculation.
+
+If you already have size factors from another method, pass them instead as a
+vector or an `adata.obs` column. They are used as supplied, without adjusting
+their median. For example, if your factors are in `adata.obs["size_factor"]`:
 
 ```python
 scp.log1p_norm_pca(
@@ -60,20 +62,10 @@ scp.log1p_norm_pca(
 )
 ```
 
-This assumes `adata.obs["size_factor"]` contains your factors. A column name
-reads values in the current observation order when fitting. A supplied vector
-is positional: arrange it in the same order as the input rows; a pandas Series
-is not realigned by its index. Keeping factors in `.obs` lets AnnData carry
-them along when observations are subsetted or reordered.
-
-Factors are used without rescaling or estimation. Dividing all factors by two,
-for example, doubles the normalized counts before `log1p`. Do not also pass an
-explicit `target_sum`. With supplied factors, metadata records
-`size_factor_source="supplied"` and `resolved_target_sum=None`.
-
 ## Matrix workflow and inspecting values
 
-Outside AnnData, use the matrix function and pass any size factors as a vector:
+Outside AnnData, use the matrix function. The median default, explicit
+`target_sum`, and supplied `size_factors` behave the same way:
 
 ```python
 result = scp.log1p_norm_pca_matrix(counts, n_comps=20, target_sum=1e4)
@@ -90,8 +82,7 @@ values = normalized.materialize(obs=slice(0, 3))
 result = normalized.pca(n_comps=20)
 ```
 
-`materialize` returns a dense array for the requested slice. The fitted object
-has no low-rank baseline before centering (rank zero). See
+`materialize` returns a dense array for the requested slice. See
 [transform once, reuse](transform-reuse.md) for bounded materialization and
 the two-step result contract.
 
@@ -104,14 +95,7 @@ Slice the count matrix first if excluded genes should not affect totals. See
 [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
 
 Remove zero-total observations before fitting, even when supplying your own
-size factors. Genes with no counts remain zero and do not count toward the
-`n_comps` limit. ARPACK requires `n_comps` to be smaller than both the number
-of observations and the number of selected nonempty genes.
-
-An extremely large or small target can produce size factors outside float64's
-finite positive range. A very small supplied factor can also make a normalized
-count overflow before the logarithm. These cases raise `ValueError`; check
-the scale of the target, factors, and input counts.
+size factors.
 
 ## Complete example
 

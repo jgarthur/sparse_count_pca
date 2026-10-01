@@ -43,7 +43,8 @@ class PCAResult:
             Includes ``normalization_n_vars`` (variables used to fit normalization),
             ``pca_n_vars`` (variables selected for PCA), ``n_empty_vars`` (genes
             with no counts in the normalization input), ``n_comps``, ``solver``,
-            ``random_state``, ``tol``, ``dtype``, and ``package_version``.
+            ``random_state``, ``tol``, ``dtype``, ``package_name``
+            (``"sparse-count-pca"``), and ``package_version``.
             Residual results record the requested ``clip`` and resolved numeric
             ``clip_threshold`` (``None`` when clipping is disabled). Normalized-log1p
             results also record ``target_sum``, ``resolved_target_sum``,
@@ -160,6 +161,7 @@ def compute_pca_from_representation(
         "tol": tol,
         "check_values": check_values,
         "dtype": str(operator_dtype),
+        "package_name": "sparse-count-pca",
         "package_version": __version__,
     }
     assert operator.mean is not None
