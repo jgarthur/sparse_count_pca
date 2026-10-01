@@ -3,8 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
+import numpy as np
+from numpy.typing import NDArray
 from scipy import sparse
+
+
+def _csr_with_data(matrix: sparse.csr_matrix, data: NDArray[Any]) -> sparse.csr_matrix:
+    """Build CSR with supplied data and one owned copy of its support arrays."""
+    index_dtype = (
+        np.int64
+        if max(matrix.shape + (matrix.nnz,)) > np.iinfo(np.int32).max
+        else np.int32
+    )
+    return sparse.csr_matrix(
+        (
+            data,
+            matrix.indices.astype(index_dtype, copy=True),
+            matrix.indptr.astype(index_dtype, copy=True),
+        ),
+        shape=matrix.shape,
+        copy=False,
+    )
 
 
 def _support_row_blocks(

@@ -11,7 +11,7 @@ from scipy import sparse
 
 from ._counts import _sum_counts
 from ._representation import SparseLowRankMatrix
-from ._sparse import _support_row_blocks
+from ._sparse import _csr_with_data, _support_row_blocks
 
 PriorProportions: TypeAlias = ArrayLike | None
 Float64Array = NDArray[np.float64]
@@ -118,18 +118,7 @@ def _log1p_sparse_correction(
             values, indptr[:-1][nonempty]
         )
         data[start:stop] = values
-    index_dtype = (
-        np.int64 if max(X.shape + (X.nnz,)) > np.iinfo(np.int32).max else np.int32
-    )
-    correction = sparse.csr_matrix(
-        (
-            data,
-            X.indices.astype(index_dtype, copy=True),
-            X.indptr.astype(index_dtype, copy=True),
-        ),
-        shape=X.shape,
-        copy=False,
-    )
+    correction = _csr_with_data(X, data)
     return correction, row_sums
 
 

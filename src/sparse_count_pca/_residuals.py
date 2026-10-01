@@ -14,6 +14,7 @@ from ._clip import ClipMode, _guarded_clipped_zero_locations
 from ._counts import BoolArray
 from ._operator import _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
+from ._sparse import _csr_with_data
 from ._sparse import _support_row_blocks as _bounded_support_row_blocks
 
 ALPHA_EPS = 1e-8
@@ -79,16 +80,7 @@ def _finalize_residual_representation(
     prune_zero_corrections: bool,
 ) -> SparseLowRankMatrix:
     """Own CSR support, prune computed zeros, and add clipped-zero corrections."""
-    sparse_part = sparse.csr_matrix(
-        (
-            data,
-            # The persistent representation owns its support so later caller
-            # mutation of X cannot change the fitted transform.
-            X.indices.copy(),
-            X.indptr.copy(),
-        ),
-        shape=X.shape,
-    )
+    sparse_part = _csr_with_data(X, data)
     if prune_zero_corrections:
         sparse_part.eliminate_zeros()
     if correction_rows.size:
