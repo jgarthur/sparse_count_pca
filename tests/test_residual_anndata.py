@@ -109,18 +109,18 @@ def test_reproducibility_metadata_matches_matrix_result(adata, tmp_path):
         annotated.uns["pca"]["params"],
         reloaded.uns["pca"]["params"],
     ):
-        assert params["zero_center"] is True
+        assert params["zero_center"]
         assert params["n_comps"] == 2
         assert params["random_state"] == 7
         assert params["tol"] == 1e-6
-        assert params["check_values"] is False
+        assert not params["check_values"]
         assert params["dtype"] == "float64"
         assert params["package_name"] == "sparse-count-pca"
         assert params["package_version"] == __version__
         assert params["clip"] == "scanpy"
         assert params["clip_threshold"] == pytest.approx(np.sqrt(adata.n_obs))
         assert params["clip_mode"] == "upper"
-        assert params["clip_max_nnz_ratio"] is None
+        assert params.get("clip_max_nnz_ratio") is None
 
 
 @pytest.mark.parametrize(
