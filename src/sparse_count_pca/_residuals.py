@@ -78,9 +78,13 @@ def _finalize_residual_representation(
     clip: float | None,
     dtype: np.dtype[np.floating],
     prune_zero_corrections: bool,
+    share_structure: bool,
 ) -> SparseLowRankMatrix:
-    """Own CSR support, prune computed zeros, and add clipped-zero corrections."""
-    sparse_part = _csr_with_data(X, data)
+    """Build CSR support, prune computed zeros, and add clipped-zero corrections."""
+    # Zero elimination mutates support arrays even when no entries are removed.
+    sparse_part = _csr_with_data(
+        X, data, share_structure=share_structure and not prune_zero_corrections
+    )
     if prune_zero_corrections:
         sparse_part.eliminate_zeros()
     if correction_rows.size:
@@ -114,6 +118,7 @@ def build_pearson_residual_representation(
     clip_mode: ClipMode = "symmetric",
     clip_max_nnz_ratio: float | None = None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Build a bounded-memory Pearson residual representation."""
     calculation_dtype = _normalize_operator_dtype(dtype)
@@ -179,6 +184,7 @@ def build_pearson_residual_representation(
         clip=clip,
         dtype=calculation_dtype,
         prune_zero_corrections=clip is not None,
+        share_structure=share_structure,
     )
 
 
@@ -389,6 +395,7 @@ def build_residual_representation(
     clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Build a sparse-plus-rank-one residual representation.
 
@@ -409,6 +416,7 @@ def build_residual_representation(
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
         dtype: Floating-point storage dtype for the returned representation.
+        share_structure: Permit borrowing CSR support when no pruning is required.
 
     Returns:
         A rank-one sparse-plus-low-rank representation.
@@ -425,6 +433,7 @@ def build_residual_representation(
             clip_mode=clip_mode,
             clip_max_nnz_ratio=clip_max_nnz_ratio,
             dtype=dtype,
+            share_structure=share_structure,
         )
 
     calculation_dtype = _normalize_operator_dtype(dtype)
@@ -515,4 +524,5 @@ def build_residual_representation(
         clip=clip,
         dtype=calculation_dtype,
         prune_zero_corrections=True,
+        share_structure=share_structure,
     )

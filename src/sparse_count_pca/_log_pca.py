@@ -46,6 +46,7 @@ def _compute_log_pca(
         dtype=dtype,
         _columns=mask,
         _isolate_returned_operator=False,
+        share_structure=not return_operator,
         _obs=obs,
     )
     return transformed.pca(

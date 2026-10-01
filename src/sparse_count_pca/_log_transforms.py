@@ -84,8 +84,9 @@ def _log1p_sparse_correction(
     *,
     dtype: DTypeLike,
     overflow_message: str,
+    share_structure: bool,
 ) -> tuple[sparse.csr_matrix, Float64Array]:
-    """Write owned sparse log corrections from bounded float64 row blocks.
+    """Write sparse log corrections from bounded float64 row blocks.
 
     ``block_divisors(row_start, row_stop, value_start, value_stop)`` returns
     the divisor for each stored entry in one block of complete CSR rows, or a
@@ -93,8 +94,8 @@ def _log1p_sparse_correction(
     target.
 
     Returns:
-        The corrections stored in ``dtype`` with owned CSR arrays, and float64
-        row sums of the corrections computed before storage casting.
+        The corrections stored in ``dtype`` with owned data and optionally borrowed
+        support arrays, and float64 row sums computed before storage casting.
 
     Raises:
         ValueError: With ``overflow_message`` if any ratio overflows float64.
@@ -118,7 +119,7 @@ def _log1p_sparse_correction(
             values, indptr[:-1][nonempty]
         )
         data[start:stop] = values
-    correction = _csr_with_data(X, data)
+    correction = _csr_with_data(X, data, share_structure=share_structure)
     return correction, row_sums
 
 
@@ -127,6 +128,7 @@ def log1p_count_correction(
     prior_counts: Float64Array | float,
     *,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> tuple[sparse.csr_matrix, Float64Array]:
     """Return sparse ``log1p(x_ij / prior_count_j)`` corrections and row sums.
 
@@ -145,6 +147,7 @@ def log1p_count_correction(
         X,
         column_divisors,
         dtype=dtype,
+        share_structure=share_structure,
         overflow_message="Count-to-prior ratios overflow float64",
     )
 
@@ -155,6 +158,7 @@ def log1p_row_scaled_counts(
     *,
     overflow_message: str,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> tuple[sparse.csr_matrix, Float64Array]:
     """Return sparse ``log1p(x_ij / row_divisor_i)`` values and row sums.
 
@@ -176,6 +180,7 @@ def log1p_row_scaled_counts(
         X,
         repeated_row_divisors,
         dtype=dtype,
+        share_structure=share_structure,
         overflow_message=overflow_message,
     )
 
@@ -185,6 +190,7 @@ def build_log1p_norm_representation(
     *,
     size_factors: ArrayLike,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Represent size-factor-normalized ``log1p`` values as rank-zero sparse."""
     divisors = validate_size_factors(size_factors, X.shape[0])
@@ -193,6 +199,7 @@ def build_log1p_norm_representation(
         divisors,
         overflow_message="Count-to-size-factor ratios overflow float64",
         dtype=dtype,
+        share_structure=share_structure,
     )
     return SparseLowRankMatrix(
         sparse_part,
@@ -206,10 +213,13 @@ def build_shifted_clr_representation(
     *,
     count_shift: float,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Represent count-scale shifted CLR as sparse plus rank one."""
     count_shift = validate_positive_scalar(count_shift, name="count_shift")
-    sparse_part, row_sums = log1p_count_correction(X, count_shift, dtype=dtype)
+    sparse_part, row_sums = log1p_count_correction(
+        X, count_shift, dtype=dtype, share_structure=share_structure
+    )
     row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
         sparse_part,
@@ -223,6 +233,7 @@ def build_proportion_shifted_clr_representation(
     *,
     composition_shift: float,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Represent composition-scale shifted CLR as sparse plus rank one."""
     composition_shift = validate_positive_scalar(
@@ -243,6 +254,7 @@ def build_proportion_shifted_clr_representation(
         row_divisors,
         overflow_message="Count-to-composition ratios overflow float64",
         dtype=dtype,
+        share_structure=share_structure,
     )
     row_mean = row_sums / X.shape[1]
     return SparseLowRankMatrix(
@@ -258,6 +270,7 @@ def build_dirichlet_log_representation(
     concentration: float,
     prior_proportions: PriorProportions = None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Represent log Dirichlet posterior-mean proportions implicitly."""
     concentration, proportions = validate_dirichlet_prior(
@@ -266,7 +279,9 @@ def build_dirichlet_log_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    sparse_part, _ = log1p_count_correction(X, prior_counts, dtype=dtype)
+    sparse_part, _ = log1p_count_correction(
+        X, prior_counts, dtype=dtype, share_structure=share_structure
+    )
     row_totals = _sum_counts(X, axis=1)
     if not np.isfinite(row_totals).all():
         raise ValueError("Cell totals overflow float64")
@@ -295,6 +310,7 @@ def build_dirichlet_clr_representation(
     concentration: float,
     prior_proportions: PriorProportions = None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Represent CLR of Dirichlet posterior-mean proportions implicitly."""
     concentration, proportions = validate_dirichlet_prior(
@@ -303,7 +319,9 @@ def build_dirichlet_clr_representation(
     prior_counts = concentration * proportions
     if not np.isfinite(prior_counts).all() or (prior_counts == 0).any():
         raise ValueError("Dirichlet prior counts must be representable in float64")
-    sparse_part, row_sums = log1p_count_correction(X, prior_counts, dtype=dtype)
+    sparse_part, row_sums = log1p_count_correction(
+        X, prior_counts, dtype=dtype, share_structure=share_structure
+    )
     sparse_row_mean = row_sums / X.shape[1]
     log_prior_counts = np.log(prior_counts)
     centered_log_prior = log_prior_counts - np.mean(log_prior_counts)

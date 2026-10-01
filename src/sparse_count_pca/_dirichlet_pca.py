@@ -64,6 +64,7 @@ def _compute_dirichlet_pca(
         dtype=dtype,
         _columns=mask,
         _isolate_returned_operator=False,
+        share_structure=not return_operator,
     )
     return transformed.pca(
         n_comps,

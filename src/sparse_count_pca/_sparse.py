@@ -10,8 +10,17 @@ from numpy.typing import NDArray
 from scipy import sparse
 
 
-def _csr_with_data(matrix: sparse.csr_matrix, data: NDArray[Any]) -> sparse.csr_matrix:
-    """Build CSR with supplied data and one owned copy of its support arrays."""
+def _csr_with_data(
+    matrix: sparse.csr_matrix,
+    data: NDArray[Any],
+    *,
+    share_structure: bool = False,
+) -> sparse.csr_matrix:
+    """Build CSR with supplied data, borrowing support only when requested.
+
+    Index-width conversion can require new support arrays even when sharing
+    is permitted. Borrowed support must not be mutated while the result lives.
+    """
     index_dtype = (
         np.int64
         if max(matrix.shape + (matrix.nnz,)) > np.iinfo(np.int32).max
@@ -20,8 +29,8 @@ def _csr_with_data(matrix: sparse.csr_matrix, data: NDArray[Any]) -> sparse.csr_
     return sparse.csr_matrix(
         (
             data,
-            matrix.indices.astype(index_dtype, copy=True),
-            matrix.indptr.astype(index_dtype, copy=True),
+            matrix.indices.astype(index_dtype, copy=not share_structure),
+            matrix.indptr.astype(index_dtype, copy=not share_structure),
         ),
         shape=matrix.shape,
         copy=False,

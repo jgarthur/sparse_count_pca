@@ -25,16 +25,20 @@ def test_csr_with_data_owns_compact_support(index_dtype):
     np.testing.assert_array_equal(result.toarray(), [[3.0, 0.0], [0.0, 4.0]])
 
 
-def test_csr_with_data_preserves_required_int64_support():
+@pytest.mark.parametrize("share_structure", [False, True])
+def test_csr_with_data_preserves_required_int64_support(share_structure):
     """A sparse matrix whose columns exceed int32 range retains int64 support."""
     column = np.iinfo(np.int32).max
     counts = sparse.csr_matrix(
         ([1.0], np.array([column], dtype=np.int64), np.array([0, 1], dtype=np.int64)),
         shape=(1, column + 1),
     )
-    result = _csr_with_data(counts, np.array([2.0]))
+    result = _csr_with_data(counts, np.array([2.0]), share_structure=share_structure)
 
     for name in ("indices", "indptr"):
         assert getattr(result, name).dtype == np.dtype(np.int64)
-        assert not np.shares_memory(getattr(result, name), getattr(counts, name))
+        assert (
+            np.shares_memory(getattr(result, name), getattr(counts, name))
+            == share_structure
+        )
         np.testing.assert_array_equal(getattr(result, name), getattr(counts, name))

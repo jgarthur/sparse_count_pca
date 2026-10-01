@@ -9,6 +9,8 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
 
+from ._sparse import _csr_with_data
+
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
 
@@ -80,10 +82,16 @@ class SparseLowRankMatrix:
             self.right * weights_array[:, None],
         )
 
-    def scaled(self, value: float) -> SparseLowRankMatrix:
-        """Multiply the represented matrix by a scalar."""
+    def scaled(
+        self, value: float, *, share_structure: bool = False
+    ) -> SparseLowRankMatrix:
+        """Multiply by a scalar, optionally borrowing the unchanged CSR support."""
         return SparseLowRankMatrix(
-            self.sparse * value,
+            _csr_with_data(
+                self.sparse,
+                self.sparse.data * value,
+                share_structure=share_structure,
+            ),
             self.left * value,
             self.right,
         )
