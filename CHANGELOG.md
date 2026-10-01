@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here.
 
+## Unreleased
+
+- Batch direct operator statistics in bounded NumPy arrays to reduce PCA setup
+  overhead, including for normalized log1p. Retain direct centered deviations,
+  signed mean summation, and cancellation fallback without a rank-zero branch.
+
 ## 1.0.0 - 2026-10-01
 
 Changes since 1.0.0rc1:

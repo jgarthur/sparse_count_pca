@@ -242,13 +242,27 @@ Sparse-column corrections and nonnegative squared terms use vectorized
 `float64` reductions over each block. Their low-order bits may depend on CSR
 and block order under severe mixed-sign cancellation. Columns with more than
 half their entries stored instead use direct represented values grouped by a
-block-local CSC. After the norm sweep, sparse columns whose result is too small
+block-local CSC and reconstructed in bounded NumPy column batches. Each column
+is contiguous in the dense batch. Direct means retain `math.fsum`; direct
+norms subtract the stored center in the operator dtype, then square and reduce
+nonnegative deviations in `float64`. The existing CSR row blocks target
+1,000,000 stored entries for means and 100,000 for norms. The new column batches
+separately target 262,144 dense represented values (`rows_in_block * columns`),
+or one column if the CSR row block alone exceeds that target. Zero-width
+factors follow the same path as nonzero-rank factors.
+
+The column-batch target caps each `float64` dense buffer at 2 MiB, with several
+buffers live during statistics. A small synthetic sweep found diminishing
+runtime improvements beyond this size; see the
+[batch-size measurements](testing.md#operator-batch-size-measurements).
+
+After the norm sweep, sparse columns whose result is too small
 relative to the combined support-replacement terms are recomputed directly in
 a second sweep. Correspondence analysis uses this same bounded CSR path for
 its uncentered statistics. Centered operators require one sweep for means
-followed by one
-sweep that computes both uncentered and centered norms; expanding centered
-squares from raw moments would save a pass but reintroduce cancellation.
+followed by one sweep that computes both uncentered and centered norms;
+expanding centered squares from raw moments would save a pass but reintroduce
+cancellation.
 
 Pay particular attention to:
 

@@ -127,8 +127,62 @@ For each sparse-plus-low-rank representation, compare:
 - matrix-matrix products where exposed;
 - centered means and Frobenius-norm statistics.
 
+Statistics tests cross both CSR row-block and dense column-batch boundaries
+for ranks zero, one, and three, both operator dtypes, and centered and
+uncentered operators. Include empty, sparse, exactly-half-supported, and
+dense-majority columns, constant and nearly constant columns, and signed
+means with severe cancellation. Verify that dense batches respect their
+represented-value target, with a one-column exception when a row block alone
+exceeds that target. Existing cancellation-fallback and numerical-zero tests
+remain part of the contract. A small normalized-log1p PCA comparison against
+Scanpy checks aligned scores and loadings, singular values, total variance,
+and explained-variance ratios.
+
 Transpose products are independent contracts. A correct forward product does
 not establish a correct adjoint.
+
+### Operator batch-size measurements
+
+The 2026-10-01 dense-batch sweep used deterministic 2,000 × 1,500 and
+4,000 × 3,000 count matrices with 20% of genes stored in 75% of rows and the
+others in 2%. Their stored-entry counts were 498,000 and 1,992,000. Both
+normalized log1p (rank zero) and unclipped Poisson Pearson residuals (rank one)
+were tested in float32 and float64. All thread limits were one, representation
+construction was outside the timed region, and the existing CSR block targets
+were held fixed. Times are medians of five repeats with randomized batch-target
+order, measuring operator construction rather than PCA or transformation.
+
+Representative results for the larger fixture:
+
+| Transform | Dtype | 100,000 values | 262,144 values | 1,048,576 values |
+| --- | --- | ---: | ---: | ---: |
+| Normalized log1p | float32 | 119 ms | 115 ms | 114 ms |
+| Normalized log1p | float64 | 121 ms | 118 ms | 117 ms |
+| Pearson residuals | float32 | 113 ms | 112 ms | 110 ms |
+| Pearson residuals | float64 | 122 ms | 118 ms | 118 ms |
+
+The sweep also included targets of 16,384, 65,536, and 4,194,304 values. The
+262,144-value target stayed within about 2% of the fastest tested target
+across both sizes, transforms, and dtypes. It caps each float64 dense buffer
+at 2 MiB, except for the indivisible one-column case. Larger targets multiply
+that buffer budget for small additional speed gains; smaller targets incur
+more reconstruction and sparse-slicing calls. Means dominated the remaining
+setup time, so increasing the norm row-block target was not pursued.
+
+For a nominal 1,000,000-cell × 20,000-gene input at 10% density, there are
+about two billion stored entries. Assuming similar row depths, the existing
+mean and norm targets produce roughly 500-row and 50-row blocks, respectively.
+Fewer than 4,000 genes can be dense-majority at that overall density, so a
+typical norm block's direct reconstruction fits in one 262,144-value batch.
+Mean blocks require multiple batches. This reasoning supports the conservative
+batch target without allocating a matrix at that scale. Uniformly sparse genes
+do not use direct dense batching; dense-majority means still incur per-column
+`math.fsum` calls, which increasing the batch target does not eliminate.
+
+These small local measurements support a conservative default, not an optimum
+for every machine or support distribution, nor a prediction of full PBMC
+runtime. Batch targets preserve the existing numerical tolerances but may
+change low-order bits of factor products and reductions.
 
 ## PCA and subspace equality
 

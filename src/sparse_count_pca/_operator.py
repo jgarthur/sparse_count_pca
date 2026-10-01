@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -20,6 +20,7 @@ _STATS_MEAN_BLOCK_NNZ = 1_000_000
 # The norm sweep materializes factor values and deviations for each stored
 # entry in the current row block, so its smaller target bounds scratch memory.
 _STATS_NORM_BLOCK_NNZ = 100_000
+_STATS_DENSE_BATCH_VALUES = 262_144
 _STATS_MIN_NORM_TERM_RATIO = 1e-4
 
 
@@ -173,6 +174,33 @@ class SparseLowRankLinearOperator(LinearOperator):
         )
         return block.tocsc()
 
+    def _represented_column_batches(
+        self,
+        row_start: int,
+        row_stop: int,
+        value_start: int,
+        value_stop: int,
+        column_indices: NDArray[np.intp],
+    ) -> Iterator[tuple[int, NDArray[np.intp], FloatArray]]:
+        """Yield bounded batches with each represented column contiguous.
+
+        Each batch targets at most ``_STATS_DENSE_BATCH_VALUES`` values, or
+        one column when the row block alone exceeds that target.
+        """
+        block = self._csc_row_block(
+            row_start,
+            row_stop,
+            value_start,
+            value_stop,
+        )
+        batch_width = max(1, _STATS_DENSE_BATCH_VALUES // (row_stop - row_start))
+        left = self.left[row_start:row_stop]
+        for start in range(0, column_indices.size, batch_width):
+            columns = column_indices[start : start + batch_width]
+            values = np.ascontiguousarray(self.right[columns] @ left.T)
+            values += block[:, columns].toarray().T
+            yield start, columns, values
+
     def _mean_block_sums(
         self,
         row_start: int,
@@ -199,19 +227,17 @@ class SparseLowRankLinearOperator(LinearOperator):
         )
         dense_column_indices = np.flatnonzero(dense_columns)
         if dense_column_indices.size:
-            block = self._csc_row_block(
+            for _, selected, values in self._represented_column_batches(
                 row_start,
                 row_stop,
                 value_start,
                 value_stop,
-            )
-            left = self.left[row_start:row_stop]
-            for column in dense_column_indices:
-                begin, end = block.indptr[column : column + 2]
-                rows = block.indices[begin:end]
-                values = left @ self.right[column]
-                values[rows] += block.data[begin:end]
-                partial[column] = math.fsum(values.astype(np.float64, copy=False))
+                dense_column_indices,
+            ):
+                partial[selected] = [
+                    math.fsum(column)
+                    for column in values.astype(np.float64, copy=False)
+                ]
         return partial
 
     def _dense_block_squared_sums(
@@ -224,29 +250,27 @@ class SparseLowRankLinearOperator(LinearOperator):
         dense_column_indices: NDArray[np.intp],
     ) -> NDArray[np.float64]:
         """Return direct squared sums for dense columns in one row block."""
-        block = self._csc_row_block(
-            row_start,
-            row_stop,
-            value_start,
-            value_stop,
-        )
         partial = np.empty(
             (len(centers), dense_column_indices.size),
             dtype=np.float64,
         )
-        left = self.left[row_start:row_stop]
-        for output_column, column in enumerate(dense_column_indices):
-            begin, end = block.indptr[column : column + 2]
-            rows = block.indices[begin:end]
-            values = left @ self.right[column]
-            values[rows] += block.data[begin:end]
+        for start, columns, values in self._represented_column_batches(
+            row_start,
+            row_stop,
+            value_start,
+            value_stop,
+            dense_column_indices,
+        ):
             for center_index, center in enumerate(centers):
-                deviations = (values - center[column]).astype(
+                deviations = (values - center[columns, None]).astype(
                     np.float64,
                     copy=False,
                 )
-                partial[center_index, output_column] = math.fsum(
-                    deviations * deviations
+                np.square(deviations, out=deviations)
+                partial[center_index, start : start + columns.size] = np.sum(
+                    deviations,
+                    axis=1,
+                    dtype=np.float64,
                 )
         return partial
 

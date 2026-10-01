@@ -1803,6 +1803,35 @@ severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
 support in $O(\mathit{nnz})$ for fixed representation rank.
 
+Direct reconstruction groups each CSR row block by column in a block-local
+CSC matrix, then processes selected columns in bounded dense batches. Each
+batch stores columns as contiguous rows of a dense array and computes
+`right[selected] @ left[row_start:row_stop].T` in the operator dtype before
+adding the sparse corrections. Zero-width factors use the same reconstruction
+path; there is no rank-zero statistics branch.
+
+CSR blocks target 1,000,000 stored entries for means and 100,000 for norms;
+their row counts depend on the input's sparsity. Dense batches separately
+target at most 262,144 represented values: their column width is
+`max(1, 262_144 // rows_in_block)`. This caps each dense `float64` buffer at
+2 MiB independently of the existing sparse row blocks. Several buffers may
+coexist during reconstruction and reduction. If a row block has more than
+262,144 rows, a batch contains one column.
+Reconstruction and deviation buffers therefore
+require $O(\max(262{,}144, N_{\mathrm{block}}))$ values, alongside the block-local
+CSC and per-gene accumulators; no full dense transformed matrix is allocated.
+When all CSR rows fit in one block, its CSC conversion can still copy the
+whole sparse matrix.
+
+Direct means retain `math.fsum` for each reconstructed column because its
+represented values may have mixed signs. For direct squared norms, subtract
+the stored center in the operator dtype, convert deviations to `float64`,
+square them, and reduce along each contiguous column with NumPy's pairwise
+sum. These terms are nonnegative. Batching factor products and changing the
+squared-term reduction may change low-order bits; bitwise equivalence with
+per-column reconstruction or across batch sizes is not required. The
+numerical-zero criterion and accuracy checks still apply.
+
 The support-replacement combination is itself cancellation limited: its error
 scales with the magnitudes of the three combined terms rather than with the
 result. After the support sweep, let $B$, $D$, and $A$ denote the nonnegative

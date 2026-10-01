@@ -360,6 +360,120 @@ def test_statistics_agree_across_row_block_sizes(monkeypatch, dtype):
     )
 
 
+@pytest.mark.parametrize("rank", [0, 1, 3])
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_batched_statistics_match_dense_across_boundaries(
+    monkeypatch, rank, center, dtype
+):
+    """Column batches and CSR blocks preserve mixed-support statistics and products."""
+    rng = np.random.default_rng(207)
+    n_obs, n_vars = 32, 19
+    stored = np.zeros((n_obs, n_vars), dtype=dtype)
+    for column in range(1, n_vars):
+        support = (2, 16, 24, 32)[column % 4]
+        rows = rng.choice(n_obs, support, replace=False)
+        stored[rows, column] = rng.uniform(0.5, 4.0, size=support)
+    left = rng.normal(size=(n_obs, rank)).astype(dtype)
+    right = rng.normal(size=(n_vars, rank)).astype(dtype)
+    right[0] = 0.0
+    representation = SparseLowRankMatrix(sparse.csr_matrix(stored), left, right)
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 17)
+    _set_stats_block_nnz(monkeypatch, 48)
+
+    operator = SparseLowRankLinearOperator(representation, center=center, dtype=dtype)
+    represented = stored + left @ right.T
+    tolerance = _STATS_RTOL[dtype]
+    if center:
+        expected_mean = represented.mean(axis=0, dtype=np.float64).astype(dtype)
+        np.testing.assert_allclose(
+            operator.mean, expected_mean, rtol=tolerance, atol=tolerance
+        )
+        expected = represented - expected_mean
+    else:
+        assert operator.mean is None
+        expected = represented
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        np.sum(represented.astype(np.float64) ** 2), rel=tolerance
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        np.sum(expected.astype(np.float64) ** 2), rel=tolerance
+    )
+    z = rng.normal(size=n_vars).astype(dtype)
+    y = rng.normal(size=n_obs).astype(dtype)
+    np.testing.assert_allclose(
+        operator @ z, expected @ z, rtol=tolerance, atol=tolerance
+    )
+    np.testing.assert_allclose(
+        operator.T @ y, expected.T @ y, rtol=tolerance, atol=tolerance
+    )
+
+
+@pytest.mark.parametrize("target_values", [5, 40])
+def test_represented_column_batches_bound_dense_storage(monkeypatch, target_values):
+    """Dense batches stay bounded except for an indivisible row-block column."""
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", target_values)
+    representation = _statistics_fixture()
+    operator = SparseLowRankLinearOperator(representation)
+    columns = np.array([0, 2, 3, 4], dtype=np.intp)
+    represented = operator.S.toarray() + operator.left @ operator.right.T
+    covered = 0
+
+    for start, selected, values in operator._represented_column_batches(
+        0, operator.shape[0], 0, operator.S.nnz, columns
+    ):
+        assert start == covered
+        np.testing.assert_array_equal(selected, columns[start : start + selected.size])
+        assert values.size <= max(target_values, operator.shape[0])
+        assert values.flags.c_contiguous
+        np.testing.assert_allclose(values, represented[:, selected].T, rtol=1e-12)
+        covered += selected.size
+    assert covered == columns.size
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("nearly_constant", [False, True])
+def test_batched_dense_column_variance_near_zero(monkeypatch, dtype, nearly_constant):
+    """Constant and almost constant dense columns retain directly computed variance."""
+    values = np.ones(32, dtype=dtype)
+    if nearly_constant:
+        values += np.arange(values.size, dtype=dtype) * (64 * np.finfo(dtype).eps)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix(values[:, None]),
+        np.empty((values.size, 0)),
+        np.empty((1, 0)),
+    )
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 3)
+    _set_stats_block_nnz(monkeypatch, 7)
+    operator = SparseLowRankLinearOperator(representation, dtype=dtype)
+    mean = np.asarray(math.fsum(values) / values.size, dtype=dtype)
+    deviations = (values - mean).astype(np.float64)
+
+    _assert_statistics_close(
+        operator,
+        mean=np.array([mean]),
+        uncentered=math.fsum(values.astype(np.float64) ** 2),
+        centered=math.fsum(deviations**2),
+        tolerance=_STATS_RTOL[dtype],
+    )
+    assert operator.centered_variance_is_numerically_zero() == (not nearly_constant)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_batched_dense_means_preserve_signed_sum(monkeypatch, dtype):
+    """Dense column means retain small terms amid large signed cancellation."""
+    values = np.array([2**60, 1.0, -(2**60)], dtype=dtype)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix(np.tile(values[:, None], (1, 4))),
+        np.empty((3, 0)),
+        np.empty((4, 0)),
+    )
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 6)
+    operator = SparseLowRankLinearOperator(representation, dtype=dtype)
+
+    np.testing.assert_array_equal(operator.mean, np.full(4, 1 / 3, dtype=dtype))
+
+
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 def test_numerically_zero_squared_norm_boundary_is_inclusive(dtype):
     """Squared norms at the roundoff boundary pass and one ULP above fails."""
