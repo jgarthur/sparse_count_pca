@@ -268,9 +268,11 @@ thresholds with and without support growth, and both storage dtypes. They
 require borrowing exactly when the support is unchanged and identical values to
 an owned fit. Forced zero corrections, from extreme counts split across tiny
 support blocks and from values that underflow only in float32, must be removed
-from an owned copy without touching the read-only input. Further cases cover
-canonicalization copies, AnnData layers and masks, read-only inputs, which keep
-their flags, and rejection of non-boolean flags.
+from an owned copy without touching the read-only input. Owned clipping that
+grows support must add its corrections to read-only input support without
+modifying or retaining it. Further cases cover canonicalization copies, AnnData
+layers and masks, read-only inputs, which keep their flags, and rejection of
+non-boolean flags.
 
 Tests that compare against an unclipped dense oracle or a pinned external
 reference must pass `clip=None` explicitly, because residual transforms clip

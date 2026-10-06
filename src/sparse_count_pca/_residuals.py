@@ -80,11 +80,12 @@ def _finalize_residual_representation(
     has_zero_corrections: bool,
     share_structure: bool,
 ) -> SparseLowRankMatrix:
-    """Build CSR support, prune computed zeros, and add clipped-zero corrections."""
-    prune_input = has_zero_corrections and correction_rows.size == 0
-    sparse_part = _csr_with_data(
-        X, data, share_structure=share_structure and not prune_input
-    )
+    """Build CSR support, add clipped-zero corrections, and prune computed zeros.
+
+    Adding corrections allocates new support, so that result always owns it.
+    Without corrections, support is copied for zero elimination, which rewrites
+    indices and indptr in place, and is otherwise borrowed when permitted.
+    """
     if correction_rows.size:
         assert clip is not None
         correction_data = np.asarray(
@@ -95,10 +96,17 @@ def _finalize_residual_representation(
             (correction_data, (correction_rows, correction_cols)),
             shape=X.shape,
         )
-        sparse_part = (sparse_part + corrections).tocsr()
+        # Sparse addition leaves both operands unchanged and allocates new
+        # support, so the summand can borrow X's support in every mode.
+        sparse_part = (
+            _csr_with_data(X, data, share_structure=True) + corrections
+        ).tocsr()
         sparse_part.eliminate_zeros()
-    elif prune_input:
+    elif has_zero_corrections:
+        sparse_part = _csr_with_data(X, data)
         sparse_part.eliminate_zeros()
+    else:
+        sparse_part = _csr_with_data(X, data, share_structure=share_structure)
     return SparseLowRankMatrix(
         sparse_part,
         left.astype(dtype, copy=False),

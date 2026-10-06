@@ -182,9 +182,10 @@ separate pass over the data is needed. `_finalize_residual_representation`
 then chooses one of three paths:
 
 - When symmetric clipping adds corrections at zero-count entries, it adds
-  them to the transformed values, which borrow the input support only when
-  sharing is permitted. The sum allocates new support, which it then prunes,
-  so the result owns its support.
+  them to the transformed values on borrowed input support, whether or not
+  sharing is permitted. SciPy's sparse addition leaves both operands unchanged
+  and allocates new support, which is then pruned, so the result owns its
+  support and no intermediate copy is needed.
 - When some stored correction is zero and nothing is added, it removes the
   zeros from an owned copy, because zero elimination rewrites indices and
   indptr in place.

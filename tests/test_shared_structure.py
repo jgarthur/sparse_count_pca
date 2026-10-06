@@ -284,3 +284,23 @@ def test_one_step_ann_data_selection_preserves_read_only_count_structure(
         np.testing.assert_array_equal(getattr(adata.X, name), snapshot)
     assert not adata.X.indices.flags.writeable
     assert not adata.X.indptr.flags.writeable
+
+
+def test_owned_clipping_growth_adds_corrections_to_read_only_support(counts):
+    """Support growth leaves read-only input intact and returns owned support."""
+    method = scp.Residual(clip=0.5, clip_max_nnz_ratio=None)
+    expected = scp.transform(counts.copy(), method).materialize()
+    snapshots = [
+        values.copy() for values in (counts.data, counts.indices, counts.indptr)
+    ]
+    for values in (counts.data, counts.indices, counts.indptr):
+        values.flags.writeable = False
+    result = scp.transform(counts, method)
+
+    assert result._sparse.nnz > counts.nnz
+    np.testing.assert_array_equal(result.materialize(), expected)
+    for name, snapshot in zip(("data", "indices", "indptr"), snapshots, strict=True):
+        assert not np.shares_memory(
+            getattr(result._sparse, name), getattr(counts, name)
+        )
+        np.testing.assert_array_equal(getattr(counts, name), snapshot)
