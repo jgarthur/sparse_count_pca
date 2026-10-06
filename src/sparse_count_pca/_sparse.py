@@ -18,21 +18,30 @@ def _csr_with_data(
 ) -> sparse.csr_matrix:
     """Build CSR with supplied data, borrowing support only when requested.
 
-    Index-width conversion can require new support arrays even when sharing
-    is permitted. Borrowed support must not be mutated while the result lives.
+    Owned support uses the narrowest index width the shape and stored-entry
+    count allow. Borrowed support keeps wider int64 input indices instead of
+    narrowing them; narrower input that the shape requires to be int64 is
+    still copied. Borrowed support must not be mutated while the result lives.
     """
-    index_dtype = (
+    index_dtype = np.dtype(
         np.int64
         if max(matrix.shape + (matrix.nnz,)) > np.iinfo(np.int32).max
         else np.int32
     )
+    if share_structure:
+        index_dtype = np.promote_types(index_dtype, matrix.indices.dtype)
+    # The csr_matrix constructor narrows int64 support that fits int32 into a
+    # copy; csr_array keeps it, and wrapping it in csr_matrix does not copy.
     return sparse.csr_matrix(
-        (
-            data,
-            matrix.indices.astype(index_dtype, copy=not share_structure),
-            matrix.indptr.astype(index_dtype, copy=not share_structure),
+        sparse.csr_array(
+            (
+                data,
+                matrix.indices.astype(index_dtype, copy=not share_structure),
+                matrix.indptr.astype(index_dtype, copy=not share_structure),
+            ),
+            shape=matrix.shape,
+            copy=False,
         ),
-        shape=matrix.shape,
         copy=False,
     )
 

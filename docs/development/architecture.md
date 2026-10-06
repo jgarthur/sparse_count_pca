@@ -217,15 +217,18 @@ helper also returns float64 row sums taken from each block before its values
 are cast, which the CLR builders use to fit row means at full precision.
 Output support comes from `_sparse._csr_with_data`, which the residual
 builders and scalar rescaling also use. It chooses int32 or int64 indices from
-the shape and stored-entry count, the width SciPy's CSR constructor requires,
-and copies indices and indptr once at that width. When the builder is called
-with `share_structure=True`, input support that already has that width is
-borrowed instead of copied; other widths are still copied. The public
-`transform` exposes this as an opt-in. One-step analyses turn it on when they
-do not return an operator, because the transformed matrix then lives only for
-the duration of the call. `_transform.py` passes storage dtype into every log
-builder, so `TransformedMatrix` can reuse the builder's sparse result rather
-than casting a full float64 CSR.
+the shape and stored-entry count, the narrowest width that can index the
+matrix, and copies indices and indptr once at that width. When the builder is
+called with `share_structure=True`, it borrows input support at the input's
+width, keeping int64 even where int32 would suffice; only int32 support on a
+matrix that requires int64 is copied. SciPy's `csr_matrix` constructor would
+narrow borrowed int64 support into an int32 copy, so the helper builds a
+`csr_array`, which keeps the width, and wraps it in a `csr_matrix` without
+copying. The public `transform` exposes this as an opt-in. One-step analyses
+turn it on when they do not return an operator, because the transformed matrix
+then lives only for the duration of the call. `_transform.py` passes storage
+dtype into every log builder, so `TransformedMatrix` can reuse the builder's
+sparse result rather than casting a full float64 CSR.
 
 For size-factor-normalized log1p, that sparse correction is the entire
 transform: `build_log1p_norm_representation` divides each stored count by its

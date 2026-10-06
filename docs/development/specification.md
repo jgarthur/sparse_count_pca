@@ -142,8 +142,9 @@ transform.
   alters or invalidates transformed values. Input arrays keep their
   writability; the package does not freeze them.
 - Sharing is a permission, not a guarantee. Inputs that are copied or converted
-  during canonicalization lend only private arrays. Support whose integer width
-  differs from the width the output requires is copied at the required width.
+  during canonicalization lend only private arrays. Borrowed support keeps the
+  input's index width, including int64 on a matrix that int32 could index;
+  int32 support on a matrix that requires int64 is copied at int64.
   Every log, CLR, and Dirichlet transform preserves support and can borrow it.
   Residuals can borrow it unless the build changes the support: symmetric
   clipping that adds corrections at zero-count entries yields new support, and

@@ -1029,9 +1029,9 @@ def transform(
             pointers instead of copying them, which saves one index-sized copy
             of the support. Defaults to ``False``, so the transform owns its
             support. Sharing is a permission, not a guarantee: inputs that
-            need canonicalization or conversion to CSR, indices whose integer
-            width differs from the width the output needs, and residuals that
-            remove computed zeros or add clipping corrections use owned arrays.
+            need canonicalization or conversion to CSR, int32 indices on a
+            matrix large enough to need int64, and residuals that remove
+            computed zeros or add clipping corrections use owned arrays.
             Transformed values and fitted factors are always separate from the
             counts.
 

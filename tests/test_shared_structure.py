@@ -60,9 +60,7 @@ def test_transform_shares_only_compatible_support(counts, method, dtype, index_d
     assert not np.shares_memory(shared._sparse.data, counts.data)
     for name, writeable in zip(("indices", "indptr"), original_flags, strict=True):
         assert not np.shares_memory(getattr(owned._sparse, name), getattr(counts, name))
-        assert np.shares_memory(
-            getattr(shared._sparse, name), getattr(counts, name)
-        ) == (index_dtype == np.int32)
+        assert np.shares_memory(getattr(shared._sparse, name), getattr(counts, name))
         assert getattr(counts, name).flags.writeable == writeable
 
     counts.data[:] *= 2
