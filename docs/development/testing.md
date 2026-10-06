@@ -256,15 +256,20 @@ equivalents, across both clipping modes, entry points, residual families, and
 observation subsets. Ownership tests mutate caller-owned matrices after fitting
 and verify that transformed values cannot change.
 
-Structure-sharing tests run every support-preserving transform at both
-storage dtypes and both index widths. Default transforms must own their
-support; `share_structure=True` may borrow only compatible indices and indptr,
-and fitted values must survive mutation of input data and deletion of the
-input object. A retained operator from a sharing transform must not alias the
-input or the transform. One-step analyses must borrow only when they do not
-return an operator. Further cases cover canonicalization copies, clipping and
-pruning fallbacks, AnnData layers and masks, read-only inputs, which keep
-their flags, and rejection of non-boolean flags.
+Structure-sharing tests run every support-preserving transform at both storage
+dtypes and both index widths. Default transforms must own their support;
+`share_structure=True` may borrow only compatible indices and indptr, and
+fitted values must survive mutation of input data and deletion of the input
+object. A retained operator from a sharing transform must not alias the input
+or the transform. One-step analyses must borrow only when they do not return an
+operator. Residual sharing tests cover both residual types, both clipping
+modes, thresholds with and without support growth, and both storage dtypes.
+They require borrowing exactly when the support is unchanged and identical
+values to an owned fit. Forced zero corrections, from extreme counts split
+across tiny support blocks and from values that underflow only in float32, must
+be removed from an owned copy without touching the read-only input. Further
+cases cover canonicalization copies, AnnData layers and masks, read-only
+inputs, which keep their flags, and rejection of non-boolean flags.
 
 Tests that compare against an unclipped dense oracle or a pinned external
 reference must pass `clip=None` explicitly, because residual transforms clip

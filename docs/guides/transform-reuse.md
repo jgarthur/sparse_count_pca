@@ -136,14 +136,15 @@ Passing `return_operator=True` to `pca` retains the centered operator ARPACK
 used. It is isolated from the `TransformedMatrix` it came from: mutating either
 one cannot affect the other.
 
-For large matrices, `transform(..., share_structure=True)` lets the fitted
-object reuse the count matrix's column indices and row pointers instead of
-copying them. In return, do not modify the count matrix's sparsity structure
-while the fitted object is in use. Calls such as `sort_indices()`,
-`sum_duplicates()`, or `eliminate_zeros()` on it would silently change the
-transformed values. Changing stored count values or replacing the matrix, for
-example by assigning a new `adata.X`, is safe. Returned operators are always
-isolated.
+By default, the fitted object keeps its own copy of the count matrix's column
+indices and row pointers, so it uses more memory than the equivalent one-step
+function, which reuses them unless it returns its operator. For large matrices,
+`transform(..., share_structure=True)` lets the fitted object reuse them too.
+In return, do not modify the count matrix's sparsity structure while the
+fitted object is in use. Calls such as `sort_indices()`, `sum_duplicates()`,
+or `eliminate_zeros()` on it would silently change the transformed values.
+Changing stored count values or replacing the matrix, for example by assigning
+a new `adata.X`, is safe. Returned operators are always isolated.
 
 ## Complete example
 

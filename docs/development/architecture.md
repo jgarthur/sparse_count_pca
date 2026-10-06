@@ -176,10 +176,20 @@ nonzero-count corrections are stored sparsely. Every residual builder evaluates
 count support in bounded blocks and writes directly into the requested
 representation dtype, so temporary float64 calculation arrays do not scale as
 multiple copies of the full sparse support. Output support uses the same
-`_csr_with_data` helper as the log family. Pruning computed zeros rewrites
-indices and indptr in place, so clipped Pearson residuals and every deviance
-residual own their support even when sharing is permitted; only unclipped
-Pearson residuals can borrow it.
+`_csr_with_data` helper as the log family. Each support block records
+whether any stored correction is exactly zero after the storage cast, so no
+separate pass over the data is needed. `_finalize_residual_representation`
+then chooses one of three paths:
+
+- When symmetric clipping adds corrections at zero-count entries, it adds
+  them to the transformed values, which borrow the input support only when
+  sharing is permitted. The sum allocates new support, which it then prunes,
+  so the result owns its support.
+- When some stored correction is zero and nothing is added, it removes the
+  zeros from an owned copy, because zero elimination rewrites indices and
+  indptr in place.
+- Otherwise it keeps the input support and borrows it when sharing is
+  permitted.
 
 [`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the

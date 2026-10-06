@@ -22,9 +22,10 @@ All notable user-facing changes are recorded here.
   storage. Total memory still depends on input and transformed storage, fitted
   state, and any required copies.
 - One-step analyses that do not return an operator reuse the count matrix's
-  sparsity structure for log, CLR, Dirichlet, unclipped Pearson residual, and
-  correspondence analyses instead of copying it. With `return_operator=True`
-  the returned operator still owns its arrays.
+  sparsity structure instead of copying it. Residual analyses reuse it unless
+  symmetric clipping adds entries at zero counts, as the default
+  `clip="seurat"` can on real data. With `return_operator=True` the returned
+  operator still owns its arrays.
 
 ### Fixes
 

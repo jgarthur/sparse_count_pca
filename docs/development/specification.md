@@ -144,9 +144,12 @@ transform.
 - Sharing is a permission, not a guarantee. Inputs that are copied or converted
   during canonicalization lend only private arrays. Support whose integer width
   differs from the width the output requires is copied at the required width.
-  Clipped and deviance residuals prune or grow support and therefore own it.
-  Unclipped Pearson residuals and every log, CLR, and Dirichlet transform
-  preserve support and can borrow it.
+  Every log, CLR, and Dirichlet transform preserves support and can borrow it.
+  Residuals can borrow it unless the build changes the support: symmetric
+  clipping that adds corrections at zero-count entries yields new support, and
+  a stored correction that is exactly zero in the storage dtype is removed from
+  an owned copy. Such zeros require extreme count values, for example
+  corrections that underflow when cast to float32.
 - The flag must be a Python or NumPy boolean; other values raise `TypeError`.
 
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
