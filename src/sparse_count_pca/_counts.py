@@ -11,6 +11,8 @@ from anndata.abc import CSCDataset, CSRDataset
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
 
+from ._sparse import _support_row_blocks
+
 CountMatrix: TypeAlias = (
     ArrayLike | sparse.spmatrix | sparse.sparray | CSRDataset | CSCDataset
 )
@@ -53,9 +55,36 @@ def _round_trips_through_float64(values: NDArray[np.generic]) -> bool:
 
 
 def _sum_counts(X: CSRMatrix, *, axis: int) -> Float64Array:
-    """Sum sparse counts in float64 without casting the whole matrix."""
+    """Accumulate count margins in float64 using bounded stored-data blocks.
+
+    Row margins use complete CSR rows, so one longer row can exceed the block
+    target. Column margins use fixed-size data views. Empty rows and columns
+    have zero margins, and input arrays are not modified.
+    """
+    if axis not in (-2, -1, 0, 1):
+        raise ValueError("axis must be 0 or 1")
+    axis %= 2
+    totals = np.zeros(X.shape[1 - axis], dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
-        return np.asarray(X.sum(axis=axis, dtype=np.float64)).ravel()
+        if axis == 0:
+            for number, block in enumerate(_count_data_blocks(X.data)):
+                start = number * _COUNT_CHECK_BLOCK_SIZE
+                totals += np.bincount(
+                    X.indices[start : start + block.size],
+                    weights=block.astype(np.float64, copy=False),
+                    minlength=X.shape[1],
+                )
+        else:
+            for row_start, row_stop, start, stop in _support_row_blocks(
+                X, _COUNT_CHECK_BLOCK_SIZE
+            ):
+                indptr = X.indptr[row_start : row_stop + 1] - start
+                nonempty = np.diff(indptr) > 0
+                values = X.data[start:stop].astype(np.float64, copy=False)
+                totals[row_start:row_stop][nonempty] = np.add.reduceat(
+                    values, indptr[:-1][nonempty]
+                )
+    return totals
 
 
 def _empty_columns(X: CSRMatrix) -> BoolArray:
