@@ -1027,8 +1027,8 @@ def transform(
             of the support. Defaults to ``False``, so the transform owns its
             support. Sharing is a permission, not a guarantee: inputs that
             need canonicalization or conversion to CSR, indices whose integer
-            width differs from the width the output needs, and clipped or
-            deviance residuals, which prune or grow support, use owned arrays.
+            width differs from the width the output needs, and residuals that
+            remove computed zeros or add clipping corrections use owned arrays.
             Transformed values and fitted factors are always separate from the
             counts.
 

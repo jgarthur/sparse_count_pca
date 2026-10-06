@@ -8,6 +8,7 @@ import pytest
 from scipy import sparse
 
 import sparse_count_pca as scp
+from sparse_count_pca import _residuals as residuals_module
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 
 _TRANSFORMS = [
@@ -19,6 +20,8 @@ _TRANSFORMS = [
     scp.Residual(clip=None),
     scp.Residual(model="binomial", clip=None),
     scp.Residual(model="scaled_nb", alpha=0.2, clip=None),
+    scp.Residual(clip=0.5, clip_mode="upper"),
+    scp.Residual(residual="deviance", clip=0.5, clip_mode="upper"),
 ]
 
 _ONE_STEP = [
@@ -28,6 +31,11 @@ _ONE_STEP = [
     (scp.dirichlet_log_pca_matrix, {"concentration": 2.5}),
     (scp.dirichlet_clr_pca_matrix, {"concentration": 2.5}),
     (scp.residual_pca_matrix, {"clip": None}),
+    (scp.residual_pca_matrix, {"clip": 0.5, "clip_mode": "upper"}),
+    (
+        scp.residual_pca_matrix,
+        {"residual": "deviance", "clip": 0.5, "clip_mode": "upper"},
+    ),
     (scp.correspondence_analysis_matrix, {}),
 ]
 
@@ -126,25 +134,85 @@ def test_one_step_shares_structure_only_for_transient_operators(
 
 
 @pytest.mark.parametrize("residual", ["pearson", "deviance"])
-@pytest.mark.parametrize("clip", [None, 0.5])
+@pytest.mark.parametrize("clip", [None, 0.5, 3.0])
 @pytest.mark.parametrize("clip_mode", ["symmetric", "upper"])
-def test_residual_pruning_owns_support_when_sharing_is_requested(
-    counts, residual, clip, clip_mode
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_residual_sharing_depends_on_actual_support_changes(
+    counts, residual, clip, clip_mode, dtype
 ):
-    """Residual pruning and support growth never mutate borrowed input structure."""
+    """Residuals borrow unchanged support and own support modified by clipping."""
     method = scp.Residual(
         residual=residual, clip=clip, clip_mode=clip_mode, clip_max_nnz_ratio=None
     )
-    expected = scp.transform(counts, method).materialize()
+    owned = scp.transform(counts, method, dtype=dtype)
+    expected = owned.materialize()
+    preserves_support = clip is None or clip_mode == "upper" or clip == 3.0
+    if preserves_support:
+        assert owned._sparse.nnz == counts.nnz
+    else:
+        assert owned._sparse.nnz > counts.nnz
     for values in (counts.data, counts.indices, counts.indptr):
         values.flags.writeable = False
-    result = scp.transform(counts, method, share_structure=True)
+    result = scp.transform(counts, method, dtype=dtype, share_structure=True)
 
     np.testing.assert_array_equal(result.materialize(), expected)
     for name in ("indices", "indptr"):
+        assert (
+            np.shares_memory(getattr(result._sparse, name), getattr(counts, name))
+            == preserves_support
+        )
+
+
+@pytest.mark.parametrize("residual", ["pearson", "deviance"])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_residual_zero_removal_preserves_input_across_blocks(
+    residual, dtype, monkeypatch
+):
+    """Computed zeros require owned support even when later blocks have no zeros."""
+    counts = sparse.csr_matrix([[1.0, 1e32], [1e32, 1.0], [1e32, 1e32]])
+    snapshots = [
+        values.copy() for values in (counts.data, counts.indices, counts.indptr)
+    ]
+    for values in (counts.data, counts.indices, counts.indptr):
+        values.flags.writeable = False
+    monkeypatch.setattr(residuals_module, "_RESIDUAL_SUPPORT_BLOCK_SIZE", 2)
+    method = scp.Residual(residual=residual, clip=100.0, clip_mode="upper")
+    owned = scp.transform(counts, method, dtype=dtype)
+    shared = scp.transform(counts, method, dtype=dtype, share_structure=True)
+
+    assert shared._sparse.nnz == counts.nnz - 2
+    assert np.all(shared._sparse.data != 0)
+    np.testing.assert_array_equal(shared.materialize(), owned.materialize())
+    for name, snapshot in zip(("data", "indices", "indptr"), snapshots, strict=True):
+        assert not np.shares_memory(
+            getattr(shared._sparse, name), getattr(counts, name)
+        )
+        np.testing.assert_array_equal(getattr(counts, name), snapshot)
+        assert not getattr(counts, name).flags.writeable
+
+
+@pytest.mark.parametrize("residual", ["pearson", "deviance"])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_residual_zero_detection_uses_storage_dtype(residual, dtype):
+    """Corrections that underflow only during storage casting are pruned safely."""
+    counts = sparse.csr_matrix(np.full((2, 2), 1e-100))
+    for values in (counts.data, counts.indices, counts.indptr):
+        values.flags.writeable = False
+    result = scp.transform(
+        counts,
+        scp.Residual(residual=residual, clip=0.5, clip_mode="upper"),
+        dtype=dtype,
+        check_values=False,
+        share_structure=True,
+    )
+
+    assert result._sparse.nnz == (0 if dtype == "float32" else counts.nnz)
+    assert np.all(result._sparse.data != 0)
+    for name in ("indices", "indptr"):
         assert np.shares_memory(
             getattr(result._sparse, name), getattr(counts, name)
-        ) == (residual == "pearson" and clip is None)
+        ) == (dtype == "float64")
+    np.testing.assert_array_equal(counts.data, np.full(4, 1e-100))
 
 
 def test_shared_ann_data_transform_uses_selected_layer(adata):
