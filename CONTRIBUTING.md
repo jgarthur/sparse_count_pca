@@ -62,7 +62,13 @@ side effects, important exceptions, and semantic caveats.
 ## Critical invariants
 
 - A fitted transform owns the sparse support needed to keep later caller
-  mutation from changing its values.
+  mutation from changing its values. `transform(share_structure=True)` is the
+  one documented exception: the caller then accepts not modifying the
+  borrowed CSR indices and indptr in place while the transform is alive.
+  Transformed values, fitted factors, and any operator returned from `pca` are
+  owned in every mode.
+- One-step analyses may borrow count support only when they do not return an
+  operator.
 - Residual, log, CLR, and Dirichlet normalization state is fitted before the
   PCA-only variable mask is applied.
 - PCA column centering occurs after variable selection.

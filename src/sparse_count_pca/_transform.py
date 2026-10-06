@@ -603,9 +603,10 @@ class TransformedMatrix(LinearOperator):
 
     Instances are returned by ``transform``. By default, the fitted
     representation owns its sparse support and remains isolated from later
-    mutation of caller-owned input. With ``share_structure=True``, input support
-    may be borrowed and must not be mutated while this object is alive. It
-    exists only in the current Python process and is not serialized with AnnData.
+    mutation of caller-owned input. With ``share_structure=True``, it may borrow
+    the input's CSR indices and row pointers, which must not be modified in
+    place while this object is alive; see ``transform``. It exists only in the
+    current Python process and is not serialized with AnnData.
 
     Attributes:
         shape: Transformed matrix shape ``(n_obs, n_vars)``.
@@ -1000,10 +1001,15 @@ def transform(
     must be reconstructed after restarting Python. Correspondence analysis is
     intentionally not a transform method because its mask defines table margins.
 
-    With ``share_structure=True``, do not mutate the input CSR indices or row
-    pointers, including through sorting, zero elimination, or structural edits,
-    while the transform is alive. Changing existing count values leaves fitted
-    values and factors unchanged. Input arrays are not made read-only.
+    With ``share_structure=True``, the transform may keep references to the
+    input's CSR indices and row pointers. While the transform is alive, do not
+    modify those arrays in place, for example with ``sort_indices``,
+    ``sum_duplicates``, ``eliminate_zeros``, or ``prune``, or by writing into
+    ``indices`` or ``indptr``. Such a change is not detected and silently
+    changes or invalidates the transformed values. Input arrays are not made
+    read-only. Changing stored count values or replacing the matrix object
+    leaves the transform unchanged, and an operator retained by
+    ``pca(return_operator=True)`` owns copies of its arrays.
 
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
@@ -1016,11 +1022,15 @@ def transform(
             Normalization factors and numerically sensitive intermediates are evaluated
             in float64; stored sparse corrections, low-rank factors, and operator arrays
             use ``dtype``.
-        share_structure: Permit borrowing CSR indices and row pointers instead of
-            copying them. Defaults to ``False``. Canonicalization, index-width
-            conversion, masking, and residual support pruning or growth may
-            require new arrays even when sharing is permitted. Transformed
-            values and fitted factors remain separate from the counts.
+        share_structure: Permit borrowing the input's CSR indices and row
+            pointers instead of copying them, which saves one index-sized copy
+            of the support. Defaults to ``False``, so the transform owns its
+            support. Sharing is a permission, not a guarantee: inputs that
+            need canonicalization or conversion to CSR, indices whose integer
+            width differs from the width the output needs, and clipped or
+            deviance residuals, which prune or grow support, use owned arrays.
+            Transformed values and fitted factors are always separate from the
+            counts.
 
     Returns:
         An uncentered implicit transformed matrix that supports matrix products,

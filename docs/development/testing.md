@@ -26,13 +26,22 @@ values in later blocks, preserving error precedence and input arrays. Tests
 also cover canonical borrowing, copied noncanonical inputs, explicit zeros,
 empty rows, extended precision, and the integer tolerance boundary.
 
+Count-margin tests cover both axes, CSR matrix and array inputs, tiny and
+default blocks, float32, float64, signed, and unsigned integer counts, empty
+dimensions and support, explicit zeros, input preservation, integer
+accumulator overflow, totals beyond float32 range, and genuine float64
+overflow. Float32 counts must fit the same factors, representations, PCA, and
+correspondence axes as an exact float64 copy, at either storage dtype.
+
 For all five log builders and both storage dtypes, compare bounded construction
 with independent dense oracles and verify that fitted factors agree exactly
 with float64 storage. Tiny block targets exercise multi-block inputs, rows
 longer than the target, and row sums across empty rows and blocks with no
 stored entries. Check late ratio overflow, float64 ratios exceeding float32
 range, read-only input arrays, int32/int64 input structure, owned output
-structure, and reuse of the builder's sparse matrix by the public transform.
+structure at the required index width (including the int64 shape boundary),
+and reuse of the builder's sparse matrix by the public transform. Residual
+builders get the same index-width and ownership checks.
 Compare each public log PCA with a dense SVD of the requested-dtype
 representation using float64-fitted factors, including aligned
 scores/loadings, mean, singular values, total variance, and variance ratios.
@@ -246,6 +255,16 @@ limits. Named clipping thresholds are covered against their numeric
 equivalents, across both clipping modes, entry points, residual families, and
 observation subsets. Ownership tests mutate caller-owned matrices after fitting
 and verify that transformed values cannot change.
+
+Structure-sharing tests run every support-preserving transform at both
+storage dtypes and both index widths. Default transforms must own their
+support; `share_structure=True` may borrow only compatible indices and indptr,
+and fitted values must survive mutation of input data and deletion of the
+input object. A retained operator from a sharing transform must not alias the
+input or the transform. One-step analyses must borrow only when they do not
+return an operator. Further cases cover canonicalization copies, clipping and
+pruning fallbacks, AnnData layers and masks, read-only inputs, which keep
+their flags, and rejection of non-boolean flags.
 
 Tests that compare against an unclipped dense oracle or a pinned external
 reference must pass `clip=None` explicitly, because residual transforms clip

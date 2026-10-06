@@ -56,7 +56,7 @@ Their units differ because each operation creates different temporary arrays.
 
 | Operation | Control | Default | Unit |
 | --- | --- | ---: | --- |
-| Count validation | `_COUNT_CHECK_BLOCK_SIZE` | 100,000 | Stored entries |
+| Count validation and margins | `_COUNT_CHECK_BLOCK_SIZE` | 100,000 | Stored entries; complete CSR rows for cell totals |
 | Log construction | `_LOG_TRANSFORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
 | Statistics means | `_STATS_MEAN_BLOCK_NNZ` | 1,000,000 | Nonzeros in complete CSR rows |
 | Statistics norms | `_STATS_NORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
@@ -69,6 +69,19 @@ Complete-row targets allow a single longer row to exceed the target. Dense
 statistics batches similarly allow at least one column of the current row
 block. The shared `_sparse._support_row_blocks` helper supplies row boundaries;
 it has no additional default budget.
+
+These budgets bound arithmetic scratch over stored entries, not total memory.
+Total memory also depends on:
+
+- input and transformed storage, and per-cell and per-gene vectors that scale
+  with the matrix dimensions;
+- sparse matrices allocated by dense-to-CSR conversion, canonicalization
+  copies, and column selection for a variable mask;
+- transformed storage, which one-step PCA holds for the whole decomposition;
+- the isolated copy that an operator retained from a live `TransformedMatrix`
+  requires;
+- index storage, which structure sharing saves only where the input support is
+  compatible (see [log and CLR family](#log-and-clr-family)).
 
 Other pages refer to these controls by name rather than restating their
 defaults. All budgets balance temporary memory against
@@ -137,7 +150,7 @@ For example, CLR row means, Dirichlet prior normalization, cell totals, and
 residual gene proportions are computed before the mask is applied. Excluded
 genes receive `NaN` loadings when results are written back to AnnData.
 
-The current transform backend owns an in-memory CSR sparse correction. Its
+The current transform backend stores an in-memory CSR sparse correction. Its
 public contract is instead `LinearOperator` multiplication and block
 materialization so a later backed implementation can stream observation blocks.
 Variable-wide access warns because CSR must scan rows; `out=` avoids requiring a
@@ -162,7 +175,11 @@ residual builders. For structural zeros, the residual baseline factorizes;
 nonzero-count corrections are stored sparsely. Every residual builder evaluates
 count support in bounded blocks and writes directly into the requested
 representation dtype, so temporary float64 calculation arrays do not scale as
-multiple copies of the full sparse support.
+multiple copies of the full sparse support. Output support uses the same
+`_csr_with_data` helper as the log family. Pruning computed zeros rewrites
+indices and indptr in place, so clipped Pearson residuals and every deviance
+residual own their support even when sharing is permitted; only unclipped
+Pearson residuals can borrow it.
 
 [`_clip.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_clip.py) applies exact clipping. Symmetric
 clipping may add sparse entries where structural-zero residuals cross the
@@ -188,11 +205,17 @@ current block's divisors, so row divisors and vector prior counts are expanded
 only for that block; a single longer CSR row can exceed the target. The shared
 helper also returns float64 row sums taken from each block before its values
 are cast, which the CLR builders use to fit row means at full precision.
-Output indices and indptr are copied once for ownership, using the CSR
-constructor's required int32/int64 width to avoid an extra conversion copy.
-`_transform.py` passes storage dtype into every log builder, so
-`TransformedMatrix` can reuse the owned sparse result rather than casting a
-full float64 CSR.
+Output support comes from `_sparse._csr_with_data`, which the residual
+builders and scalar rescaling also use. It chooses int32 or int64 indices from
+the shape and stored-entry count, the width SciPy's CSR constructor requires,
+and copies indices and indptr once at that width. When the builder is called
+with `share_structure=True`, input support that already has that width is
+borrowed instead of copied; other widths are still copied. The public
+`transform` exposes this as an opt-in. One-step analyses turn it on when they
+do not return an operator, because the transformed matrix then lives only for
+the duration of the call. `_transform.py` passes storage dtype into every log
+builder, so `TransformedMatrix` can reuse the builder's sparse result rather
+than casting a full float64 CSR.
 
 For size-factor-normalized log1p, that sparse correction is the entire
 transform: `build_log1p_norm_representation` divides each stored count by its
@@ -328,10 +351,13 @@ returns `PCAResult`.
 
 When `return_operator=True` hands the centered operator back to the caller,
 ownership decides whether its arrays are copied. An operator derived from a
-live `TransformedMatrix` would otherwise share that object's arrays, so it
-takes a support-sized copy. A one-step call such as `residual_pca_matrix`
-builds a representation nothing else holds, so it passes those arrays directly
-and skips the copy.
+live `TransformedMatrix` would otherwise share that object's arrays, and
+through them any borrowed input support, so it takes a support-sized copy. A
+one-step call such as `residual_pca_matrix` builds a representation nothing
+else holds. When it returns the operator, it builds that representation with
+owned support and passes those arrays directly, skipping the copy. When it
+does not, it lets the representation borrow compatible count support, which
+is safe because the operator does not outlive the call.
 
 [`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 

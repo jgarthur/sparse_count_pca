@@ -416,7 +416,9 @@ def build_residual_representation(
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
         dtype: Floating-point storage dtype for the returned representation.
-        share_structure: Permit borrowing CSR support when no pruning is required.
+        share_structure: Permit borrowing CSR support. Only unclipped Pearson
+            residuals borrow; clipped and deviance residuals prune zeros and
+            therefore own their support.
 
     Returns:
         A rank-one sparse-plus-low-rank representation.

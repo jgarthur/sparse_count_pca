@@ -176,17 +176,13 @@ None of these change public behavior:
 
 - Explore a fully lazy residual operator that reads the caller's canonical CSR
   counts and computes normalized values during matrix products, avoiding a
-  second matrix with duplicated support. This requires an explicit
-  borrowed-input mutation contract; exact symmetric clipping may need an eager
-  fallback or a hybrid correction matrix because it can add support at
-  zero-count entries.
+  second matrix with duplicated support. This requires extending the
+  `share_structure` contract from support to count values; exact symmetric
+  clipping may need an eager fallback or a hybrid correction matrix because it
+  can add support at zero-count entries.
 - For heavily masked log and Dirichlet PCA, make a two-pass builder that computes
   normalization statistics over all genes but allocates sparse transformed
   values and support only for PCA-selected genes.
-- Track CSR ownership explicitly so a transient one-step analysis that does not
-  return an operator can borrow canonical input support during synchronous PCA.
-  A persistent `TransformedMatrix` or returned operator must still own one
-  support snapshot so later caller mutation cannot change its behavior.
 - Normalize explicit selectors that equal the full ordered axis to the same
   fast path as `obs=None` or `var=None` during materialization.
 - Revisit the full `adata.var` snapshot retained by `TransformedMatrix`.

@@ -116,6 +116,7 @@ transformed = scp.transform(
     layer=None,
     check_values=True,
     dtype="float64",
+    share_structure=False,
 )
 ```
 
@@ -125,9 +126,28 @@ AnnData input and are resolved when the transform is built. A fitted transform
 is tied to that input matrix; applying fitted state to another dataset is not a
 supported contract.
 
-Fitting allocates transformed sparse values and takes one owned snapshot of CSR
-support even when canonical input validation can borrow the original count
-matrix. This prevents later input mutation from changing the fitted transform.
+Fitting allocates transformed sparse values. By default it also takes one
+owned snapshot of CSR support, even when canonical input validation can borrow
+the original count matrix, so later input mutation cannot change the fitted
+transform.
+
+`share_structure=True` permits the fitted transform to borrow the input's CSR
+`indices` and `indptr` instead. Ownership then follows these rules:
+
+- Transformed values and fitted factors are always owned. Changing stored count
+  values after fitting leaves the transform unchanged.
+- Borrowed support must not be modified in place while the transform is alive,
+  for example by `sort_indices`, `sum_duplicates`, `eliminate_zeros`, `prune`,
+  or direct writes. The package does not detect such a change, which silently
+  alters or invalidates transformed values. Input arrays keep their
+  writability; the package does not freeze them.
+- Sharing is a permission, not a guarantee. Inputs that are copied or converted
+  during canonicalization lend only private arrays. Support whose integer width
+  differs from the width the output requires is copied at the required width.
+  Clipped and deviance residuals prune or grow support and therefore own it.
+  Unclipped Pearson residuals and every log, CLR, and Dirichlet transform
+  preserve support and can borrow it.
+- The flag must be a Python or NumPy boolean; other values raise `TypeError`.
 
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
 represents the full uncentered transformed matrix. It is an in-process object,
@@ -173,9 +193,13 @@ API. Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
 selects columns only after the full transform has been defined. One transform
 may therefore be reused for several PCA masks or component counts.
 If `TransformedMatrix.pca(return_operator=True)` retains the mutable centered
-operator, its arrays are copied to isolate them from the still-live transform.
-The named one-step APIs instead transfer their private representation to a
-returned operator without that additional copy.
+operator, its arrays are copied to isolate them from the still-live transform
+and from any borrowed input support. The named one-step APIs, including
+correspondence analysis, build a representation nothing else holds. With
+`return_operator=False` that representation borrows compatible count support
+for the duration of the call. With `return_operator=True` it owns its support,
+and the returned operator takes over its arrays without another copy, so a
+retained operator never references caller-owned arrays.
 
 ## Log-transform semantics
 
@@ -658,9 +682,13 @@ precision rather than merely downcasting returned arrays.
   written directly into the requested storage dtype. Row and vector-prior
   divisors are gathered only within each block. CLR row means and fitted
   low-rank factors use float64 pre-cast values, including when storage is
-  float32. Transformed matrices own CSR data, indices, and indptr arrays
-  separate from the counts; no full-nnz float64 representation followed by a
-  sparse dtype conversion is required.
+  float32. Transformed matrices own CSR data separate from the counts, and own
+  indices and indptr unless `share_structure=True` lets them borrow compatible
+  support; no full-nnz float64 representation followed by a sparse dtype
+  conversion is required.
+- Count margins (cell totals and gene totals) are accumulated in `float64`
+  over bounded blocks, never in the input dtype, so float32 or integer counts
+  neither lose small contributions nor overflow an integer accumulator.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
@@ -674,7 +702,9 @@ Count-data validation runs its finite, nonnegative, integrality,
 explicit-zero, and exact-float64-conversion checks over fixed-size views of
 the stored data. Error precedence, the `1e-8` integrality tolerance, and
 canonicalization warnings and ownership rules are independent of the view
-boundaries. Log construction processes blocks of complete CSR rows with a
+boundaries. Gene totals reuse those fixed-size views; cell totals use blocks
+of complete CSR rows with the same stored-entry target, so one longer row can
+exceed it. Log construction processes blocks of complete CSR rows with a
 fixed stored-entry target $T$. A single longer row can exceed that target, so
 arithmetic scratch is $O(\max(T, \mathit{max\_row\_nnz}))$, in addition to
 final owned output storage and per-cell or per-gene fitted vectors.
