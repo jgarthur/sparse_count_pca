@@ -29,7 +29,12 @@ from ._operator import (
     _normalize_operator_dtype,
     _squared_norm_is_numerically_zero,
 )
-from ._representation import SparseLowRankMatrix
+from ._representation import (
+    SparseLowRankMatrix,
+    _borrows_input_support,
+    _copies_returned_operator,
+    _one_step_ownership,
+)
 from ._residual_pca import _resolve_alpha, _serialize_alpha
 from ._residuals import (
     AlphaLike,
@@ -128,6 +133,8 @@ def build_correspondence_representation(
         share_structure=share_structure,
     )
     scale = calculation_dtype.type(1.0 / np.sqrt(total))
+    # The Pearson intermediate is private, and it borrows count support only
+    # when the caller permitted that, so the scaled result may reuse its support.
     return (
         pearson.scaled(scale, share_structure=True),
         row_masses,
@@ -210,6 +217,7 @@ def _compute_correspondence_analysis(
             stacklevel=3,
         )
 
+    ownership = _one_step_ownership(return_operator)
     representation, row_masses, column_masses = build_correspondence_representation(
         counts,
         model=model,
@@ -217,15 +225,13 @@ def _compute_correspondence_analysis(
         row_totals=row_totals,
         column_totals=column_totals,
         dtype=dtype,
-        share_structure=not return_operator,
+        share_structure=_borrows_input_support(ownership),
     )
     operator = SparseLowRankLinearOperator(
         representation,
         center=False,
         dtype=dtype,
-        # This one-step path owns the representation. If retained, the operator
-        # takes over those arrays rather than copying them for isolation.
-        copy=False,
+        copy=_copies_returned_operator(ownership),
     )
     total_inertia = operator.frobenius_squared_uncentered()
     if _squared_norm_is_numerically_zero(

@@ -20,6 +20,7 @@ from ._counts import (
 )
 from ._log_transforms import PriorProportions
 from ._pca import PCAResult
+from ._representation import _one_step_ownership
 from ._svd import Solver
 from ._transform import (
     DirichletCLR,
@@ -63,8 +64,7 @@ def _compute_dirichlet_pca(
         check_values=check_values,
         dtype=dtype,
         _columns=mask,
-        _isolate_returned_operator=False,
-        share_structure=not return_operator,
+        _ownership=_one_step_ownership(return_operator),
     )
     return transformed.pca(
         n_comps,

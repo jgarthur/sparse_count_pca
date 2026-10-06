@@ -35,7 +35,12 @@ from ._log_transforms import (
 )
 from ._operator import _normalize_operator_dtype
 from ._pca import PCAResult, compute_pca_from_representation
-from ._representation import SparseLowRankMatrix
+from ._representation import (
+    SparseLowRankMatrix,
+    SupportOwnership,
+    _borrows_input_support,
+    _copies_returned_operator,
+)
 from ._residuals import (
     AlphaLike,
     Model,
@@ -637,7 +642,7 @@ class TransformedMatrix(LinearOperator):
         obs_names: Any | None = None,
         var_names: Any | None = None,
         var: Any | None = None,
-        isolate_returned_operator: bool = True,
+        ownership: SupportOwnership = "owned",
     ) -> None:
         operator_dtype = _normalize_operator_dtype(dtype)
         if (
@@ -660,10 +665,7 @@ class TransformedMatrix(LinearOperator):
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
         self._var = var.copy() if var is not None else None
-        # Public two-step transforms remain live after ``pca`` and therefore
-        # isolate a mutable returned operator. One-step wrappers mark their
-        # temporary transform transferable so the operator can take ownership.
-        self._isolate_returned_operator = isolate_returned_operator
+        self._ownership = ownership
         super().__init__(dtype=operator_dtype, shape=representation.shape)
 
     def _matvec(self, vector: NDArray[Any]) -> NDArray[Any]:
@@ -903,6 +905,9 @@ class TransformedMatrix(LinearOperator):
             if mask.all()
             else self._representation.select_columns(mask)
         )
+        assert not (return_operator and self._ownership == "transient"), (
+            "a transient transform may borrow caller support"
+        )
         return compute_pca_from_representation(
             representation,
             n_comps,
@@ -914,7 +919,8 @@ class TransformedMatrix(LinearOperator):
             random_state=random_state,
             tol=tol,
             return_operator=return_operator,
-            copy_operator=return_operator and self._isolate_returned_operator,
+            copy_operator=return_operator
+            and _copies_returned_operator(self._ownership),
         )
 
 
@@ -925,17 +931,14 @@ def _transform(
     layer: str | None = None,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
-    share_structure: bool = False,
     _columns: BoolArray | None = None,
-    _isolate_returned_operator: bool = True,
+    _ownership: SupportOwnership = "owned",
     _obs: Any | None = None,
 ) -> TransformedMatrix:
     """Build a public transform, optionally restricted for a PCA wrapper."""
     if not isinstance(method, Transform):
         raise TypeError("method must be a Transform instance")
     operator_dtype = _normalize_operator_dtype(dtype)
-    if not isinstance(share_structure, (bool, np.bool_)):
-        raise TypeError("share_structure must be a boolean")
     if isinstance(data, AnnData):
         X = _get_count_matrix(data, layer=layer)
         obs = data.obs
@@ -965,7 +968,7 @@ def _transform(
         var=var,
         columns=_columns,
         dtype=operator_dtype,
-        share_structure=share_structure,
+        share_structure=_borrows_input_support(_ownership),
     )
     # Empty variables are never dropped: every transform gives them a defined
     # value, so the fitted matrix always keeps the caller's variable universe.
@@ -982,7 +985,7 @@ def _transform(
         obs_names=obs_names,
         var_names=var_names,
         var=var,
-        isolate_returned_operator=_isolate_returned_operator,
+        ownership=_ownership,
     )
 
 
@@ -1054,11 +1057,13 @@ def transform(
         >>> transformed.shape
         (adata.n_obs, adata.n_vars)
     """
+    if not isinstance(share_structure, (bool, np.bool_)):
+        raise TypeError("share_structure must be a boolean")
     return _transform(
         data,
         method,
         layer=layer,
         check_values=check_values,
         dtype=dtype,
-        share_structure=share_structure,
+        _ownership="shared" if share_structure else "owned",
     )

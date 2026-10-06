@@ -17,6 +17,7 @@ from ._anndata import (
 from ._clip import ClipLike, ClipMode
 from ._counts import BoolArray, CountMatrix
 from ._pca import PCAResult
+from ._representation import _one_step_ownership
 from ._residuals import AlphaLike, Model, ResidualType
 from ._svd import Solver
 from ._transform import Residual
@@ -80,8 +81,7 @@ def _compute_residual_pca(
         check_values=check_values,
         dtype=dtype,
         _columns=mask,
-        _isolate_returned_operator=False,
-        share_structure=not return_operator,
+        _ownership=_one_step_ownership(return_operator),
     )
     return transformed.pca(
         n_comps,

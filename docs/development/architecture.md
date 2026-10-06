@@ -369,6 +369,20 @@ owned support and passes those arrays directly, skipping the copy. When it
 does not, it lets the representation borrow compatible count support, which
 is safe because the operator does not outlive the call.
 
+One private `SupportOwnership` mode in
+[`_representation.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_representation.py)
+records these choices, and both decisions derive from it:
+
+| Mode | Set by | Builders borrow input support | Returned operator copies |
+| --- | --- | --- | --- |
+| `"owned"` | `transform()` | no | yes |
+| `"shared"` | `transform(share_structure=True)` | yes | yes |
+| `"transient"` | one-step call, `return_operator=False` | yes | never returned |
+| `"handoff"` | one-step call, `return_operator=True` | no | no |
+
+`TransformedMatrix.pca` asserts that a `"transient"` transform never returns
+its operator, because that operator could reference caller-owned support.
+
 [`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 
 - deterministic starting vector from `random_state`;

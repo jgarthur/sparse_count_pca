@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -12,6 +12,35 @@ from scipy import sparse
 from ._sparse import _csr_with_data
 
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
+SupportOwnership: TypeAlias = Literal["owned", "shared", "transient", "handoff"]
+
+
+def _borrows_input_support(ownership: SupportOwnership) -> bool:
+    """Return whether builders may borrow the count matrix's CSR support.
+
+    ``"owned"`` is the public ``transform`` default and ``"shared"`` is
+    ``transform(share_structure=True)``. A one-step analysis is ``"transient"``
+    when it does not return its operator, so nothing built from the borrowed
+    support outlives the call, and ``"handoff"`` when it does, so its
+    representation owns support that the returned operator takes over.
+    """
+    return ownership in ("shared", "transient")
+
+
+def _copies_returned_operator(ownership: SupportOwnership) -> bool:
+    """Return whether an operator returned by PCA must copy its arrays.
+
+    A public ``TransformedMatrix`` stays live after ``pca``, so its returned
+    operator must not share its arrays. A ``"handoff"`` representation belongs
+    to one one-step call and is passed on without a copy. A ``"transient"``
+    representation never returns its operator.
+    """
+    return ownership in ("owned", "shared")
+
+
+def _one_step_ownership(return_operator: bool) -> SupportOwnership:
+    """Choose the ownership of a one-step analysis's private representation."""
+    return "handoff" if return_operator else "transient"
 
 
 @dataclass(frozen=True)
