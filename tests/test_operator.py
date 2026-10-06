@@ -1,6 +1,7 @@
 """Tests for sparse-plus-low-rank matrix and operator behavior."""
 
 import math
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -141,6 +142,48 @@ def test_duplicate_sparse_entries_are_rejected():
 
     with pytest.raises(AssertionError, match="canonical CSR"):
         SparseLowRankLinearOperator(representation)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_operator_owned_copy_avoids_full_int64_index_temporary(dtype):
+    """Owning compact support avoids a full int64 copy before index narrowing."""
+    n_rows, n_cols = 20_000, 100
+    nnz = n_rows * n_cols
+    matrix = sparse.csr_matrix(
+        sparse.csr_array(
+            (
+                np.ones(nnz, dtype=dtype),
+                np.tile(np.arange(n_cols, dtype=np.int64), n_rows),
+                np.arange(0, nnz + 1, n_cols, dtype=np.int64),
+            ),
+            shape=(n_rows, n_cols),
+        ),
+        copy=False,
+    )
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((n_rows, 0)), np.empty((n_cols, 0))
+    )
+    tracemalloc.start()
+    try:
+        operator = SparseLowRankLinearOperator(
+            representation, center=False, dtype=dtype, copy=True
+        )
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    stored_bytes = sum(
+        getattr(operator.S, name).nbytes for name in ("data", "indices", "indptr")
+    )
+    assert peak < stored_bytes + matrix.indices.nbytes // 2
+    assert matrix.indices.dtype == np.dtype(np.int64)
+    assert matrix.indptr.dtype == np.dtype(np.int64)
+    for name in ("data", "indices", "indptr"):
+        assert not np.shares_memory(getattr(operator.S, name), getattr(matrix, name))
+    assert operator.S.indices.dtype == np.dtype(np.int32)
+    assert operator.S.indptr.dtype == np.dtype(np.int32)
+    np.testing.assert_array_equal(operator.S.data, matrix.data)
+    assert operator.frobenius_squared_uncentered() == nnz
 
 
 def test_representation_selection_and_scaling():

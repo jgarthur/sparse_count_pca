@@ -12,7 +12,7 @@ from scipy import sparse
 from scipy.sparse.linalg import LinearOperator
 
 from ._representation import SparseLowRankMatrix
-from ._sparse import _support_row_blocks
+from ._sparse import _csr_with_data, _support_row_blocks
 
 FloatArray: TypeAlias = NDArray[np.floating[Any]]
 
@@ -99,9 +99,15 @@ class SparseLowRankLinearOperator(LinearOperator):
         """
         operator_dtype = _normalize_operator_dtype(dtype)
 
-        self.S = representation.sparse.astype(operator_dtype, copy=copy).tocsr(
-            copy=False
-        )
+        if copy:
+            self.S = _csr_with_data(
+                representation.sparse,
+                representation.sparse.data.astype(operator_dtype, copy=True),
+            )
+        else:
+            self.S = representation.sparse.astype(operator_dtype, copy=False).tocsr(
+                copy=False
+            )
         assert self.S.has_canonical_format, "sparse part must be canonical CSR"
         self.left = representation.left.astype(operator_dtype, copy=copy)
         self.right = representation.right.astype(operator_dtype, copy=copy)

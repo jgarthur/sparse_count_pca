@@ -68,9 +68,15 @@ def test_transform_shares_only_compatible_support(counts, method, dtype, index_d
 
 
 @pytest.mark.parametrize("method", _TRANSFORMS)
-def test_shared_transform_pca_preserves_operator_isolation(counts, method):
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.parametrize("index_dtype", [np.int32, np.int64])
+def test_shared_transform_pca_preserves_operator_isolation(
+    counts, method, dtype, index_dtype
+):
     """A retained PCA operator owns support independently of an opted-in transform."""
-    shared = scp.transform(counts, method, share_structure=True)
+    counts.indices = counts.indices.astype(index_dtype)
+    counts.indptr = counts.indptr.astype(index_dtype)
+    shared = scp.transform(counts, method, dtype=dtype, share_structure=True)
     expected = shared.materialize()
     result = shared.pca(n_comps=2, return_operator=True)
     centered = result.operator @ np.eye(counts.shape[1])
@@ -79,6 +85,9 @@ def test_shared_transform_pca_preserves_operator_isolation(counts, method):
         assert not np.shares_memory(
             getattr(result.operator.S, name), getattr(shared._sparse, name)
         )
+    assert result.operator.S.dtype == np.dtype(dtype)
+    assert result.operator.S.indices.dtype == np.dtype(np.int32)
+    assert result.operator.S.indptr.dtype == np.dtype(np.int32)
     original_value = result.operator.S.data[0]
     result.operator.S.data[0] += 1.0
     np.testing.assert_array_equal(shared.materialize(), expected)
