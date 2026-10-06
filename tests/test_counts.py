@@ -22,7 +22,7 @@ def test_count_checks_reject_values_across_blocks(
     monkeypatch, position, value, message
 ):
     """Invalid counts fail even at or beyond a validation-block boundary."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", 2)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", 2)
     counts = sparse.csr_matrix(np.ones((3, 2)))
     counts.data[position] = value
     original = counts.data.copy()
@@ -40,7 +40,7 @@ def test_blocked_count_checks_preserve_error_precedence(
     monkeypatch, first, last, message
 ):
     """Finite and nonnegative checks retain precedence across separate blocks."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", 2)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", 2)
     counts = sparse.csr_matrix(np.ones((3, 2)))
     counts.data[0], counts.data[-1] = first, last
 
@@ -51,7 +51,7 @@ def test_blocked_count_checks_preserve_error_precedence(
 @pytest.mark.parametrize("value", [2**53, 2**53 + 1, 2**53 + 2])
 def test_blocked_count_checks_preserve_integer_precision(monkeypatch, value):
     """Large integers are accepted exactly when float64 preserves their value."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", 2)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", 2)
     counts = sparse.csr_matrix(np.ones((3, 2), dtype=np.uint64))
     counts.data[-1] = value
 
@@ -64,7 +64,7 @@ def test_blocked_count_checks_preserve_integer_precision(monkeypatch, value):
 
 def test_blocked_count_checks_keep_fractional_escape_hatch(monkeypatch):
     """Disabling integrality admits fractional counts without copying their arrays."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", 2)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", 2)
     counts = sparse.csr_matrix(np.full((3, 2), 1.25))
     counts.data.flags.writeable = False
 
@@ -81,7 +81,7 @@ def test_count_margins_accumulate_before_output_casting(
     monkeypatch, matrix_type, axis, target, dtype
 ):
     """Both count margins accumulate small contributions in float64 across blocks."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", target)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", target)
     dense = np.array(
         [[100_000_000, 1, 0], [0, 100_000_000, 1], [1, 0, 100_000_000]], dtype=dtype
     )
@@ -121,7 +121,7 @@ def test_count_margins_handle_empty_support(
     monkeypatch, matrix_type, axis, target, shape
 ):
     """Empty sparse support produces correctly shaped zero margins on either axis."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", target)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", target)
     actual = counts_module._sum_counts(matrix_type(shape, dtype=np.float32), axis=axis)
 
     np.testing.assert_array_equal(actual, np.zeros(shape[1 - axis]))
@@ -130,7 +130,7 @@ def test_count_margins_handle_empty_support(
 @pytest.mark.parametrize("axis", [0, 1])
 def test_count_margins_skip_empty_rows_and_keep_explicit_zeros(monkeypatch, axis):
     """Empty CSR rows and stored zeros contribute zero without changing the support."""
-    monkeypatch.setattr(counts_module, "_COUNT_CHECK_BLOCK_SIZE", 2)
+    monkeypatch.setattr(counts_module, "_COUNT_BLOCK_SIZE", 2)
     counts = sparse.csr_matrix(
         (
             np.array([100_000_000, 1, 0, 1], dtype=np.float32),

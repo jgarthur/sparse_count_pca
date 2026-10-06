@@ -56,7 +56,7 @@ Their units differ because each operation creates different temporary arrays.
 
 | Operation | Control | Default | Unit |
 | --- | --- | ---: | --- |
-| Count validation and margins | `_COUNT_CHECK_BLOCK_SIZE` | 100,000 | Stored entries; complete CSR rows for cell totals |
+| Count validation and margins | `_COUNT_BLOCK_SIZE` | 100,000 | Stored entries; complete CSR rows for cell totals |
 | Log construction | `_LOG_TRANSFORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
 | Statistics means | `_STATS_MEAN_BLOCK_NNZ` | 1,000,000 | Nonzeros in complete CSR rows |
 | Statistics norms | `_STATS_NORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |

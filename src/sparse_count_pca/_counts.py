@@ -21,13 +21,13 @@ BoolArray: TypeAlias = NDArray[np.bool_]
 Float64Array: TypeAlias = NDArray[np.float64]
 COUNT_INTEGER_ATOL = 1e-8
 _MAX_EXACT_CONSECUTIVE_FLOAT64_INTEGER = 2**53
-_COUNT_CHECK_BLOCK_SIZE = 100_000
+_COUNT_BLOCK_SIZE = 100_000
 
 
 def _count_data_blocks(values: NDArray[np.generic]) -> Iterator[NDArray[np.generic]]:
     """Yield fixed-size views for count validation with bounded scratch storage."""
-    for start in range(0, values.size, _COUNT_CHECK_BLOCK_SIZE):
-        yield values[start : start + _COUNT_CHECK_BLOCK_SIZE]
+    for start in range(0, values.size, _COUNT_BLOCK_SIZE):
+        yield values[start : start + _COUNT_BLOCK_SIZE]
 
 
 def _validate_boolean_mask(mask: ArrayLike, n_vars: int, *, name: str) -> BoolArray:
@@ -67,16 +67,18 @@ def _sum_counts(X: CSRMatrix, *, axis: int) -> Float64Array:
     totals = np.zeros(X.shape[1 - axis], dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
         if axis == 0:
-            for number, block in enumerate(_count_data_blocks(X.data)):
-                start = number * _COUNT_CHECK_BLOCK_SIZE
-                totals += np.bincount(
-                    X.indices[start : start + block.size],
-                    weights=block.astype(np.float64, copy=False),
-                    minlength=X.shape[1],
+            for start in range(0, X.nnz, _COUNT_BLOCK_SIZE):
+                stop = start + _COUNT_BLOCK_SIZE
+                # Unbuffered accumulation keeps per-block work independent of
+                # the number of columns; it is fast only for float64 values.
+                np.add.at(
+                    totals,
+                    X.indices[start:stop],
+                    X.data[start:stop].astype(np.float64, copy=False),
                 )
         else:
             for row_start, row_stop, start, stop in _support_row_blocks(
-                X, _COUNT_CHECK_BLOCK_SIZE
+                X, _COUNT_BLOCK_SIZE
             ):
                 indptr = X.indptr[row_start : row_stop + 1] - start
                 nonempty = np.diff(indptr) > 0
