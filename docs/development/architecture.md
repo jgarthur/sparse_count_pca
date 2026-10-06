@@ -51,7 +51,7 @@ center, measure, and decompose `S + U @ V.T`.
 
 ### Bounded computation budgets
 
-There are seven internal size controls and one public materialization default.
+There are eight internal size controls and one public materialization default.
 Their units differ because each operation creates different temporary arrays.
 
 | Operation | Control | Default | Unit |
@@ -63,6 +63,7 @@ Their units differ because each operation creates different temporary arrays.
 | Dense statistics reconstruction | `_STATS_DENSE_BATCH_VALUES` | 262,144 | Represented dense values |
 | Residual construction | `_RESIDUAL_SUPPORT_BLOCK_SIZE` | 1,000,000 | Nonzeros in complete CSR rows |
 | Clipping candidates | `_CANDIDATE_CHUNK_SIZE` | 65,536 | Candidate columns per row |
+| Shared-support checksum | `_SUPPORT_CHECKSUM_CHUNK_SIZE` | 1,000,000 | Index entries |
 | Explicit materialization | `materialize(block_size=...)` | 1,024 | Selected observation rows |
 
 Complete-row targets allow a single longer row to exceed the target. Dense
@@ -385,11 +386,14 @@ records these choices, and both decisions derive from it:
 | `"handoff"` | one-step call, `return_operator=True` | no | no |
 
 `TransformedMatrix.pca` asserts that a `"transient"` transform never returns
-its operator, because that operator could reference caller-owned support.
-A `"shared"` transform stores the stored-entry count and a CRC-32 checksum of
-its indices and indptr. `pca` and `materialize` verify both, and matrix
-products verify the count, so in-place edits to borrowed support raise
-`RuntimeError` instead of changing results. A transform that requested
+its operator, because that operator could reference caller-owned support. A
+`"shared"` transform stores the stored-entry count and a CRC-32 checksum of
+its indices and indptr. `pca` and `materialize` verify both and raise
+`RuntimeError` after an in-place edit to borrowed support. Matrix products
+verify only the count, so they raise after edits that remove or add entries,
+but an index edit that keeps the count changes product results until the next
+`pca` or `materialize` call. The checksum hashes fixed-size chunks, so strided
+borrowed support is copied one chunk at a time. A transform that requested
 sharing but borrowed nothing from the caller, because canonicalization copied
 the input or clipping built new support, is stored as `"owned"` and skips the
 check, as do `"transient"` transforms, which do not outlive their call.

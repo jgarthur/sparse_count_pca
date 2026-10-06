@@ -10,6 +10,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import sparse
 
+_SUPPORT_CHECKSUM_CHUNK_SIZE = 1_000_000
+
 
 def _csr_with_data(
     matrix: sparse.csr_matrix,
@@ -48,9 +50,18 @@ def _csr_with_data(
 
 
 def _support_checksum(matrix: sparse.csr_matrix) -> int:
-    """Return a CRC-32 of CSR indptr and indices for detecting in-place edits."""
-    checksum = zlib.crc32(np.ascontiguousarray(matrix.indptr))
-    return zlib.crc32(np.ascontiguousarray(matrix.indices), checksum)
+    """Return a CRC-32 of CSR indptr and indices for detecting in-place edits.
+
+    CRC-32 accumulates across chunks, so chunking does not change the result.
+    Contiguous chunks are hashed as views; strided borrowed support is copied
+    one chunk at a time rather than as a whole array.
+    """
+    checksum = 0
+    for values in (matrix.indptr, matrix.indices):
+        for start in range(0, values.size, _SUPPORT_CHECKSUM_CHUNK_SIZE):
+            chunk = values[start : start + _SUPPORT_CHECKSUM_CHUNK_SIZE]
+            checksum = zlib.crc32(np.ascontiguousarray(chunk), checksum)
+    return checksum
 
 
 def _support_row_blocks(
