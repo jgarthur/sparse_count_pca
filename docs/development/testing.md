@@ -260,7 +260,10 @@ Structure-sharing tests run every support-preserving transform at both storage
 dtypes and both index widths. Default transforms must own their support;
 `share_structure=True` must borrow indices and indptr at either input width,
 including int64 support on matrices int32 could index, and fitted values must
-survive mutation of input data and deletion of the input object. A retained
+survive mutation of input data and deletion of the input object. After entry
+removal or a direct index write, a shared transform must refuse `pca` and
+`materialize`; after entry removal, all four product directions must also
+refuse. Value changes and owned transforms must pass these checks. A retained
 operator from a sharing transform must not alias the input or the transform.
 One-step analyses must borrow only when they do not return an operator.
 Residual sharing tests cover both residual types, both clipping modes,

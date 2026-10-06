@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zlib
 from collections.abc import Iterator
 from typing import Any
 
@@ -44,6 +45,12 @@ def _csr_with_data(
         ),
         copy=False,
     )
+
+
+def _support_checksum(matrix: sparse.csr_matrix) -> int:
+    """Return a CRC-32 of CSR indptr and indices for detecting in-place edits."""
+    checksum = zlib.crc32(np.ascontiguousarray(matrix.indptr))
+    return zlib.crc32(np.ascontiguousarray(matrix.indices), checksum)
 
 
 def _support_row_blocks(

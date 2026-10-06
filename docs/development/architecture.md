@@ -386,6 +386,13 @@ records these choices, and both decisions derive from it:
 
 `TransformedMatrix.pca` asserts that a `"transient"` transform never returns
 its operator, because that operator could reference caller-owned support.
+A `"shared"` transform stores the stored-entry count and a CRC-32 checksum of
+its indices and indptr. `pca` and `materialize` verify both, and matrix
+products verify the count, so in-place edits to borrowed support raise
+`RuntimeError` instead of changing results. A transform that requested
+sharing but borrowed nothing from the caller, because canonicalization copied
+the input or clipping built new support, is stored as `"owned"` and skips the
+check, as do `"transient"` transforms, which do not outlive their call.
 
 [`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 

@@ -286,6 +286,56 @@ def test_one_step_ann_data_selection_preserves_read_only_count_structure(
     assert not adata.X.indptr.flags.writeable
 
 
+def _remove_first_entry(counts):
+    counts.data[0] = 0
+    counts.eliminate_zeros()
+
+
+def _move_first_entry(counts):
+    counts.indices[1] = 2
+
+
+@pytest.mark.parametrize("mutate", [_remove_first_entry, _move_first_entry])
+def test_shared_transform_rejects_changed_structure(counts, mutate):
+    """PCA and materialization refuse support that changed after sharing."""
+    transformed = scp.transform(counts, scp.Log1pNormalized(), share_structure=True)
+    mutate(counts)
+
+    with pytest.raises(RuntimeError, match="sparsity structure changed"):
+        transformed.materialize()
+    with pytest.raises(RuntimeError, match="sparsity structure changed"):
+        transformed.pca(2)
+
+
+def test_shared_transform_products_reject_removed_entries(counts):
+    """Matrix products detect removed entries without reading all support."""
+    transformed = scp.transform(counts, scp.Log1pNormalized(), share_structure=True)
+    _remove_first_entry(counts)
+
+    for product in (
+        lambda: transformed @ np.ones(counts.shape[1]),
+        lambda: transformed.T @ np.ones(counts.shape[0]),
+        lambda: transformed @ np.ones((counts.shape[1], 2)),
+        lambda: transformed.T @ np.ones((counts.shape[0], 2)),
+    ):
+        with pytest.raises(RuntimeError, match="sparsity structure changed"):
+            product()
+
+
+def test_structure_checks_allow_value_changes_and_owned_support(counts):
+    """Changed count values and owned transforms pass the structure checks."""
+    shared = scp.transform(counts, scp.Log1pNormalized(), share_structure=True)
+    owned = scp.transform(counts, scp.Log1pNormalized())
+    expected = shared.materialize()
+    counts.data[:] = 7
+
+    np.testing.assert_array_equal(shared.materialize(), expected)
+    shared.pca(2)
+    _remove_first_entry(counts)
+    np.testing.assert_array_equal(owned.materialize(), expected)
+    owned.pca(2)
+
+
 def test_owned_clipping_growth_adds_corrections_to_read_only_support(counts):
     """Support growth leaves read-only input intact and returns owned support."""
     method = scp.Residual(clip=0.5, clip_max_nnz_ratio=None)
@@ -304,3 +354,20 @@ def test_owned_clipping_growth_adds_corrections_to_read_only_support(counts):
             getattr(result._sparse, name), getattr(counts, name)
         )
         np.testing.assert_array_equal(getattr(counts, name), snapshot)
+
+
+@pytest.mark.parametrize(
+    ("prepare", "method", "borrows"),
+    [
+        (lambda counts: counts, scp.Log1pNormalized(), True),
+        (sparse.csc_matrix, scp.Log1pNormalized(), False),
+        (lambda counts: counts, scp.Residual(clip=0.5, clip_max_nnz_ratio=None), False),
+    ],
+)
+def test_shared_transform_checks_only_borrowed_support(
+    counts, prepare, method, borrows
+):
+    """Only a transform that borrowed caller support records a checksum."""
+    transformed = scp.transform(prepare(counts), method, share_structure=True)
+
+    assert (transformed._support_checksum is not None) == borrows

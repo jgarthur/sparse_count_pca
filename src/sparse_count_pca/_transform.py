@@ -48,6 +48,7 @@ from ._residuals import (
     _validate_model,
     build_residual_representation,
 )
+from ._sparse import _support_checksum
 from ._svd import Solver
 
 
@@ -666,9 +667,34 @@ class TransformedMatrix(LinearOperator):
         self.var_names = var_names.copy() if var_names is not None else None
         self._var = var.copy() if var is not None else None
         self._ownership = ownership
+        self._support_nnz = self._sparse.nnz
+        self._support_checksum = (
+            _support_checksum(self._sparse) if ownership == "shared" else None
+        )
         super().__init__(dtype=operator_dtype, shape=representation.shape)
 
+    def _check_support(self, *, full: bool) -> None:
+        """Raise if support borrowed from the counts changed after fitting.
+
+        The stored-entry count is checked on every call; ``full`` also compares
+        the checksum of indices and indptr, which reads all of them.
+
+        Raises:
+            RuntimeError: If shared support changed in place.
+        """
+        if self._support_checksum is None:
+            return
+        if int(self._sparse.indptr[-1]) != self._support_nnz or (
+            full and _support_checksum(self._sparse) != self._support_checksum
+        ):
+            raise RuntimeError(
+                "The count matrix's sparsity structure changed after this "
+                "transform was fitted with share_structure=True; fit the "
+                "transform again."
+            )
+
     def _matvec(self, vector: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         vector = np.asarray(vector, dtype=self.dtype)
         values = self._sparse @ vector
         if self._right.shape[1]:
@@ -676,6 +702,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatvec(self, vector: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         vector = np.asarray(vector, dtype=self.dtype)
         values = self._sparse.T @ vector
         if self._right.shape[1]:
@@ -683,6 +710,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _matmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         matrix = np.asarray(matrix, dtype=self.dtype)
         values = self._sparse @ matrix
         if self._right.shape[1]:
@@ -690,6 +718,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         matrix = np.asarray(matrix, dtype=self.dtype)
         values = self._sparse.T @ matrix
         if self._right.shape[1]:
@@ -732,6 +761,8 @@ class TransformedMatrix(LinearOperator):
                 has an unsupported type or dtype.
             ValueError: If ``block_size`` or the shape or writability of ``out``
                 is invalid.
+            RuntimeError: If support shared with ``share_structure=True``
+                changed after fitting.
 
         Examples:
             A small AnnData input provides names as well as positions:
@@ -784,6 +815,7 @@ class TransformedMatrix(LinearOperator):
         """
         if not isinstance(block_size, int) or block_size <= 0:
             raise ValueError("block_size must be a positive integer")
+        self._check_support(full=True)
         rows = _normalize_selector(
             obs, self.shape[0], names=self.obs_names, axis_name="observation"
         )
@@ -868,10 +900,13 @@ class TransformedMatrix(LinearOperator):
             TypeError: If AnnData-only mask features are used for matrix input.
             ValueError: If the mask, dimensions, or centered variance are
                 invalid.
+            RuntimeError: If support shared with ``share_structure=True``
+                changed after fitting.
 
         Examples:
             >>> result = transformed.pca(n_comps=20, mask_var=my_gene_mask)
         """
+        self._check_support(full=True)
         params = dict(self.params)
         if self._var is None:
             if use_highly_variable is not None:
@@ -976,6 +1011,15 @@ def _transform(
     if _columns is not None and var_names is not None:
         var_names = var_names[_columns]
         var = var.iloc[np.flatnonzero(_columns)]
+    # Only support borrowed from the caller's matrix can change after fitting.
+    if _ownership == "shared" and not (
+        counts is X
+        and any(
+            np.may_share_memory(getattr(representation.sparse, name), getattr(X, name))
+            for name in ("indices", "indptr")
+        )
+    ):
+        _ownership = "owned"
     return TransformedMatrix(
         representation,
         transform_label=label,
@@ -1008,8 +1052,10 @@ def transform(
     input's CSR indices and row pointers. While the transform is alive, do not
     modify those arrays in place, for example with ``sort_indices``,
     ``sum_duplicates``, ``eliminate_zeros``, or ``prune``, or by writing into
-    ``indices`` or ``indptr``. Such a change is not detected and silently
-    changes or invalidates the transformed values. Input arrays are not made
+    ``indices`` or ``indptr``. The transform records a checksum of borrowed
+    support: ``pca`` and ``materialize`` raise ``RuntimeError`` if it changed,
+    and matrix products raise only if the number of stored entries changed,
+    as ``eliminate_zeros`` does after zeroing values. Input arrays are not made
     read-only. Changing stored count values or replacing the matrix object
     leaves the transform unchanged, and an operator retained by
     ``pca(return_operator=True)`` owns copies of its arrays.

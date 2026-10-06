@@ -138,9 +138,13 @@ transform.
   values after fitting leaves the transform unchanged.
 - Borrowed support must not be modified in place while the transform is alive,
   for example by `sort_indices`, `sum_duplicates`, `eliminate_zeros`, `prune`,
-  or direct writes. The package does not detect such a change, which silently
-  alters or invalidates transformed values. Input arrays keep their
-  writability; the package does not freeze them.
+  or direct writes. A shared transform records a CRC-32 checksum of its
+  indices and indptr at fitting. `pca` and `materialize` recompute it and raise
+  `RuntimeError` on a mismatch. Matrix products compare only the stored-entry
+  count, which catches removed entries without reading the support, so a
+  direct write that keeps the count is detected at the next `pca` or
+  `materialize`, not by products. Input arrays keep their writability; the
+  package does not freeze them.
 - Sharing is a permission, not a guarantee. Inputs that are copied or converted
   during canonicalization lend only private arrays. Borrowed support keeps the
   input's index width, including int64 on a matrix that int32 could index;

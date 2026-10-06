@@ -141,10 +141,11 @@ indices and row pointers, so it uses more memory than the equivalent one-step
 function, which reuses them unless it returns its operator. For large matrices,
 `transform(..., share_structure=True)` lets the fitted object reuse them too.
 In return, do not modify the count matrix's sparsity structure while the
-fitted object is in use. Calls such as `sort_indices()`, `sum_duplicates()`,
-or `eliminate_zeros()` on it would silently change the transformed values.
-Changing stored count values or replacing the matrix, for example by assigning
-a new `adata.X`, is safe. Returned operators are always isolated.
+fitted object is in use, for example with `eliminate_zeros()` after zeroing
+some values. If it changes, `pca` and `materialize` raise an error asking you
+to fit the transform again. Changing stored count values or replacing the
+matrix, for example by assigning a new `adata.X`, is safe. Returned operators
+are always isolated.
 
 ## Complete example
 

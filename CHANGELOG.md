@@ -9,9 +9,10 @@ All notable user-facing changes are recorded here.
 - Add `share_structure=False` to `transform`. With `share_structure=True`, the
   fitted transform may reuse the count matrix's CSR indices and row pointers
   instead of copying them; the caller must then not modify that sparsity
-  structure in place (for example with `sort_indices()` or `eliminate_zeros()`)
-  while the transform is in use. Transformed values, fitted factors, and
-  operators returned by `pca` remain independent copies.
+  structure in place (for example with `eliminate_zeros()`) while the
+  transform is in use. `pca` and `materialize` raise an error if that structure
+  changed. Transformed values, fitted factors, and operators returned by `pca`
+  remain independent copies.
 
 ### Performance
 
