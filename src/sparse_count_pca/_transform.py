@@ -43,6 +43,7 @@ from ._residuals import (
     _validate_model,
     build_residual_representation,
 )
+from ._sparse import _support_checksum
 from ._svd import Solver
 
 
@@ -64,6 +65,7 @@ class Transform(ABC):
         var: Any | None,
         columns: BoolArray | None,
         dtype: DTypeLike,
+        share_structure: bool,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         """Build a representation and its reproducibility metadata.
 
@@ -71,6 +73,7 @@ class Transform(ABC):
         ``columns`` is either ``None`` for all variables or the PCA-only
         variable mask; builders must fit normalization state before applying
         that mask. ``dtype`` is the validated floating-point calculation dtype.
+        ``share_structure`` permits borrowing count support where compatible.
         """
 
 
@@ -182,6 +185,7 @@ class Residual(Transform):
         var: Any | None,
         columns: BoolArray | None,
         dtype: DTypeLike,
+        share_structure: bool,
     ) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
         validate_clip(self.clip, self.clip_mode, self.clip_max_nnz_ratio)
         clip_threshold = resolve_clip(self.clip, counts.shape[0])
@@ -231,6 +235,7 @@ class Residual(Transform):
             clip_mode=self.clip_mode,
             clip_max_nnz_ratio=self.clip_max_nnz_ratio,
             dtype=dtype,
+            share_structure=share_structure,
         )
         return (
             representation,
@@ -272,10 +277,13 @@ class ShiftedCLR(Transform):
 
     count_shift: float
 
-    def _build(self, counts, *, obs, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype, share_structure):
         count_shift = validate_positive_scalar(self.count_shift, name="count_shift")
         representation = build_shifted_clr_representation(
-            counts, count_shift=count_shift
+            counts,
+            count_shift=count_shift,
+            dtype=dtype,
+            share_structure=share_structure,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -313,12 +321,15 @@ class ProportionShiftedCLR(Transform):
 
     composition_shift: float
 
-    def _build(self, counts, *, obs, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype, share_structure):
         composition_shift = validate_positive_scalar(
             self.composition_shift, name="composition_shift"
         )
         representation = build_proportion_shifted_clr_representation(
-            counts, composition_shift=composition_shift
+            counts,
+            composition_shift=composition_shift,
+            dtype=dtype,
+            share_structure=share_structure,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -378,7 +389,7 @@ class Log1pNormalized(Transform):
     target_sum: float | None = None
     size_factors: ArrayLike | str | None = None
 
-    def _build(self, counts, *, obs, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype, share_structure):
         if self.target_sum is not None and self.size_factors is not None:
             raise ValueError("target_sum and size_factors are mutually exclusive")
         requested_target_sum = None
@@ -422,6 +433,8 @@ class Log1pNormalized(Transform):
         representation = build_log1p_norm_representation(
             counts,
             size_factors=size_factors,
+            dtype=dtype,
+            share_structure=share_structure,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -465,7 +478,7 @@ class DirichletLog(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, obs, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype, share_structure):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -476,6 +489,8 @@ class DirichletLog(Transform):
             counts,
             concentration=concentration,
             prior_proportions=proportions,
+            dtype=dtype,
+            share_structure=share_structure,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -519,7 +534,7 @@ class DirichletCLR(Transform):
     concentration: float = 1.0
     prior_proportions: PriorProportions | str = None
 
-    def _build(self, counts, *, obs, var, columns, dtype):
+    def _build(self, counts, *, obs, var, columns, dtype, share_structure):
         prior_input = _resolve_vector_parameter(
             self.prior_proportions, var=var, name="prior_proportions"
         )
@@ -530,6 +545,8 @@ class DirichletCLR(Transform):
             counts,
             concentration=concentration,
             prior_proportions=proportions,
+            dtype=dtype,
+            share_structure=share_structure,
         )
         if columns is not None:
             representation = representation.select_columns(columns)
@@ -585,10 +602,12 @@ def _normalize_selector(
 class TransformedMatrix(LinearOperator):
     """Uncentered implicit transformed matrix with inspection and PCA methods.
 
-    Instances are returned by ``transform``. The fitted representation owns
-    its sparse support and remains isolated from later mutation of caller-owned
-    input. It exists only in the current Python process and is not serialized
-    with AnnData.
+    Instances are returned by ``transform``. By default, the fitted
+    representation owns its sparse support and remains isolated from later
+    mutation of caller-owned input. With ``share_structure=True``, it may borrow
+    the input's CSR indices and row pointers, which must not be modified in
+    place while this object is alive; see ``transform``. It exists only in the
+    current Python process and is not serialized with AnnData.
 
     Attributes:
         shape: Transformed matrix shape ``(n_obs, n_vars)``.
@@ -615,23 +634,11 @@ class TransformedMatrix(LinearOperator):
         transform_label: str,
         params: dict[str, Any],
         check_values: bool,
-        dtype: DTypeLike,
         obs_names: Any | None = None,
         var_names: Any | None = None,
         var: Any | None = None,
-        isolate_returned_operator: bool = True,
+        check_support: bool = False,
     ) -> None:
-        operator_dtype = _normalize_operator_dtype(dtype)
-        if (
-            representation.sparse.dtype != operator_dtype
-            or representation.left.dtype != operator_dtype
-            or representation.right.dtype != operator_dtype
-        ):
-            representation = SparseLowRankMatrix(
-                representation.sparse.astype(operator_dtype, copy=False),
-                representation.left.astype(operator_dtype, copy=False),
-                representation.right.astype(operator_dtype, copy=False),
-            )
         self._representation = representation
         self._sparse = representation.sparse
         self._left = representation.left
@@ -642,13 +649,34 @@ class TransformedMatrix(LinearOperator):
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
         self._var = var.copy() if var is not None else None
-        # Public two-step transforms remain live after ``pca`` and therefore
-        # isolate a mutable returned operator. One-step wrappers mark their
-        # temporary transform transferable so the operator can take ownership.
-        self._isolate_returned_operator = isolate_returned_operator
-        super().__init__(dtype=operator_dtype, shape=representation.shape)
+        self._support_nnz = self._sparse.nnz
+        self._support_checksum = (
+            _support_checksum(self._sparse) if check_support else None
+        )
+        super().__init__(dtype=representation.sparse.dtype, shape=representation.shape)
+
+    def _check_support(self, *, full: bool) -> None:
+        """Raise if support borrowed from the counts changed after fitting.
+
+        The stored-entry count is checked on every call; ``full`` also compares
+        the checksum of indices and indptr, which reads all of them.
+
+        Raises:
+            RuntimeError: If shared support changed in place.
+        """
+        if self._support_checksum is None:
+            return
+        if int(self._sparse.indptr[-1]) != self._support_nnz or (
+            full and _support_checksum(self._sparse) != self._support_checksum
+        ):
+            raise RuntimeError(
+                "The count matrix's sparsity structure changed after this "
+                "transform was fitted with share_structure=True; fit the "
+                "transform again."
+            )
 
     def _matvec(self, vector: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         vector = np.asarray(vector, dtype=self.dtype)
         values = self._sparse @ vector
         if self._right.shape[1]:
@@ -656,6 +684,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatvec(self, vector: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         vector = np.asarray(vector, dtype=self.dtype)
         values = self._sparse.T @ vector
         if self._right.shape[1]:
@@ -663,6 +692,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _matmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         matrix = np.asarray(matrix, dtype=self.dtype)
         values = self._sparse @ matrix
         if self._right.shape[1]:
@@ -670,6 +700,7 @@ class TransformedMatrix(LinearOperator):
         return np.asarray(values, dtype=self.dtype)
 
     def _rmatmat(self, matrix: NDArray[Any]) -> NDArray[Any]:
+        self._check_support(full=False)
         matrix = np.asarray(matrix, dtype=self.dtype)
         values = self._sparse.T @ matrix
         if self._right.shape[1]:
@@ -712,6 +743,8 @@ class TransformedMatrix(LinearOperator):
                 has an unsupported type or dtype.
             ValueError: If ``block_size`` or the shape or writability of ``out``
                 is invalid.
+            RuntimeError: If support shared with ``share_structure=True``
+                changed after fitting.
 
         Examples:
             A small AnnData input provides names as well as positions:
@@ -764,6 +797,7 @@ class TransformedMatrix(LinearOperator):
         """
         if not isinstance(block_size, int) or block_size <= 0:
             raise ValueError("block_size must be a positive integer")
+        self._check_support(full=True)
         rows = _normalize_selector(
             obs, self.shape[0], names=self.obs_names, axis_name="observation"
         )
@@ -848,10 +882,13 @@ class TransformedMatrix(LinearOperator):
             TypeError: If AnnData-only mask features are used for matrix input.
             ValueError: If the mask, dimensions, or centered variance are
                 invalid.
+            RuntimeError: If support shared with ``share_structure=True``
+                changed after fitting.
 
         Examples:
             >>> result = transformed.pca(n_comps=20, mask_var=my_gene_mask)
         """
+        self._check_support(full=True)
         params = dict(self.params)
         if self._var is None:
             if use_highly_variable is not None:
@@ -896,71 +933,96 @@ class TransformedMatrix(LinearOperator):
             random_state=random_state,
             tol=tol,
             return_operator=return_operator,
-            copy_operator=return_operator and self._isolate_returned_operator,
+            copy_operator=return_operator,
         )
 
 
-def _transform(
-    data: CountMatrix | AnnData,
+def _prepare_transform(
+    X: CountMatrix,
     method: Transform,
     *,
-    layer: str | None = None,
-    check_values: bool = True,
-    dtype: DTypeLike = "float64",
-    _columns: BoolArray | None = None,
-    _isolate_returned_operator: bool = True,
-    _obs: Any | None = None,
-) -> TransformedMatrix:
-    """Build a public transform, optionally restricted for a PCA wrapper."""
-    if not isinstance(method, Transform):
-        raise TypeError("method must be a Transform instance")
+    check_values: bool,
+    dtype: DTypeLike,
+    share_structure: bool,
+    columns: BoolArray | None = None,
+    obs: Any | None = None,
+    var: Any | None = None,
+) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
+    """Validate counts and fit a requested-dtype representation and metadata.
+
+    Builders fit normalization over all variables before applying ``columns``.
+    An all-selected mask leaves support available for borrowing.
+    """
     operator_dtype = _normalize_operator_dtype(dtype)
-    if isinstance(data, AnnData):
-        X = _get_count_matrix(data, layer=layer)
-        obs = data.obs
-        var = data.var
-        obs_names = data.obs_names
-        var_names = data.var_names
-    else:
-        if layer is not None:
-            raise TypeError("layer is only valid for AnnData input")
-        X = data
-        obs = _obs
-        var = None
-        obs_names = None
-        var_names = None
     counts = _canonicalize_counts(X, check_values=check_values)
-    if _columns is not None:
+    if columns is not None:
         from ._counts import _validate_boolean_mask
 
-        _columns = _validate_boolean_mask(_columns, counts.shape[1], name="columns")
-        if not _columns.any():
+        columns = _validate_boolean_mask(columns, counts.shape[1], name="columns")
+        if not columns.any():
             raise ValueError("columns selected zero genes")
-        if _columns.all():
-            _columns = None
+        if columns.all():
+            columns = None
     representation, label, params = method._build(
         counts,
         obs=obs,
         var=var,
-        columns=_columns,
+        columns=columns,
         dtype=operator_dtype,
+        share_structure=share_structure,
     )
     # Empty variables are never dropped: every transform gives them a defined
     # value, so the fitted matrix always keeps the caller's variable universe.
     params = {**params, "n_empty_vars": int(_empty_columns(counts).sum())}
-    if _columns is not None and var_names is not None:
-        var_names = var_names[_columns]
-        var = var.iloc[np.flatnonzero(_columns)]
-    return TransformedMatrix(
+    if (
+        representation.sparse.dtype != operator_dtype
+        or representation.left.dtype != operator_dtype
+        or representation.right.dtype != operator_dtype
+    ):
+        representation = SparseLowRankMatrix(
+            representation.sparse.astype(operator_dtype, copy=False),
+            representation.left.astype(operator_dtype, copy=False),
+            representation.right.astype(operator_dtype, copy=False),
+        )
+    return representation, label, params
+
+
+def _compute_transform_pca(
+    X: CountMatrix,
+    method: Transform,
+    n_comps: int,
+    *,
+    columns: BoolArray | None,
+    check_values: bool,
+    dtype: DTypeLike,
+    solver: Solver,
+    random_state: int | None,
+    tol: float,
+    return_operator: bool,
+    obs: Any | None = None,
+) -> PCAResult:
+    """Fit and decompose a private representation without a reusable transform."""
+    representation, label, params = _prepare_transform(
+        X,
+        method,
+        columns=columns,
+        obs=obs,
+        check_values=check_values,
+        dtype=dtype,
+        share_structure=not return_operator,
+    )
+    return compute_pca_from_representation(
         representation,
+        n_comps,
         transform_label=label,
         params=params,
         check_values=check_values,
-        dtype=operator_dtype,
-        obs_names=obs_names,
-        var_names=var_names,
-        var=var,
-        isolate_returned_operator=_isolate_returned_operator,
+        dtype=representation.sparse.dtype,
+        solver=solver,
+        random_state=random_state,
+        tol=tol,
+        return_operator=return_operator,
+        copy_operator=False,
     )
 
 
@@ -971,12 +1033,25 @@ def transform(
     layer: str | None = None,
     check_values: bool = True,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> TransformedMatrix:
     """Fit a count transform and return its implicit uncentered matrix.
 
     The result is an in-process object: it is not stored by ``write_h5ad`` and
     must be reconstructed after restarting Python. Correspondence analysis is
     intentionally not a transform method because its mask defines table margins.
+
+    With ``share_structure=True``, the transform may keep references to the
+    input's CSR indices and row pointers. While the transform is alive, do not
+    modify those arrays in place, for example with ``sort_indices``,
+    ``sum_duplicates``, ``eliminate_zeros``, or ``prune``, or by writing into
+    ``indices`` or ``indptr``. The transform records a checksum of borrowed
+    support: ``pca`` and ``materialize`` raise ``RuntimeError`` if it changed,
+    and matrix products raise only if the number of stored entries changed,
+    as ``eliminate_zeros`` does after zeroing values. Input arrays are not made
+    read-only. Changing stored count values or replacing the matrix object
+    leaves the transform unchanged, and an operator retained by
+    ``pca(return_operator=True)`` owns copies of its arrays.
 
     Args:
         data: Dense, SciPy sparse, or backed sparse count matrix, or an AnnData
@@ -989,14 +1064,24 @@ def transform(
             Normalization factors and numerically sensitive intermediates are evaluated
             in float64; stored sparse corrections, low-rank factors, and operator arrays
             use ``dtype``.
+        share_structure: Permit borrowing the input's CSR indices and row
+            pointers instead of copying them, which saves one index-sized copy
+            of the support. Defaults to ``False``, so the transform owns its
+            support. Sharing is a permission, not a guarantee: inputs that
+            need canonicalization or conversion to CSR, int32 indices on a
+            matrix large enough to need int64, and residuals that remove
+            computed zeros or add clipping corrections use owned arrays and
+            emit ``UserWarning``. Transformed values and fitted factors are
+            always separate from the counts.
 
     Returns:
         An uncentered implicit transformed matrix that supports matrix products,
         bounded materialization, and repeated PCA.
 
     Raises:
-        TypeError: If ``method`` is not a transform specification or AnnData-only
-            parameters are used with matrix input.
+        TypeError: If ``method`` is not a transform specification, AnnData-only
+            parameters are used with matrix input, or ``share_structure`` is
+            not a boolean.
         ValueError: If counts, transform parameters, or dtype are invalid.
         KeyError: If a requested AnnData layer or variable parameter is absent.
         RuntimeError: If exact symmetric residual clipping would meet or exceed
@@ -1011,10 +1096,59 @@ def transform(
         >>> transformed.shape
         (adata.n_obs, adata.n_vars)
     """
-    return _transform(
-        data,
+    if not isinstance(method, Transform):
+        raise TypeError("method must be a Transform instance")
+    if not isinstance(share_structure, (bool, np.bool_)):
+        raise TypeError("share_structure must be a boolean")
+    if isinstance(data, AnnData):
+        X = _get_count_matrix(data, layer=layer)
+        obs = data.obs
+        var = data.var
+        obs_names = data.obs_names
+        var_names = data.var_names
+    else:
+        if layer is not None:
+            raise TypeError("layer is only valid for AnnData input")
+        X = data
+        obs = var = obs_names = var_names = None
+    representation, label, params = _prepare_transform(
+        X,
         method,
-        layer=layer,
+        obs=obs,
+        var=var,
         check_values=check_values,
         dtype=dtype,
+        share_structure=share_structure,
+    )
+    # Sharing is permission, not a guarantee: canonicalization, index widening,
+    # or residual support changes can allocate separate indices and row pointers.
+    # Input-mutation checks are needed only if the fitted support may still
+    # overlap the caller's arrays; independent copies make this check false.
+    check_support = (
+        share_structure
+        and sparse.issparse(X)
+        and X.format == "csr"
+        and any(
+            np.may_share_memory(getattr(representation.sparse, name), getattr(X, name))
+            for name in ("indices", "indptr")
+        )
+    )
+    if share_structure and not check_support:
+        warnings.warn(
+            "share_structure=True had no effect: this transform owns a copy of "
+            "the count matrix's sparsity structure, usually because the input "
+            "was not canonical CSR or symmetric residual clipping added "
+            "entries. See the share_structure argument of transform().",
+            UserWarning,
+            stacklevel=2,
+        )
+    return TransformedMatrix(
+        representation,
+        transform_label=label,
+        params=params,
+        check_values=check_values,
+        obs_names=obs_names,
+        var_names=var_names,
+        var=var,
+        check_support=check_support,
     )

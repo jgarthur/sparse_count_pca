@@ -422,6 +422,58 @@ def test_blocked_residual_build_matches_single_block_and_dense_oracle(
     )
 
 
+@pytest.mark.parametrize("model", ["poisson", "binomial", "scaled_nb"])
+@pytest.mark.parametrize("residual", ["pearson", "deviance"])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.parametrize("index_dtype", [np.int32, np.int64])
+@pytest.mark.parametrize("clip", [None, 0.5])
+def test_residual_builders_own_compact_support(
+    counts, model, residual, dtype, index_dtype, clip
+):
+    """Residual outputs own compact support and preserve read-only input arrays."""
+    counts.indices = counts.indices.astype(index_dtype)
+    counts.indptr = counts.indptr.astype(index_dtype)
+    originals = [
+        values.copy() for values in (counts.data, counts.indices, counts.indptr)
+    ]
+    n = np.asarray(counts.sum(axis=1, dtype=np.float64)).ravel()
+    totals = np.asarray(counts.sum(axis=0, dtype=np.float64)).ravel()
+    p = totals / totals.sum()
+    alpha = np.array([0.0, 0.1, 0.3, 1.0]) if model == "scaled_nb" else None
+    expected = _materialize_dense_residual(
+        counts, model=model, residual=residual, alpha=alpha, clip=clip
+    )
+    for values in (counts.data, counts.indices, counts.indptr):
+        values.flags.writeable = False
+
+    actual = residuals_module.build_residual_representation(
+        counts,
+        n,
+        p,
+        model=model,
+        residual=residual,
+        alpha=alpha,
+        clip=clip,
+        clip_mode="symmetric",
+        clip_max_nnz_ratio=None,
+        dtype=dtype,
+    )
+
+    assert actual.sparse.dtype == np.dtype(dtype)
+    assert actual.sparse.indices.dtype == np.dtype(np.int32)
+    assert actual.sparse.indptr.dtype == np.dtype(np.int32)
+    for name, original in zip(("data", "indices", "indptr"), originals, strict=True):
+        assert not np.shares_memory(getattr(actual.sparse, name), getattr(counts, name))
+        np.testing.assert_array_equal(getattr(counts, name), original)
+    tolerance = 2e-6 if dtype == "float32" else 1e-10
+    np.testing.assert_allclose(
+        actual.sparse.toarray() + actual.left @ actual.right.T,
+        expected,
+        rtol=0.0,
+        atol=tolerance,
+    )
+
+
 @pytest.mark.parametrize(("dtype", "rtol"), [("float64", 1e-12), ("float32", 1e-7)])
 def test_clipped_total_variance_matches_stored_operator(counts, dtype, rtol):
     """Clipped total variance matches the stored implicit operator."""

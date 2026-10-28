@@ -24,8 +24,8 @@ from ._svd import Solver
 from ._transform import (
     DirichletCLR,
     DirichletLog,
+    _compute_transform_pca,
 )
-from ._transform import _transform as transform_counts
 
 DirichletTransform = Literal["dirichlet_log", "dirichlet_clr"]
 
@@ -57,16 +57,13 @@ def _compute_dirichlet_pca(
         )
     else:
         raise ValueError(f"Unsupported Dirichlet transform: {transform!r}")
-    transformed = transform_counts(
+    return _compute_transform_pca(
         X,
         method,
+        n_comps,
         check_values=check_values,
         dtype=dtype,
-        _columns=mask,
-        _isolate_returned_operator=False,
-    )
-    return transformed.pca(
-        n_comps,
+        columns=mask,
         solver=solver,
         random_state=random_state,
         tol=tol,

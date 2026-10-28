@@ -1,6 +1,7 @@
 """Tests for sparse-plus-low-rank matrix and operator behavior."""
 
 import math
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -141,6 +142,48 @@ def test_duplicate_sparse_entries_are_rejected():
 
     with pytest.raises(AssertionError, match="canonical CSR"):
         SparseLowRankLinearOperator(representation)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_operator_owned_copy_avoids_full_int64_index_temporary(dtype):
+    """Owning compact support avoids a full int64 copy before index narrowing."""
+    n_rows, n_cols = 20_000, 100
+    nnz = n_rows * n_cols
+    matrix = sparse.csr_matrix(
+        sparse.csr_array(
+            (
+                np.ones(nnz, dtype=dtype),
+                np.tile(np.arange(n_cols, dtype=np.int64), n_rows),
+                np.arange(0, nnz + 1, n_cols, dtype=np.int64),
+            ),
+            shape=(n_rows, n_cols),
+        ),
+        copy=False,
+    )
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((n_rows, 0)), np.empty((n_cols, 0))
+    )
+    tracemalloc.start()
+    try:
+        operator = SparseLowRankLinearOperator(
+            representation, center=False, dtype=dtype, copy=True
+        )
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    stored_bytes = sum(
+        getattr(operator.S, name).nbytes for name in ("data", "indices", "indptr")
+    )
+    assert peak < stored_bytes + matrix.indices.nbytes // 2
+    assert matrix.indices.dtype == np.dtype(np.int64)
+    assert matrix.indptr.dtype == np.dtype(np.int64)
+    for name in ("data", "indices", "indptr"):
+        assert not np.shares_memory(getattr(operator.S, name), getattr(matrix, name))
+    assert operator.S.indices.dtype == np.dtype(np.int32)
+    assert operator.S.indptr.dtype == np.dtype(np.int32)
+    np.testing.assert_array_equal(operator.S.data, matrix.data)
+    assert operator.frobenius_squared_uncentered() == nnz
 
 
 def test_representation_selection_and_scaling():
@@ -357,6 +400,225 @@ def test_statistics_agree_across_row_block_sizes(monkeypatch, dtype):
         uncentered=single.frobenius_squared_uncentered(),
         centered=single.frobenius_squared_centered(),
         tolerance=_STATS_RTOL[dtype],
+    )
+
+
+@pytest.mark.parametrize("rank", [1, 3])
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_batched_statistics_match_dense_across_boundaries(
+    monkeypatch, rank, center, dtype
+):
+    """Column batches and CSR blocks preserve mixed-support statistics and products."""
+    rng = np.random.default_rng(207)
+    n_obs, n_vars = 32, 19
+    stored = np.zeros((n_obs, n_vars), dtype=dtype)
+    for column in range(1, n_vars):
+        support = (2, 16, 24, 32)[column % 4]
+        rows = rng.choice(n_obs, support, replace=False)
+        stored[rows, column] = rng.uniform(0.5, 4.0, size=support)
+    left = rng.normal(size=(n_obs, rank)).astype(dtype)
+    right = rng.normal(size=(n_vars, rank)).astype(dtype)
+    right[0] = 0.0
+    representation = SparseLowRankMatrix(sparse.csr_matrix(stored), left, right)
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 17)
+    _set_stats_block_nnz(monkeypatch, 48)
+
+    operator = SparseLowRankLinearOperator(representation, center=center, dtype=dtype)
+    represented = stored + left @ right.T
+    tolerance = _STATS_RTOL[dtype]
+    if center:
+        expected_mean = represented.mean(axis=0, dtype=np.float64).astype(dtype)
+        np.testing.assert_allclose(
+            operator.mean, expected_mean, rtol=tolerance, atol=tolerance
+        )
+        expected = represented - expected_mean
+    else:
+        assert operator.mean is None
+        expected = represented
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        np.sum(represented.astype(np.float64) ** 2), rel=tolerance
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        np.sum(expected.astype(np.float64) ** 2), rel=tolerance
+    )
+    z = rng.normal(size=n_vars).astype(dtype)
+    y = rng.normal(size=n_obs).astype(dtype)
+    np.testing.assert_allclose(
+        operator @ z, expected @ z, rtol=tolerance, atol=tolerance
+    )
+    np.testing.assert_allclose(
+        operator.T @ y, expected.T @ y, rtol=tolerance, atol=tolerance
+    )
+
+
+@pytest.mark.parametrize("target_nnz", [2, 1_000_000])
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_rank_zero_statistics_use_direct_csr(monkeypatch, target_nnz, center, dtype):
+    """CSR statistics include implicit zeros without dense grouping or input edits."""
+    matrix = abs(_statistics_fixture().sparse).astype(dtype)
+    matrix.data[0] = 0.0
+    represented = matrix.toarray()
+    matrix.data.flags.writeable = False
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
+    )
+    _set_stats_block_nnz(monkeypatch, target_nnz)
+
+    def reject_csc(*args, **kwargs):
+        """Reject dense grouping on the nonnegative rank-zero path."""
+        raise AssertionError("rank-zero statistics must stay in CSR")
+
+    monkeypatch.setattr(SparseLowRankLinearOperator, "_csc_row_block", reject_csc)
+    operator = SparseLowRankLinearOperator(
+        representation, center=center, dtype=dtype, copy=False
+    )
+    if center:
+        expected_mean = represented.mean(axis=0, dtype=np.float64).astype(dtype)
+        np.testing.assert_array_equal(operator.mean, expected_mean)
+        deviations = represented - expected_mean
+    else:
+        assert operator.mean is None
+        deviations = represented
+    assert operator.frobenius_squared_uncentered() == pytest.approx(
+        np.sum(represented.astype(np.float64) ** 2), rel=1e-12
+    )
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        np.sum(deviations.astype(np.float64) ** 2), rel=1e-12
+    )
+    np.testing.assert_array_equal(matrix.toarray(), represented)
+    np.testing.assert_allclose(
+        operator @ np.eye(matrix.shape[1], dtype=dtype),
+        deviations,
+        rtol=_STATS_RTOL[dtype],
+        atol=_STATS_RTOL[dtype],
+    )
+
+
+@pytest.mark.parametrize(
+    ("center", "expected_targets"), [(False, [13]), (True, [11, 13])]
+)
+def test_rank_zero_statistics_sweep_only_needed_blocks(
+    monkeypatch, center, expected_targets
+):
+    """Rank-zero operators make a mean sweep only when centering."""
+    support_row_blocks = operator_module._support_row_blocks
+    targets = []
+
+    def record_target(matrix, target_nnz):
+        """Record each statistics sweep's row-block target."""
+        targets.append(target_nnz)
+        return support_row_blocks(matrix, target_nnz)
+
+    monkeypatch.setattr(operator_module, "_support_row_blocks", record_target)
+    monkeypatch.setattr(operator_module, "_STATS_MEAN_BLOCK_NNZ", 11)
+    monkeypatch.setattr(operator_module, "_STATS_NORM_BLOCK_NNZ", 13)
+    matrix = abs(_statistics_fixture().sparse)
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
+    )
+
+    SparseLowRankLinearOperator(representation, center=center)
+
+    assert targets == expected_targets
+
+
+@pytest.mark.parametrize("target_values", [5, 40])
+def test_represented_column_batches_bound_dense_storage(monkeypatch, target_values):
+    """Dense batches stay bounded except for an indivisible row-block column."""
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", target_values)
+    representation = _statistics_fixture()
+    operator = SparseLowRankLinearOperator(representation)
+    columns = np.array([0, 2, 3, 4], dtype=np.intp)
+    represented = operator.S.toarray() + operator.left @ operator.right.T
+    covered = 0
+
+    for start, selected, values in operator._represented_column_batches(
+        0, operator.shape[0], 0, operator.S.nnz, columns
+    ):
+        assert start == covered
+        np.testing.assert_array_equal(selected, columns[start : start + selected.size])
+        assert values.size <= max(target_values, operator.shape[0])
+        assert values.flags.c_contiguous
+        np.testing.assert_allclose(values, represented[:, selected].T, rtol=1e-12)
+        covered += selected.size
+    assert covered == columns.size
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("nearly_constant", [False, True])
+def test_rank_zero_dense_column_variance_near_zero(monkeypatch, dtype, nearly_constant):
+    """Constant and almost constant dense columns retain directly computed variance."""
+    values = np.ones(32, dtype=dtype)
+    if nearly_constant:
+        values += np.arange(values.size, dtype=dtype) * (64 * np.finfo(dtype).eps)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix(values[:, None]),
+        np.empty((values.size, 0)),
+        np.empty((1, 0)),
+    )
+    _set_stats_block_nnz(monkeypatch, 7)
+    operator = SparseLowRankLinearOperator(representation, dtype=dtype)
+    mean = np.asarray(math.fsum(values) / values.size, dtype=dtype)
+    deviations = (values - mean).astype(np.float64)
+
+    _assert_statistics_close(
+        operator,
+        mean=np.array([mean]),
+        uncentered=math.fsum(values.astype(np.float64) ** 2),
+        centered=math.fsum(deviations**2),
+        tolerance=_STATS_RTOL[dtype],
+    )
+    assert operator.centered_variance_is_numerically_zero() == (not nearly_constant)
+
+
+@pytest.mark.parametrize("rank", [0, 1])
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_dense_means_preserve_signed_sum(monkeypatch, rank, dtype):
+    """Dense column means retain small terms amid large signed cancellation."""
+    values = np.array([2**60, 1.0, -(2**60)], dtype=dtype)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix(np.tile(values[:, None], (1, 4))),
+        np.zeros((3, rank)),
+        np.ones((4, rank)),
+    )
+    monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 6)
+    operator = SparseLowRankLinearOperator(representation, dtype=dtype)
+
+    np.testing.assert_array_equal(operator.mean, np.full(4, 1 / 3, dtype=dtype))
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_rank_zero_zero_matrix_statistics(monkeypatch, dtype):
+    """An empty sparse matrix has zero means, norms, and numerical variance."""
+    _set_stats_block_nnz(monkeypatch, 1)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix((7, 5)), np.empty((7, 0)), np.empty((5, 0))
+    )
+    operator = SparseLowRankLinearOperator(representation, dtype=dtype)
+
+    np.testing.assert_array_equal(operator.mean, np.zeros(5, dtype=dtype))
+    assert operator.frobenius_squared_uncentered() == 0.0
+    assert operator.frobenius_squared_centered() == 0.0
+    assert operator.centered_variance_is_numerically_zero()
+
+
+def test_rank_zero_centering_subtracts_in_float32(monkeypatch):
+    """Centered norms square float32-rounded deviations rather than promoted ones."""
+    values = np.array([1.23, 4.56, 7.89, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    _set_stats_block_nnz(monkeypatch, 2)
+    representation = SparseLowRankMatrix(
+        sparse.csr_matrix(values[:, None]), np.empty((7, 0)), np.empty((1, 0))
+    )
+    operator = SparseLowRankLinearOperator(representation, dtype="float32")
+    mean = np.float32(math.fsum(values) / values.size)
+    expected = math.fsum((values - mean).astype(np.float64) ** 2)
+    promoted = math.fsum((values.astype(np.float64) - float(mean)) ** 2)
+
+    assert expected != pytest.approx(promoted, rel=1e-12, abs=0.0)
+    assert operator.frobenius_squared_centered() == pytest.approx(
+        expected, rel=1e-12, abs=0.0
     )
 
 

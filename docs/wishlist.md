@@ -5,6 +5,26 @@ committed API. When work is completed, remove it from this file and record the
 outcome in the appropriate specification, design, architecture, or provenance
 documentation; do not leave completed work described as a wish.
 
+## Before the 1.0.0 release
+
+### Final benchmarks and the claims that cite them
+
+Run the final Scanpy comparison on the Mac and on a remote machine, possibly
+with a larger dataset there. Use the results to quantify the README's
+efficiency claim and to give the 1.0.0 changelog's performance entries
+identifiable evidence: the dataset, scale, revision, and whether each figure is
+a benchmark or a real-data measurement.
+
+### Citation
+
+- Add a `CITATION.cff` at the repository root so GitHub offers "Cite this
+  repository".
+- Enable Zenodo's GitHub integration before publishing the `v1.0.0` GitHub
+  Release, so the release receives a DOI.
+- Add a short citation section to the README and the documentation home page
+  that points to it and asks users to also cite the methods they use, as
+  listed in the transform catalog.
+
 ## After 1.0
 
 ### Block-wise inverse reconstruction to count space
@@ -176,17 +196,13 @@ None of these change public behavior:
 
 - Explore a fully lazy residual operator that reads the caller's canonical CSR
   counts and computes normalized values during matrix products, avoiding a
-  second matrix with duplicated support. This requires an explicit
-  borrowed-input mutation contract; exact symmetric clipping may need an eager
-  fallback or a hybrid correction matrix because it can add support at
-  zero-count entries.
+  second matrix with duplicated support. This requires extending the
+  `share_structure` contract from support to count values; exact symmetric
+  clipping may need an eager fallback or a hybrid correction matrix because it
+  can add support at zero-count entries.
 - For heavily masked log and Dirichlet PCA, make a two-pass builder that computes
   normalization statistics over all genes but allocates sparse transformed
   values and support only for PCA-selected genes.
-- Track CSR ownership explicitly so a transient one-step analysis that does not
-  return an operator can borrow canonical input support during synchronous PCA.
-  A persistent `TransformedMatrix` or returned operator must still own one
-  support snapshot so later caller mutation cannot change its behavior.
 - Normalize explicit selectors that equal the full ordered axis to the same
   fast path as `obs=None` or `var=None` during materialization.
 - Revisit the full `adata.var` snapshot retained by `TransformedMatrix`.

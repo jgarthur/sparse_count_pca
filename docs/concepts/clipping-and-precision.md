@@ -69,6 +69,15 @@ reachable under default arguments. How much support grows depends on the
 dataset. If a run raises on the guard, raise `clip_max_nnz_ratio`, switch to
 `clip_mode="upper"`, or set `clip=None`.
 
+Support growth costs more memory than the added entries alone. One-step analyses
+normally reuse the count matrix's index arrays, as does
+`transform(..., share_structure=True)`. If clipping adds even one entry, the
+sparse part needs new index arrays for all of its entries, so these fits use
+about as much memory as the default `transform`, and
+`transform(..., share_structure=True)` warns. Growth is likelier on small
+datasets, because the named thresholds rise with \(\sqrt{n_\mathrm{obs}}\).
+Pass `clip_max_nnz_ratio=1.0` to raise an error on any growth instead.
+
 ## Calculation dtype
 
 The default `dtype="float64"` controls the sparse correction, low-rank factors,
@@ -82,9 +91,10 @@ storage conversion. No other representation dtype is supported.
 Count margins and normalization factors are fitted in float64 regardless of
 `dtype`. Means, squared norms, and variance statistics are accumulated in
 float64 from the representation stored at the requested dtype. Residual
-values are evaluated in float64 blocks and written into that dtype, so
+and log values are evaluated in float64 blocks and written into that dtype, so
 choosing float32 reduces storage and operator precision while retaining
-float64 accumulation.
+float64 accumulation. CLR row means are fitted from float64 transformed values
+before storage casting.
 
 ## Degenerate inputs
 

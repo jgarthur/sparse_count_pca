@@ -116,6 +116,7 @@ transformed = scp.transform(
     layer=None,
     check_values=True,
     dtype="float64",
+    share_structure=False,
 )
 ```
 
@@ -125,9 +126,38 @@ AnnData input and are resolved when the transform is built. A fitted transform
 is tied to that input matrix; applying fitted state to another dataset is not a
 supported contract.
 
-Fitting allocates transformed sparse values and takes one owned snapshot of CSR
-support even when canonical input validation can borrow the original count
-matrix. This prevents later input mutation from changing the fitted transform.
+Fitting allocates transformed sparse values. By default it also takes one
+owned snapshot of CSR support, even when canonical input validation can borrow
+the original count matrix, so later input mutation cannot change the fitted
+transform.
+
+`share_structure=True` permits the fitted transform to borrow the input's CSR
+`indices` and `indptr` instead. Ownership then follows these rules:
+
+- Transformed values and fitted factors are always owned. Changing stored count
+  values after fitting leaves the transform unchanged.
+- Borrowed support must not be modified in place while the transform is alive,
+  for example by `sort_indices`, `sum_duplicates`, `eliminate_zeros`, `prune`,
+  or direct writes. A shared transform records a CRC-32 checksum of its
+  indices and indptr at fitting. `pca` and `materialize` recompute it and raise
+  `RuntimeError` on a mismatch. Matrix products compare only the stored-entry
+  count, which catches removed entries without reading the support, so a
+  direct write that keeps the count is detected at the next `pca` or
+  `materialize`, not by products. Input arrays keep their writability; the
+  package does not freeze them.
+- Sharing is a permission, not a guarantee. Inputs that are copied or converted
+  during canonicalization lend only private arrays. Borrowed support keeps the
+  input's index width, including int64 on a matrix that int32 could index;
+  int32 support on a matrix that requires int64 is copied at int64.
+  Every log, CLR, and Dirichlet transform preserves support and can borrow it.
+  Residuals can borrow it unless the build changes the support: symmetric
+  clipping that adds corrections at zero-count entries yields new support, and
+  a stored correction that is exactly zero in the storage dtype is removed from
+  an owned copy. Such zeros require extreme count values, for example
+  corrections that underflow when cast to float32.
+- When sharing was requested but the fitted transform borrows neither array,
+  `transform` emits `UserWarning` stating that it owns a copy.
+- The flag must be a Python or NumPy boolean; other values raise `TypeError`.
 
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
 represents the full uncentered transformed matrix. It is an in-process object,
@@ -173,9 +203,13 @@ API. Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
 selects columns only after the full transform has been defined. One transform
 may therefore be reused for several PCA masks or component counts.
 If `TransformedMatrix.pca(return_operator=True)` retains the mutable centered
-operator, its arrays are copied to isolate them from the still-live transform.
-The named one-step APIs instead transfer their private representation to a
-returned operator without that additional copy.
+operator, its arrays are copied to isolate them from the still-live transform
+and from any borrowed input support. The named one-step APIs, including
+correspondence analysis, build a representation nothing else holds. With
+`return_operator=False` that representation borrows compatible count support
+for the duration of the call. With `return_operator=True` it owns its support,
+and the returned operator takes over its arrays without another copy, so a
+retained operator never references caller-owned arrays.
 
 ## Log-transform semantics
 
@@ -654,6 +688,17 @@ precision rather than merely downcasting returned arrays.
 - Residual support values are evaluated in bounded `float64` blocks and written
   directly into `S.data` in the requested dtype; fitting must not construct a
   full-`nnz` float64 intermediate for each term.
+- Log support values are also evaluated in bounded float64 CSR row blocks and
+  written directly into the requested storage dtype. Row and vector-prior
+  divisors are gathered only within each block. CLR row means and fitted
+  low-rank factors use float64 pre-cast values, including when storage is
+  float32. Transformed matrices own CSR data separate from the counts, and own
+  indices and indptr unless `share_structure=True` lets them borrow compatible
+  support; no full-nnz float64 representation followed by a sparse dtype
+  conversion is required.
+- Count margins (cell totals and gene totals) are accumulated in `float64`
+  over bounded blocks, never in the input dtype, so float32 or integer counts
+  neither lose small contributions nor overflow an integer accumulator.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
@@ -662,6 +707,20 @@ precision rather than merely downcasting returned arrays.
   `total_variance` are returned as `float64`.
 
 `dtype` controls representation and operator output, not accumulation.
+
+Count-data validation runs its finite, nonnegative, integrality,
+explicit-zero, and exact-float64-conversion checks over fixed-size views of
+the stored data. Error precedence, the `1e-8` integrality tolerance, and
+canonicalization warnings and ownership rules are independent of the view
+boundaries. Gene totals reuse those fixed-size views; cell totals use blocks
+of complete CSR rows with the same stored-entry target, so one longer row can
+exceed it. Log construction processes blocks of complete CSR rows with a
+fixed stored-entry target $T$. A single longer row can exceed that target, so
+arithmetic scratch is $O(\max(T, \mathit{max\_row\_nnz}))$, in addition to
+final owned output storage and per-cell or per-gene fitted vectors.
+Construction checks ratio overflow in float64 before applying log1p or casting
+output storage. The default view and block sizes are listed under
+[bounded computation budgets](architecture.md#bounded-computation-budgets).
 
 Users who want float64 computation with more compact persisted scores or
 components may downcast those arrays after PCA. Such a post-computation cast
@@ -1796,12 +1855,55 @@ These are `frobenius_squared_uncentered()` and
 for the second calculation is the stored operator mean, including its dtype
 rounding.
 
-Do not calculate large sparse and low-rank component norms and then subtract
-them. For columns with more than half their entries stored, calculate means and
-squared deviations from the full represented column directly; this avoids
+For rank-zero representations, use bounded CSR reductions directly. When
+centering, one pass accumulates column sums and stored-entry counts, computes
+means in float64, and casts them to the operator dtype. A second pass sums
+stored squares in float64 and subtracts the stored mean in the operator dtype
+before squaring centered deviations in float64. Add
+`(n_obs - stored_count_j) * float64(mean_j)**2` for implicit zeros. Explicit
+stored zeros are included in the stored-entry count and deviation sweep.
+This avoids subtracting large moments even for constant or nearly constant
+fully supported columns. Uncentered rank-zero operators need only the norm
+pass. Dense-majority columns containing negative stored values use the
+batched direct `math.fsum` mean as a signed-sum backstop; nonnegative log1p
+statistics require no CSC conversion or dense reconstruction.
+
+For nonzero-rank representations, do not calculate large sparse and low-rank
+component norms and then subtract them. For columns with more than half their
+entries stored, calculate means and squared deviations from the full
+represented column directly; this avoids
 severe subtraction for dense and nearly dense support. For the remaining
 columns, use the support-replacement identities above and traverse sparse
 support in $O(\mathit{nnz})$ for fixed representation rank.
+
+Direct reconstruction groups each CSR row block by column in a block-local
+CSC matrix, then processes selected columns in bounded dense batches. Each
+batch stores columns as contiguous rows of a dense array and computes
+`right[selected] @ left[row_start:row_stop].T` in the operator dtype before
+adding the sparse corrections. The rank-zero signed-mean backstop can also
+use this reconstruction with zero-width factors.
+
+CSR blocks for means and norms each have a fixed stored-entry target; their
+row counts depend on the input's sparsity. Dense batches separately target at
+most $V$ represented values, so their column width is
+`max(1, V // rows_in_block)` and each dense buffer is bounded independently of
+the sparse row blocks. Several buffers may coexist during reconstruction and
+reduction. If a row block has more than $V$ rows, a batch contains one column.
+Reconstruction and deviation buffers therefore require
+$O(\max(V, N_{\mathrm{block}}))$ values, alongside the block-local CSC and
+per-gene accumulators; no full dense transformed matrix is allocated. When all
+CSR rows fit in one block, its CSC conversion can still copy the whole sparse
+matrix. The default targets are listed under
+[bounded computation budgets](architecture.md#bounded-computation-budgets).
+
+Direct means use `math.fsum` for each reconstructed column because its
+represented values may have mixed signs. For direct squared norms, subtract
+the stored center in the operator dtype, convert deviations to `float64`,
+square them, and reduce along each contiguous column with NumPy's pairwise
+sum. These terms are nonnegative. Low-order bits may depend on the batch size
+and on how factor products are evaluated; bitwise equivalence across batch
+sizes is not required. The numerical-zero criterion and accuracy checks still
+apply.
 
 The support-replacement combination is itself cancellation limited: its error
 scales with the magnitudes of the three combined terms rather than with the

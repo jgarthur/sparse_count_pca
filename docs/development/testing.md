@@ -19,6 +19,48 @@ apply it rather than wrapping lines by hand.
 Normal tests are offline. External R and Python tooling used to regenerate
 pinned reference artifacts is provenance, not a runtime test dependency.
 
+## Count validation and log-construction memory
+
+Validate count-check boundaries with invalid, fractional, and precision-limited
+values in later blocks, preserving error precedence and input arrays. Tests
+also cover canonical borrowing, copied noncanonical inputs, explicit zeros,
+empty rows, extended precision, and the integer tolerance boundary.
+
+Count-margin tests cover both axes, CSR matrix and array inputs, tiny and
+default blocks, float32, float64, signed, and unsigned integer counts, empty
+dimensions and support, explicit zeros, input preservation, integer
+accumulator overflow, totals beyond float32 range, and genuine float64
+overflow. Float32 counts must fit the same factors, representations, PCA, and
+correspondence axes as an exact float64 copy, at either storage dtype.
+
+For all five log builders and both storage dtypes, compare bounded construction
+with independent dense oracles and verify that fitted factors agree exactly
+with float64 storage. Tiny block targets exercise multi-block inputs, rows
+longer than the target, and row sums across empty rows and blocks with no
+stored entries. Check late ratio overflow, float64 ratios exceeding float32
+range, read-only input arrays, int32/int64 input structure, owned output
+structure at the required index width (including the int64 shape boundary),
+and reuse of the builder's sparse matrix by the public transform. Residual
+builders get the same index-width and ownership checks.
+Compare each public log PCA with a dense SVD of the requested-dtype
+representation using float64-fitted factors, including aligned
+scores/loadings, mean, singular values, total variance, and variance ratios.
+Returned-operator isolation checks also apply.
+
+For allocation diagnostics, create input before starting tracemalloc and
+reset tracing separately for validation and each construction stage. Use
+canonical float32 counts with a fixed number of positive entries per row at
+two nnz scales (for example one and two million), size factors varying across
+rows, and a varying vector prior for Dirichlet CLR. Report the median of three
+separately traced runs and distinguish retained output from temporary
+allocation: peak allocation above retained output should stay roughly constant
+as nnz doubles. Cross-check with sampled RSS and process high-water marks in
+fresh workers with tracing disabled. Keep all thread limits at one;
+generate/load input outside timed regions and report three-repeat timings for
+validation, transform construction, and PCA independently. These measurements
+describe small synthetic inputs rather than predicting full-data RSS, and RSS
+figures include allocator behavior across repeated calls.
+
 ## Manual residual-memory probe
 
 Memory-sensitive residual-construction changes should be checked with the
@@ -127,8 +169,62 @@ For each sparse-plus-low-rank representation, compare:
 - matrix-matrix products where exposed;
 - centered means and Frobenius-norm statistics.
 
+Statistics tests cross CSR row-block boundaries for rank zero and both CSR
+and dense column-batch boundaries for ranks one and three, with both operator
+dtypes and centered and uncentered operators. Include empty, sparse, exactly-half-supported, and
+dense-majority columns, constant and nearly constant columns, and signed
+means with severe cancellation. Verify that dense batches respect their
+represented-value target, with a one-column exception when a row block alone
+exceeds that target. Cancellation-fallback and numerical-zero tests are also
+part of the contract. A small normalized-log1p PCA comparison against
+Scanpy checks aligned scores and loadings, singular values, total variance,
+and explained-variance ratios, while rejecting dense reconstruction. Rank-zero
+tests also cover explicit stored zeros, read-only borrowed data, skipped mean
+work for uncentered operators, and subtraction rounding in float32.
+
 Transpose products are independent contracts. A correct forward product does
 not establish a correct adjoint.
+
+### Operator batch-size measurements
+
+The dense-batch target was chosen from a sweep over deterministic
+2,000 × 1,500 and 4,000 × 3,000 count matrices with 20% of genes stored in 75%
+of rows and the others in 2% (498,000 and 1,992,000 stored entries). Unclipped
+Poisson Pearson residuals (rank one) were measured in float32 and float64. All
+thread limits were one, representation construction was outside the timed
+region, and CSR block targets were held fixed. Times are medians of five
+repeats with randomized batch-target order, measuring operator construction
+rather than PCA or transformation. Nonnegative rank-zero representations do
+not use dense batches, so they do not inform this target.
+
+Representative results for the larger fixture:
+
+| Dtype | 100,000 values | 262,144 values | 1,048,576 values |
+| --- | ---: | ---: | ---: |
+| float32 | 113 ms | 112 ms | 110 ms |
+| float64 | 122 ms | 118 ms | 118 ms |
+
+The sweep also included targets of 16,384, 65,536, and 4,194,304 values. The
+262,144-value target stayed within about 2% of the fastest tested target
+across both sizes and dtypes, and bounds each float64 dense buffer at 2 MiB
+except for the indivisible one-column case. Larger targets multiply that
+buffer budget for small additional speed gains; smaller targets incur more
+reconstruction and sparse-slicing calls. Means dominated the remaining setup
+time.
+
+For a nominal 1,000,000-cell × 20,000-gene input at 10% density, there are
+about two billion stored entries. Assuming similar row depths, the default
+mean and norm targets produce roughly 500-row and 50-row blocks, respectively.
+Fewer than 4,000 genes can be dense-majority at that overall density, so a
+typical norm block's direct reconstruction fits in one batch, while mean
+blocks require several. Uniformly sparse genes do not use direct dense
+batching; dense-majority means of nonzero-rank representations still incur
+per-column `math.fsum` calls, which a larger batch target does not eliminate.
+
+These small local measurements support a conservative default, not an optimum
+for every machine or support distribution, nor a prediction of full-data
+runtime. Batch targets do not affect the numerical tolerances but may change
+low-order bits of factor products and reductions.
 
 ## PCA and subspace equality
 
@@ -159,6 +255,27 @@ limits. Named clipping thresholds are covered against their numeric
 equivalents, across both clipping modes, entry points, residual families, and
 observation subsets. Ownership tests mutate caller-owned matrices after fitting
 and verify that transformed values cannot change.
+
+Structure-sharing tests run every support-preserving transform at both storage
+dtypes and both index widths. Default transforms must own their support;
+`share_structure=True` must borrow indices and indptr at either input width,
+including int64 support on matrices int32 could index, and fitted values must
+survive mutation of input data and deletion of the input object. After entry
+removal or a direct index write, a shared transform must refuse `pca` and
+`materialize`; after entry removal, all four product directions must also
+refuse. Value changes and owned transforms must pass these checks. A retained
+operator from a sharing transform must not alias the input or the transform.
+One-step analyses must borrow only when they do not return an operator.
+Residual sharing tests cover both residual types, both clipping modes,
+thresholds with and without support growth, and both storage dtypes. They
+require borrowing exactly when the support is unchanged and identical values to
+an owned fit. Forced zero corrections, from extreme counts split across tiny
+support blocks and from values that underflow only in float32, must be removed
+from an owned copy without touching the read-only input. Owned clipping that
+grows support must add its corrections to read-only input support without
+modifying or retaining it. Further cases cover canonicalization copies, AnnData
+layers and masks, read-only inputs, which keep their flags, and rejection of
+non-boolean flags.
 
 Tests that compare against an unclipped dense oracle or a pinned external
 reference must pass `clip=None` explicitly, because residual transforms clip

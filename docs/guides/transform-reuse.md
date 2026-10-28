@@ -125,8 +125,9 @@ full-width `varm` array needs the unselected rows filled with `np.nan`.
 
 ## Lifetime and ownership
 
-The fitted object owns the sparse support needed to isolate it from later
-mutation of the caller's matrix. It lives only in the current Python process:
+By default the fitted object owns the sparse support needed to isolate it
+from later mutation of the caller's matrix. It lives only in the current
+Python process:
 fitting a transform adds nothing to the AnnData object, so `write_h5ad` does
 not store it, and it has to be refitted after reloading the file or restarting
 Python. Only PCA results written to `.obsm`, `.varm`, and `.uns` persist.
@@ -134,6 +135,20 @@ Python. Only PCA results written to `.obsm`, `.varm`, and `.uns` persist.
 Passing `return_operator=True` to `pca` retains the centered operator ARPACK
 used. It is isolated from the `TransformedMatrix` it came from: mutating either
 one cannot affect the other.
+
+By default, the fitted object keeps its own copy of the count matrix's column
+indices and row pointers, so it uses more memory than the equivalent one-step
+function, which reuses them unless it returns its operator. For large matrices,
+`transform(..., share_structure=True)` lets the fitted object reuse them too,
+unless fitting has to change or convert the structure: inputs that need
+canonicalization or conversion to CSR, and residual clipping that adds entries,
+still produce a copy, with a `UserWarning` saying so.
+In return, do not modify the count matrix's sparsity structure while the
+fitted object is in use, for example with `eliminate_zeros()` after zeroing
+some values. If it changes, `pca` and `materialize` raise an error asking you
+to fit the transform again. Changing nonzero count values or replacing the
+matrix, for example by assigning a new `adata.X`, is safe. Returned operators
+are always isolated.
 
 ## Complete example
 

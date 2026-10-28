@@ -21,8 +21,8 @@ from ._transform import (
     ProportionShiftedCLR,
     ShiftedCLR,
     Transform,
+    _compute_transform_pca,
 )
-from ._transform import _transform as transform_counts
 
 
 def _compute_log_pca(
@@ -39,17 +39,14 @@ def _compute_log_pca(
     tol: float,
     return_operator: bool,
 ) -> PCAResult:
-    transformed = transform_counts(
+    return _compute_transform_pca(
         X,
         method,
+        n_comps,
         check_values=check_values,
         dtype=dtype,
-        _columns=mask,
-        _isolate_returned_operator=False,
-        _obs=obs,
-    )
-    return transformed.pca(
-        n_comps,
+        columns=mask,
+        obs=obs,
         solver=solver,
         random_state=random_state,
         tol=tol,

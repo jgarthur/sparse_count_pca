@@ -14,6 +14,7 @@ from ._clip import ClipMode, _guarded_clipped_zero_locations
 from ._counts import BoolArray
 from ._operator import _normalize_operator_dtype
 from ._representation import SparseLowRankMatrix
+from ._sparse import _csr_with_data
 from ._sparse import _support_row_blocks as _bounded_support_row_blocks
 
 ALPHA_EPS = 1e-8
@@ -76,21 +77,15 @@ def _finalize_residual_representation(
     *,
     clip: float | None,
     dtype: np.dtype[np.floating],
-    prune_zero_corrections: bool,
+    has_zero_corrections: bool,
+    share_structure: bool,
 ) -> SparseLowRankMatrix:
-    """Own CSR support, prune computed zeros, and add clipped-zero corrections."""
-    sparse_part = sparse.csr_matrix(
-        (
-            data,
-            # The persistent representation owns its support so later caller
-            # mutation of X cannot change the fitted transform.
-            X.indices.copy(),
-            X.indptr.copy(),
-        ),
-        shape=X.shape,
-    )
-    if prune_zero_corrections:
-        sparse_part.eliminate_zeros()
+    """Build CSR support, add clipped-zero corrections, and prune computed zeros.
+
+    Adding corrections allocates new support, so that result always owns it.
+    Without corrections, support is copied for zero elimination, which rewrites
+    indices and indptr in place, and is otherwise borrowed when permitted.
+    """
     if correction_rows.size:
         assert clip is not None
         correction_data = np.asarray(
@@ -101,9 +96,17 @@ def _finalize_residual_representation(
             (correction_data, (correction_rows, correction_cols)),
             shape=X.shape,
         )
-        sparse_part = (sparse_part + corrections).tocsr()
-        if prune_zero_corrections:
-            sparse_part.eliminate_zeros()
+        # Sparse addition leaves both operands unchanged and allocates new
+        # support, so the summand can borrow X's support in every mode.
+        sparse_part = (
+            _csr_with_data(X, data, share_structure=True) + corrections
+        ).tocsr()
+        sparse_part.eliminate_zeros()
+    elif has_zero_corrections:
+        sparse_part = _csr_with_data(X, data)
+        sparse_part.eliminate_zeros()
+    else:
+        sparse_part = _csr_with_data(X, data, share_structure=share_structure)
     return SparseLowRankMatrix(
         sparse_part,
         left.astype(dtype, copy=False),
@@ -122,6 +125,7 @@ def build_pearson_residual_representation(
     clip_mode: ClipMode = "symmetric",
     clip_max_nnz_ratio: float | None = None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Build a bounded-memory Pearson residual representation."""
     calculation_dtype = _normalize_operator_dtype(dtype)
@@ -157,6 +161,7 @@ def build_pearson_residual_representation(
     )
 
     data = np.empty(X.nnz, dtype=calculation_dtype)
+    has_zero_corrections = False
     for row_start, row_stop, value_start, value_stop in _support_row_blocks(X):
         rows = np.repeat(
             np.arange(row_start, row_stop, dtype=np.intp),
@@ -176,6 +181,8 @@ def build_pearson_residual_representation(
                 np.clip(values, -clip, clip, out=values)
             values -= left[rows] * right[columns]
         data[value_start:value_stop] = values
+        if clip is not None and not has_zero_corrections:
+            has_zero_corrections = bool(np.any(data[value_start:value_stop] == 0))
 
     return _finalize_residual_representation(
         X,
@@ -186,7 +193,8 @@ def build_pearson_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
-        prune_zero_corrections=clip is not None,
+        has_zero_corrections=has_zero_corrections,
+        share_structure=share_structure,
     )
 
 
@@ -397,6 +405,7 @@ def build_residual_representation(
     clip_mode: ClipMode,
     clip_max_nnz_ratio: float | None,
     dtype: DTypeLike = "float64",
+    share_structure: bool = False,
 ) -> SparseLowRankMatrix:
     """Build a sparse-plus-rank-one residual representation.
 
@@ -417,6 +426,8 @@ def build_residual_representation(
         clip_max_nnz_ratio: Maximum sparse support-growth ratio for exact
             symmetric clipping, or ``None`` for no limit.
         dtype: Floating-point storage dtype for the returned representation.
+        share_structure: Permit borrowing CSR support when no computed zeros
+            are removed and clipping adds no structural-zero corrections.
 
     Returns:
         A rank-one sparse-plus-low-rank representation.
@@ -433,6 +444,7 @@ def build_residual_representation(
             clip_mode=clip_mode,
             clip_max_nnz_ratio=clip_max_nnz_ratio,
             dtype=dtype,
+            share_structure=share_structure,
         )
 
     calculation_dtype = _normalize_operator_dtype(dtype)
@@ -472,6 +484,7 @@ def build_residual_representation(
     )
 
     data = np.empty(X.nnz, dtype=calculation_dtype)
+    has_zero_corrections = False
     for row_start, row_stop, value_start, value_stop in _support_row_blocks(X):
         rows = np.repeat(
             np.arange(row_start, row_stop, dtype=np.intp),
@@ -512,6 +525,8 @@ def build_residual_representation(
         else:
             values = np.clip(residual_nonzero, -clip, clip) - baseline
         data[value_start:value_stop] = values
+        if not has_zero_corrections:
+            has_zero_corrections = bool(np.any(data[value_start:value_stop] == 0))
 
     return _finalize_residual_representation(
         X,
@@ -522,5 +537,6 @@ def build_residual_representation(
         correction_cols,
         clip=clip,
         dtype=calculation_dtype,
-        prune_zero_corrections=True,
+        has_zero_corrections=has_zero_corrections,
+        share_structure=share_structure,
     )
