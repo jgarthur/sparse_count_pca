@@ -37,6 +37,8 @@ Changes since 1.0.0rc1:
 
 - Faster PCA setup, especially for normalized `log1p`, whose variance
   statistics are computed directly from sparse data.
+- Substantially lower peak memory use for large sparse inputs and when
+  constructing clipped residual transforms.
 - Count validation and log, CLR, and Dirichlet fitting process arithmetic in
   blocks, reducing temporary memory, especially with `dtype="float32"`
   storage.
@@ -44,8 +46,6 @@ Changes since 1.0.0rc1:
   structure when `return_operator=False`. Symmetric clipping of negative
   residuals at zero counts requires new sparsity structure, as the default
   `clip="seurat"` can on real data. Returned operators own their arrays.
-- **Lower memory use:** substantially reduce peak memory use for large sparse
-  inputs and when constructing clipped residual transforms.
 
 ### Fixes
 

@@ -364,31 +364,27 @@ engine. It validates dimensions and dtype, creates the centered operator,
 checks variance, calls the SVD layer, calculates variance summaries, and
 returns `PCAResult`.
 
-When `return_operator=True` hands the centered operator back to the caller,
-ownership decides whether its arrays are copied. An operator derived from a
-live `TransformedMatrix` would otherwise share that object's arrays, and
-through them any borrowed input support, so it takes a support-sized copy. A
-one-step call such as `residual_pca_matrix` builds a representation nothing
-else holds. When it returns the operator, it builds that representation with
-owned support and passes those arrays directly, skipping the copy. When it
-does not, it lets the representation borrow compatible count support, which
-is safe because the operator does not outlive the call.
-
 `_prepare_transform` in
 [`_transform.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_transform.py)
-validates counts and column selection, fits normalization, records empty-variable
-metadata, and casts sparse values and factors to the requested dtype. Builders
-fit normalization before selecting PCA columns. An all-selected mask is treated
-as no selection so it preserves compatible support for borrowing.
+validates counts and column selection, fits normalization before selecting PCA
+columns, records empty-variable metadata, and casts sparse values and factors
+to the requested dtype. An all-selected mask is treated as no selection, so
+compatible support stays available for borrowing. The two workflows then
+differ in whether a centered operator returned with `return_operator=True`
+copies its arrays:
 
-One-step PCA uses `_compute_transform_pca` to pass this representation and
-metadata directly to the PCA engine. It sets `share_structure=not return_operator`
-during preparation and `copy_operator=False` during decomposition. Public
-`transform` wraps the prepared representation in a reusable `TransformedMatrix`,
-which keeps copied AnnData names and variable annotations for inspection and
-later mask resolution. Its `pca` method copies a returned operator's arrays.
-Correspondence analysis applies the same one-step copying rules to its own
-representation and uncentered operator.
+- Public `transform` wraps the representation in a reusable
+  `TransformedMatrix`, which keeps copied AnnData names and variable
+  annotations for inspection and later mask resolution. The object stays live
+  after `pca`, so a returned operator would otherwise share its arrays, and
+  through them any borrowed input support. It takes a support-sized copy.
+- One-step PCA, such as `residual_pca_matrix`, calls `_compute_transform_pca`,
+  which passes the representation directly to the PCA engine; nothing else
+  holds it. When the operator is returned, preparation builds owned support
+  and the operator takes those arrays without a copy. Otherwise the
+  representation borrows compatible count support, which is safe because the
+  operator does not outlive the call. Correspondence analysis applies the same
+  rules to its uncentered operator.
 
 | Workflow | Builders may borrow input support | Returned operator copies |
 | --- | --- | --- |
