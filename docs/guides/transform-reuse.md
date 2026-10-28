@@ -142,7 +142,7 @@ function, which reuses them unless it returns its operator. For large matrices,
 `transform(..., share_structure=True)` lets the fitted object reuse them too,
 unless fitting has to change or convert the structure: inputs that need
 canonicalization or conversion to CSR, and residual clipping that adds entries,
-still produce a copy.
+still produce a copy, with a `UserWarning` saying so.
 In return, do not modify the count matrix's sparsity structure while the
 fitted object is in use, for example with `eliminate_zeros()` after zeroing
 some values. If it changes, `pca` and `materialize` raise an error asking you

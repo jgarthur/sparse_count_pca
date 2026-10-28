@@ -102,11 +102,11 @@ fitted representation retains one sparse correction matrix and the low-rank
 factors. PCA additionally allocates temporary arrays during the calculation and
 the returned score, component, and variance arrays.
 
-When the correction keeps the count matrix's sparsity structure, one-step
-analyses that do not return their operator reuse its column indices and row
-pointers instead of copying them; `transform` does so only with
-`share_structure=True`. Residual clipping that adds entries gives the
-correction its own copy; see
+The sparse correction usually has the same nonzero positions as the count
+matrix. One-step analyses then reuse the count matrix's index arrays instead of
+copying them, unless they return their operator. `transform` reuses them only
+with `share_structure=True`. Residual clipping that adds entries needs new
+index arrays; see
 [symmetric clipping](clipping-and-precision.md#symmetric-clipping-may-expand-the-sparse-matrix-support).
 
 Backed sparse inputs are loaded into memory during canonicalization.

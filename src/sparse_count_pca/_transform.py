@@ -1070,9 +1070,9 @@ def transform(
             support. Sharing is a permission, not a guarantee: inputs that
             need canonicalization or conversion to CSR, int32 indices on a
             matrix large enough to need int64, and residuals that remove
-            computed zeros or add clipping corrections use owned arrays.
-            Transformed values and fitted factors are always separate from the
-            counts.
+            computed zeros or add clipping corrections use owned arrays and
+            emit ``UserWarning``. Transformed values and fitted factors are
+            always separate from the counts.
 
     Returns:
         An uncentered implicit transformed matrix that supports matrix products,
@@ -1130,6 +1130,16 @@ def transform(
             for name in ("indices", "indptr")
         )
     )
+    if share_structure and not check_support:
+        warnings.warn(
+            "share_structure=True did not share the count matrix's sparsity "
+            "structure, so this transform owns a copy of it. Sharing requires "
+            "canonical CSR input whose index width suffices and a fit that "
+            "keeps the support unchanged; residual clipping that adds entries "
+            "or removes exact-zero corrections changes it.",
+            UserWarning,
+            stacklevel=2,
+        )
     return TransformedMatrix(
         representation,
         transform_label=label,

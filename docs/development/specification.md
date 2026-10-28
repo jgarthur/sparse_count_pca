@@ -155,6 +155,8 @@ transform.
   a stored correction that is exactly zero in the storage dtype is removed from
   an owned copy. Such zeros require extreme count values, for example
   corrections that underflow when cast to float32.
+- When sharing was requested but the fitted transform borrows neither array,
+  `transform` emits `UserWarning` stating that it owns a copy.
 - The flag must be a Python or NumPy boolean; other values raise `TypeError`.
 
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and

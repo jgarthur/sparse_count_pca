@@ -1,7 +1,9 @@
 """Tests for opt-in CSR support sharing and one-step operator isolation."""
 
 import gc
+import warnings
 import weakref
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
@@ -23,6 +25,8 @@ _TRANSFORMS = [
     scp.Residual(clip=0.5, clip_mode="upper"),
     scp.Residual(residual="deviance", clip=0.5, clip_mode="upper"),
 ]
+
+_NOT_SHARED = "did not share the count matrix's sparsity structure"
 
 _ONE_STEP = [
     (scp.log1p_norm_pca_matrix, {}),
@@ -160,7 +164,13 @@ def test_residual_sharing_depends_on_actual_support_changes(
         assert owned._sparse.nnz > counts.nnz
     for values in (counts.data, counts.indices, counts.indptr):
         values.flags.writeable = False
-    result = scp.transform(counts, method, dtype=dtype, share_structure=True)
+    expectation = (
+        nullcontext()
+        if preserves_support
+        else pytest.warns(UserWarning, match=_NOT_SHARED)
+    )
+    with expectation:
+        result = scp.transform(counts, method, dtype=dtype, share_structure=True)
 
     np.testing.assert_array_equal(result.materialize(), expected)
     for name in ("indices", "indptr"):
@@ -185,7 +195,8 @@ def test_residual_zero_removal_preserves_input_across_blocks(
     monkeypatch.setattr(residuals_module, "_RESIDUAL_SUPPORT_BLOCK_SIZE", 2)
     method = scp.Residual(residual=residual, clip=100.0, clip_mode="upper")
     owned = scp.transform(counts, method, dtype=dtype)
-    shared = scp.transform(counts, method, dtype=dtype, share_structure=True)
+    with pytest.warns(UserWarning, match=_NOT_SHARED):
+        shared = scp.transform(counts, method, dtype=dtype, share_structure=True)
 
     assert shared._sparse.nnz == counts.nnz - 2
     assert np.all(shared._sparse.data != 0)
@@ -205,13 +216,19 @@ def test_residual_zero_detection_uses_storage_dtype(residual, dtype):
     counts = sparse.csr_matrix(np.full((2, 2), 1e-100))
     for values in (counts.data, counts.indices, counts.indptr):
         values.flags.writeable = False
-    result = scp.transform(
-        counts,
-        scp.Residual(residual=residual, clip=0.5, clip_mode="upper"),
-        dtype=dtype,
-        check_values=False,
-        share_structure=True,
+    expectation = (
+        pytest.warns(UserWarning, match=_NOT_SHARED)
+        if dtype == "float32"
+        else nullcontext()
     )
+    with expectation:
+        result = scp.transform(
+            counts,
+            scp.Residual(residual=residual, clip=0.5, clip_mode="upper"),
+            dtype=dtype,
+            check_values=False,
+            share_structure=True,
+        )
 
     assert result._sparse.nnz == (0 if dtype == "float32" else counts.nnz)
     assert np.all(result._sparse.data != 0)
@@ -256,7 +273,10 @@ def test_shared_transform_canonicalization_keeps_input_isolated():
         ([2.0, 3.0, 1.0, 4.0], [1, 0, 0, 1], [0, 2, 4]), shape=(2, 2)
     )
     original = counts.indices.copy()
-    with pytest.warns(UserWarning, match="copied for canonicalization"):
+    with (
+        pytest.warns(UserWarning, match="copied for canonicalization"),
+        pytest.warns(UserWarning, match=_NOT_SHARED),
+    ):
         transformed = scp.transform(counts, scp.Log1pNormalized(), share_structure=True)
 
     assert not np.shares_memory(transformed._sparse.indices, counts.indices)
@@ -376,7 +396,16 @@ def test_owned_clipping_growth_adds_corrections_to_read_only_support(counts):
 def test_shared_transform_checks_only_borrowed_support(
     counts, prepare, method, borrows
 ):
-    """Only a transform that borrowed caller support records a checksum."""
-    transformed = scp.transform(prepare(counts), method, share_structure=True)
+    """Requested sharing records a checksum if it borrows and warns if not."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        transformed = scp.transform(prepare(counts), method, share_structure=True)
 
     assert (transformed._support_checksum is not None) == borrows
+    not_shared = [
+        warning
+        for warning in caught
+        if issubclass(warning.category, UserWarning)
+        and _NOT_SHARED in str(warning.message)
+    ]
+    assert len(not_shared) == (0 if borrows else 1)
