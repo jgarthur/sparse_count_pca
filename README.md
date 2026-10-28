@@ -49,6 +49,11 @@ Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
 to `adata.varm["PCs"]`, and variance statistics and parameters to
 `adata.uns["pca"]`.
 
+Counts must be finite and nonnegative, and floating-point counts must be
+integer-valued (within `1e-8`) unless `check_values=False` is passed. Every
+transform rejects cells with zero total counts, so filter empty rows out of the
+matrix or layer first. See [input validation][input-validation].
+
 [Run a complete example with simulated data](https://sparse-count-pca.readthedocs.io/en/latest/getting-started/)
 
 ## Supported transforms
@@ -91,7 +96,7 @@ which allows efficient factored matrix multiplication without materializing the
 actual matrix. Selecting PCA variables preserves this form, and column centering
 adds one rank-one term. This package uses `scipy.sparse.linalg.LinearOperator`
 to expose matrix-vector and matrix-matrix products to
-`scipy.sparse.linalg.svds`, currently using the ARPACK solver. See
+`scipy.sparse.linalg.svds`, using the ARPACK solver. See
 [sparse plus low rank][sparse-plus-low-rank] for more details.
 
 ## API structure
@@ -127,18 +132,15 @@ to expose matrix-vector and matrix-matrix products to
   not expect default outputs to match. See the
   [compatibility reference][sctransform-compatibility] for the conditions under
   which equality can be tested.
-- **Residual clipping is on by default**, symmetrically at the named
-  `clip="seurat"` threshold `sqrt(n_obs / 30)`. `clip="scanpy"` names
-  `sqrt(n_obs)`, a float sets the threshold directly, and `clip=None` disables
-  clipping. A name selects the threshold only, not `clip_mode`.
-- **Symmetric residual clipping can expand sparse support**, because it alters
-  negative residuals at zero-count entries that the low-rank baseline would
-  otherwise carry. Upper-only clipping cannot. Because the default is
-  symmetric, the `clip_max_nnz_ratio` guard can fire under default arguments.
-  See [clipping and precision][clipping-and-precision].
-- **Precision is a computation choice.** Keep the recommended `float64`
-  default for accuracy and parity testing. Explicit `float32` reduces memory
-  but changes the representation passed to ARPACK.
+- **Residuals are clipped symmetrically by default** at `clip="seurat"`
+  (`sqrt(n_obs / 30)`). Symmetric clipping can expand the sparse support, and
+  raises `RuntimeError` if the growth would reach `clip_max_nnz_ratio` (default
+  `2.0`) times the input's stored nonzeros. Pass `clip_mode="upper"` to avoid
+  support growth, or `clip=None` to disable clipping. See
+  [clipping and precision][clipping-and-precision] for other thresholds and
+  options.
+- **Keep the default `dtype="float64"`** unless memory requires otherwise; see
+  [calculation dtype][calculation-dtype] for what `float32` changes.
 
 ## Related work
 
@@ -168,8 +170,10 @@ See
 for project invariants and documentation expectations.
 
 [anndata-workflows]: https://sparse-count-pca.readthedocs.io/en/latest/guides/anndata-workflows/
+[calculation-dtype]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/#calculation-dtype
 [clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
 [correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
+[input-validation]: https://sparse-count-pca.readthedocs.io/en/latest/development/specification/#input-validation
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
 [pflog-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#shifted-clr-pflog-and-cleartools
 [scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
