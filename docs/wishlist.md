@@ -5,6 +5,26 @@ committed API. When work is completed, remove it from this file and record the
 outcome in the appropriate specification, design, architecture, or provenance
 documentation; do not leave completed work described as a wish.
 
+## Before the 1.0.0 release
+
+### Final benchmarks and the claims that cite them
+
+Run the final Scanpy comparison on the Mac and on a remote machine, possibly
+with a larger dataset there. Use the results to quantify the README's
+efficiency claim and to give the 1.0.0 changelog's performance entries
+identifiable evidence: the dataset, scale, revision, and whether each figure is
+a benchmark or a real-data measurement.
+
+### Citation
+
+- Add a `CITATION.cff` at the repository root so GitHub offers "Cite this
+  repository".
+- Enable Zenodo's GitHub integration before publishing the `v1.0.0` GitHub
+  Release, so the release receives a DOI.
+- Add a short citation section to the README and the documentation home page
+  that points to it and asks users to also cite the methods they use, as
+  listed in the transform catalog.
+
 ## After 1.0
 
 ### Block-wise inverse reconstruction to count space
