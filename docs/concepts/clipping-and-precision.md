@@ -69,7 +69,7 @@ reachable under default arguments. How much support grows depends on the
 dataset. If a run raises on the guard, raise `clip_max_nnz_ratio`, switch to
 `clip_mode="upper"`, or set `clip=None`.
 
-Growth costs more memory than the added entries alone. One-step analyses
+Support growth costs more memory than the added entries alone. One-step analyses
 normally reuse the count matrix's index arrays, as does
 `transform(..., share_structure=True)`. If clipping adds even one entry, the
 sparse part needs new index arrays for all of its entries, so these fits use

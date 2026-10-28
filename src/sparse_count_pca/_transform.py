@@ -1120,7 +1120,10 @@ def transform(
         dtype=dtype,
         share_structure=share_structure,
     )
-    # Only support borrowed from the caller's matrix can change after fitting.
+    # Sharing is permission, not a guarantee: canonicalization, index widening,
+    # or residual support changes can allocate separate indices and row pointers.
+    # Input-mutation checks are needed only if the fitted support may still
+    # overlap the caller's arrays; independent copies make this check false.
     check_support = (
         share_structure
         and sparse.issparse(X)

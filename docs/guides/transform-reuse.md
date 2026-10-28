@@ -146,7 +146,7 @@ still produce a copy, with a `UserWarning` saying so.
 In return, do not modify the count matrix's sparsity structure while the
 fitted object is in use, for example with `eliminate_zeros()` after zeroing
 some values. If it changes, `pca` and `materialize` raise an error asking you
-to fit the transform again. Changing stored count values or replacing the
+to fit the transform again. Changing nonzero count values or replacing the
 matrix, for example by assigning a new `adata.X`, is safe. Returned operators
 are always isolated.
 
