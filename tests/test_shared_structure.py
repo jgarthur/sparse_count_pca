@@ -26,7 +26,7 @@ _TRANSFORMS = [
     scp.Residual(residual="deviance", clip=0.5, clip_mode="upper"),
 ]
 
-_NOT_SHARED = "did not share the count matrix's sparsity structure"
+_NOT_SHARED = "share_structure=True had no effect"
 
 _ONE_STEP = [
     (scp.log1p_norm_pca_matrix, {}),

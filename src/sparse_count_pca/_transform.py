@@ -1132,11 +1132,10 @@ def transform(
     )
     if share_structure and not check_support:
         warnings.warn(
-            "share_structure=True did not share the count matrix's sparsity "
-            "structure, so this transform owns a copy of it. Sharing requires "
-            "canonical CSR input whose index width suffices and a fit that "
-            "keeps the support unchanged; residual clipping that adds entries "
-            "or removes exact-zero corrections changes it.",
+            "share_structure=True had no effect: this transform owns a copy of "
+            "the count matrix's sparsity structure, usually because the input "
+            "was not canonical CSR or symmetric residual clipping added "
+            "entries. See the share_structure argument of transform().",
             UserWarning,
             stacklevel=2,
         )
