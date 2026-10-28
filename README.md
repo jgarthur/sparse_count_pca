@@ -49,10 +49,11 @@ Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
 to `adata.varm["PCs"]`, and variance statistics and parameters to
 `adata.uns["pca"]`.
 
-Counts must be finite and nonnegative, and floating-point counts must be
-integer-valued (within `1e-8`) unless `check_values=False` is passed. Every
-transform rejects cells with zero total counts, so filter empty rows out of the
-matrix or layer first. See [input validation][input-validation].
+Pass raw counts: finite, nonnegative, and integer-valued. Floating-point
+counts are accepted within `1e-8` of an integer, and `check_values=False`
+skips that check. Remove cells with no counts first, for example with
+`sc.pp.filter_cells(adata, min_counts=1)`. See [input
+validation][input-validation].
 
 [Run a complete example with simulated data](https://sparse-count-pca.readthedocs.io/en/latest/getting-started/)
 
@@ -132,13 +133,16 @@ to expose matrix-vector and matrix-matrix products to
   not expect default outputs to match. See the
   [compatibility reference][sctransform-compatibility] for the conditions under
   which equality can be tested.
-- **Residuals are clipped symmetrically by default** at `clip="seurat"`
-  (`sqrt(n_obs / 30)`). Symmetric clipping can expand the sparse support, and
-  raises `RuntimeError` if the growth would reach `clip_max_nnz_ratio` (default
-  `2.0`) times the input's stored nonzeros. Pass `clip_mode="upper"` to avoid
-  support growth, or `clip=None` to disable clipping. See
-  [clipping and precision][clipping-and-precision] for other thresholds and
-  options.
+- **Residuals are clipped by default, as in Seurat and Scanpy,** so a few
+  extreme values cannot dominate PCA. Residuals are capped at
+  ±`sqrt(n_obs / 30)` (`clip="seurat"`, the SCTransform default);
+  `clip="scanpy"` uses Scanpy's `sqrt(n_obs)`, and `clip=None` turns clipping
+  off. Capping large negative residuals at zero counts adds stored entries to
+  the sparse matrix, so clipping can use more memory. Rather than let the
+  sparse part reach twice the input's stored entries (`clip_max_nnz_ratio=2.0`),
+  the call raises `RuntimeError`. The package-specific `clip_mode="upper"`
+  clips only positive residuals and never adds entries. See
+  [clipping and precision][clipping-and-precision].
 - **Keep the default `dtype="float64"`** unless memory requires otherwise; see
   [calculation dtype][calculation-dtype] for what `float32` changes.
 
