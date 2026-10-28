@@ -102,9 +102,16 @@ fitted representation retains one sparse correction matrix and the low-rank
 factors. PCA additionally allocates temporary arrays during the calculation and
 the returned score, component, and variance arrays.
 
-Backed sparse inputs are currently loaded into memory during canonicalization.
+When the correction keeps the count matrix's sparsity structure, one-step
+analyses that do not return their operator reuse its column indices and row
+pointers instead of copying them; `transform` does so only with
+`share_structure=True`. Residual clipping that adds entries gives the
+correction its own copy; see
+[symmetric clipping](clipping-and-precision.md#symmetric-clipping-may-expand-the-sparse-matrix-support).
+
+Backed sparse inputs are loaded into memory during canonicalization.
 The two-step API can bound the output memory used for later materialization,
-but fitting is not yet an out-of-core operation.
+but fitting is not an out-of-core operation.
 
 See [transform once, reuse several times](../guides/transform-reuse.md) for
 bounded materialization and process-lifetime details.

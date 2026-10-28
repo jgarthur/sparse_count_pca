@@ -139,7 +139,10 @@ one cannot affect the other.
 By default, the fitted object keeps its own copy of the count matrix's column
 indices and row pointers, so it uses more memory than the equivalent one-step
 function, which reuses them unless it returns its operator. For large matrices,
-`transform(..., share_structure=True)` lets the fitted object reuse them too.
+`transform(..., share_structure=True)` lets the fitted object reuse them too,
+unless fitting has to change or convert the structure: inputs that need
+canonicalization or conversion to CSR, and residual clipping that adds entries,
+still produce a copy.
 In return, do not modify the count matrix's sparsity structure while the
 fitted object is in use, for example with `eliminate_zeros()` after zeroing
 some values. If it changes, `pca` and `materialize` raise an error asking you

@@ -69,6 +69,15 @@ reachable under default arguments. How much support grows depends on the
 dataset. If a run raises on the guard, raise `clip_max_nnz_ratio`, switch to
 `clip_mode="upper"`, or set `clip=None`.
 
+Any growth, even a few entries, also gives the sparse part its own copy of the
+column indices and row pointers, sized for every stored entry rather than only
+the added ones. One-step calls that do not return their operator, and
+`transform(..., share_structure=True)`, otherwise reuse the count matrix's
+copy, so a fit that grows support uses about as much memory as the default
+`transform`. Growth is likelier on small datasets, because the named
+thresholds rise with \(\sqrt{n_\mathrm{obs}}\). To be told instead of
+silently copying, pass `clip_max_nnz_ratio=1.0`, which raises on any growth.
+
 ## Calculation dtype
 
 The default `dtype="float64"` controls the sparse correction, low-rank factors,
