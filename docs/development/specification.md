@@ -393,7 +393,7 @@ script is only needed to regenerate the pinned reference values.
 Runtime requirements:
 
 ```text
-python >= 3.10
+python >= 3.11
 numpy
 scipy
 anndata

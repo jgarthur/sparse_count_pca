@@ -2,6 +2,22 @@
 
 All notable user-facing changes are recorded here.
 
+## Unreleased
+
+### Breaking changes
+
+- Python 3.11 or newer is required. Current AnnData and Scanpy releases require
+  Python 3.12 or newer, while installing this project's test extra on Python
+  3.10 selects a Pillow version with known security vulnerabilities through
+  Scanpy's Matplotlib dependency. Python 3.11 supports the patched Pillow
+  release while retaining compatibility with earlier AnnData and Scanpy
+  releases.
+
+### Fixes
+
+- Locked test and documentation environments use patched certifi, Pillow, nbconvert,
+  Tornado, and urllib3 dependencies.
+
 ## 1.0.0 - 2026-10-27
 
 Changes since 1.0.0rc1:

@@ -9,7 +9,7 @@ the package from PyPI:
 pip install sparse-count-pca
 ```
 
-Python 3.10 or newer is required. The runtime dependencies are AnnData, NumPy,
+Python 3.11 or newer is required. The runtime dependencies are AnnData, NumPy,
 SciPy, and scikit-learn.
 
 ## A complete residual-PCA example
