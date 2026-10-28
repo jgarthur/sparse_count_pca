@@ -953,8 +953,6 @@ def _prepare_transform(
     Builders fit normalization over all variables before applying ``columns``.
     An all-selected mask leaves support available for borrowing.
     """
-    if not isinstance(method, Transform):
-        raise TypeError("method must be a Transform instance")
     operator_dtype = _normalize_operator_dtype(dtype)
     counts = _canonicalize_counts(X, check_values=check_values)
     if columns is not None:
@@ -1098,6 +1096,8 @@ def transform(
         >>> transformed.shape
         (adata.n_obs, adata.n_vars)
     """
+    if not isinstance(method, Transform):
+        raise TypeError("method must be a Transform instance")
     if not isinstance(share_structure, (bool, np.bool_)):
         raise TypeError("share_structure must be a boolean")
     if isinstance(data, AnnData):

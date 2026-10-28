@@ -305,6 +305,7 @@ def test_materialize_validates_out_and_block_size(counts):
 @pytest.mark.parametrize(
     ("method", "entry_point", "kwargs"),
     [
+        (scp.Residual(), scp.residual_pca_matrix, {}),
         (scp.Residual(clip=None), scp.residual_pca_matrix, {"clip": None}),
         (
             scp.ShiftedCLR(count_shift=0.7),
