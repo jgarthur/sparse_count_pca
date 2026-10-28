@@ -133,12 +133,14 @@ to expose matrix-vector and matrix-matrix products to
   not expect default outputs to match. See the
   [compatibility reference][sctransform-compatibility] for the conditions under
   which equality can be tested.
-- **Residuals are clipped by default, as in Seurat and Scanpy,** at
-  ±`sqrt(n_obs / 30)`, so a few extreme values cannot dominate PCA. This
-  symmetric clipping can make memory use depend on the data values, not just
-  the matrix's size and sparsity, so the package caps that growth and raises
-  `RuntimeError` beyond it. See [clipping and precision][clipping-and-precision]
-  for details and alternatives.
+- **Residuals are clipped by default,** as Seurat and Scanpy do, at Seurat's
+  threshold ±`sqrt(n_obs / 30)` (`clip="seurat"`), so a few extreme values
+  cannot dominate PCA. This symmetric clipping can make memory use depend on
+  the data values, not just the matrix's size and sparsity, so the package
+  caps that growth and raises `RuntimeError` beyond it. Pass
+  `clip_max_nnz_ratio=None` to remove the cap. See
+  [clipping and precision][clipping-and-precision] for details and
+  alternatives.
 - **Keep the default `dtype="float64"`** unless memory requires otherwise; see
   [calculation dtype][calculation-dtype] for what `float32` changes.
 
