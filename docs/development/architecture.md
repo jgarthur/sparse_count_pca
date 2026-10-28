@@ -374,29 +374,40 @@ owned support and passes those arrays directly, skipping the copy. When it
 does not, it lets the representation borrow compatible count support, which
 is safe because the operator does not outlive the call.
 
-One private `SupportOwnership` mode in
-[`_representation.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_representation.py)
-records these choices, and both decisions derive from it:
+`_prepare_transform` in
+[`_transform.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_transform.py)
+validates counts and column selection, fits normalization, records empty-variable
+metadata, and casts sparse values and factors to the requested dtype. Builders
+fit normalization before selecting PCA columns. An all-selected mask is treated
+as no selection so it preserves compatible support for borrowing.
 
-| Mode | Set by | Builders borrow input support | Returned operator copies |
-| --- | --- | --- | --- |
-| `"owned"` | `transform()` | no | yes |
-| `"shared"` | `transform(share_structure=True)` | yes | yes |
-| `"transient"` | one-step call, `return_operator=False` | yes | never returned |
-| `"handoff"` | one-step call, `return_operator=True` | no | no |
+One-step PCA uses `_compute_transform_pca` to pass this representation and
+metadata directly to the PCA engine. It sets `share_structure=not return_operator`
+during preparation and `copy_operator=False` during decomposition. Public
+`transform` wraps the prepared representation in a reusable `TransformedMatrix`,
+which keeps copied AnnData names and variable annotations for inspection and
+later mask resolution. Its `pca` method copies a returned operator's arrays.
+Correspondence analysis applies the same one-step copying rules to its own
+representation and uncentered operator.
 
-`TransformedMatrix.pca` asserts that a `"transient"` transform never returns
-its operator, because that operator could reference caller-owned support. A
-`"shared"` transform stores the stored-entry count and a CRC-32 checksum of
-its indices and indptr. `pca` and `materialize` verify both and raise
-`RuntimeError` after an in-place edit to borrowed support. Matrix products
-verify only the count, so they raise after edits that remove or add entries,
-but an index edit that keeps the count changes product results until the next
-`pca` or `materialize` call. The checksum hashes fixed-size chunks, so strided
-borrowed support is copied one chunk at a time. A transform that requested
-sharing but borrowed nothing from the caller, because canonicalization copied
-the input or clipping built new support, is stored as `"owned"` and skips the
-check, as do `"transient"` transforms, which do not outlive their call.
+| Workflow | Builders may borrow input support | Returned operator copies |
+| --- | --- | --- |
+| `transform()` | no | yes |
+| `transform(share_structure=True)` | yes | yes |
+| one-step call, `return_operator=False` | yes | never returned |
+| one-step call, `return_operator=True` | no | no |
+
+A reusable transform that actually borrows caller support stores the entry
+count and a CRC-32 checksum of its indices and indptr. `pca` and `materialize`
+verify both and raise `RuntimeError` after an in-place edit to borrowed support.
+Matrix products verify only the count, so they raise after edits that remove
+or add entries, but an index edit that keeps the count changes product results
+until the next `pca` or `materialize` call. The checksum hashes fixed-size
+chunks, so strided borrowed support is copied one chunk at a time. A transform
+that requested sharing but borrowed nothing from the caller, because
+canonicalization copied the input or clipping built separate support, skips
+these checks. One-step analyses do not keep a reusable transform or a support
+checksum.
 
 [`_svd.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/src/sparse_count_pca/_svd.py) owns the narrow ARPACK contract:
 

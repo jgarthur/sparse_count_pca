@@ -1,4 +1,4 @@
-"""Tests for opt-in CSR support sharing and transient one-step ownership."""
+"""Tests for opt-in CSR support sharing and one-step operator isolation."""
 
 import gc
 import weakref
@@ -100,10 +100,10 @@ def test_shared_transform_pca_preserves_operator_isolation(
 @pytest.mark.parametrize(("entry_point", "kwargs"), _ONE_STEP)
 @pytest.mark.parametrize("return_operator", [False, True])
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
-def test_one_step_shares_structure_only_for_transient_operators(
+def test_one_step_shares_structure_only_without_returned_operators(
     counts, monkeypatch, entry_point, kwargs, return_operator, dtype
 ):
-    """One-step calls borrow support transiently and isolate retained operators."""
+    """One-step calls borrow support only when the operator stays inside the call."""
     original = SparseLowRankLinearOperator.__init__
     sharing = []
     snapshots = [

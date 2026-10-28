@@ -15,15 +15,14 @@ from ._anndata import (
 )
 from ._counts import BoolArray, CountMatrix
 from ._pca import PCAResult
-from ._representation import _one_step_ownership
 from ._svd import Solver
 from ._transform import (
     Log1pNormalized,
     ProportionShiftedCLR,
     ShiftedCLR,
     Transform,
+    _compute_transform_pca,
 )
-from ._transform import _transform as transform_counts
 
 
 def _compute_log_pca(
@@ -40,17 +39,14 @@ def _compute_log_pca(
     tol: float,
     return_operator: bool,
 ) -> PCAResult:
-    transformed = transform_counts(
+    return _compute_transform_pca(
         X,
         method,
+        n_comps,
         check_values=check_values,
         dtype=dtype,
-        _columns=mask,
-        _ownership=_one_step_ownership(return_operator),
-        _obs=obs,
-    )
-    return transformed.pca(
-        n_comps,
+        columns=mask,
+        obs=obs,
         solver=solver,
         random_state=random_state,
         tol=tol,

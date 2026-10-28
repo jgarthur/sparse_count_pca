@@ -301,18 +301,50 @@ def test_materialize_validates_out_and_block_size(counts):
         transformed.materialize(block_size=0)
 
 
-def test_transformed_pca_matches_one_step_matrix_api(counts):
-    """PCA of a fitted transform matches its existing one-step wrapper."""
-    transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=0.7))
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.parametrize(
+    ("method", "entry_point", "kwargs"),
+    [
+        (scp.Residual(clip=None), scp.residual_pca_matrix, {"clip": None}),
+        (
+            scp.ShiftedCLR(count_shift=0.7),
+            scp.shifted_clr_pca_matrix,
+            {"count_shift": 0.7},
+        ),
+        (
+            scp.ProportionShiftedCLR(composition_shift=0.3),
+            scp.proportion_shifted_clr_pca_matrix,
+            {"composition_shift": 0.3},
+        ),
+        (scp.Log1pNormalized(), scp.log1p_norm_pca_matrix, {}),
+        (scp.DirichletLog(), scp.dirichlet_log_pca_matrix, {}),
+        (scp.DirichletCLR(), scp.dirichlet_clr_pca_matrix, {}),
+    ],
+)
+def test_transformed_pca_matches_one_step_matrix_api(
+    counts, dtype, method, entry_point, kwargs
+):
+    """Both workflows preserve PCA values, storage dtype, and empty-gene metadata."""
+    counts = sparse.hstack(
+        [counts, sparse.csr_matrix((counts.shape[0], 1))], format="csr"
+    )
+    transformed = scp.transform(counts, method, dtype=dtype)
     actual = transformed.pca(n_comps=2)
-    expected = scp.shifted_clr_pca_matrix(counts, n_comps=2, count_shift=0.7)
+    expected = entry_point(counts, n_comps=2, dtype=dtype, **kwargs)
 
-    np.testing.assert_allclose(
-        actual.singular_values, expected.singular_values, rtol=0.0, atol=1e-12
-    )
-    np.testing.assert_allclose(
-        actual.components, expected.components, rtol=0.0, atol=1e-12
-    )
+    for name in (
+        "scores",
+        "components",
+        "singular_values",
+        "mean",
+        "explained_variance",
+        "explained_variance_ratio",
+    ):
+        np.testing.assert_array_equal(getattr(actual, name), getattr(expected, name))
+    assert actual.scores.dtype == expected.scores.dtype == np.dtype(dtype)
+    assert actual.total_variance == expected.total_variance
+    assert actual.params == expected.params
+    assert actual.params["n_empty_vars"] == 1
 
 
 def test_matrix_transform_records_normalization_and_pca_widths(counts):

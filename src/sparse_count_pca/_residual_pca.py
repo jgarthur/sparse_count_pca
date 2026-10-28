@@ -17,11 +17,9 @@ from ._anndata import (
 from ._clip import ClipLike, ClipMode
 from ._counts import BoolArray, CountMatrix
 from ._pca import PCAResult
-from ._representation import _one_step_ownership
 from ._residuals import AlphaLike, Model, ResidualType
 from ._svd import Solver
-from ._transform import Residual
-from ._transform import _transform as transform_counts
+from ._transform import Residual, _compute_transform_pca
 
 
 def _compute_residual_pca(
@@ -68,7 +66,7 @@ def _compute_residual_pca(
     Raises:
         ValueError: If counts, dimensions, or model parameters are invalid.
     """
-    transformed = transform_counts(
+    return _compute_transform_pca(
         X,
         Residual(
             model=model,
@@ -78,13 +76,10 @@ def _compute_residual_pca(
             clip_mode=clip_mode,
             clip_max_nnz_ratio=clip_max_nnz_ratio,
         ),
+        n_comps,
         check_values=check_values,
         dtype=dtype,
-        _columns=mask,
-        _ownership=_one_step_ownership(return_operator),
-    )
-    return transformed.pca(
-        n_comps,
+        columns=mask,
         solver=solver,
         random_state=random_state,
         tol=tol,

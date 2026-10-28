@@ -35,12 +35,7 @@ from ._log_transforms import (
 )
 from ._operator import _normalize_operator_dtype
 from ._pca import PCAResult, compute_pca_from_representation
-from ._representation import (
-    SparseLowRankMatrix,
-    SupportOwnership,
-    _borrows_input_support,
-    _copies_returned_operator,
-)
+from ._representation import SparseLowRankMatrix
 from ._residuals import (
     AlphaLike,
     Model,
@@ -639,23 +634,11 @@ class TransformedMatrix(LinearOperator):
         transform_label: str,
         params: dict[str, Any],
         check_values: bool,
-        dtype: DTypeLike,
         obs_names: Any | None = None,
         var_names: Any | None = None,
         var: Any | None = None,
-        ownership: SupportOwnership = "owned",
+        check_support: bool = False,
     ) -> None:
-        operator_dtype = _normalize_operator_dtype(dtype)
-        if (
-            representation.sparse.dtype != operator_dtype
-            or representation.left.dtype != operator_dtype
-            or representation.right.dtype != operator_dtype
-        ):
-            representation = SparseLowRankMatrix(
-                representation.sparse.astype(operator_dtype, copy=False),
-                representation.left.astype(operator_dtype, copy=False),
-                representation.right.astype(operator_dtype, copy=False),
-            )
         self._representation = representation
         self._sparse = representation.sparse
         self._left = representation.left
@@ -666,12 +649,11 @@ class TransformedMatrix(LinearOperator):
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
         self._var = var.copy() if var is not None else None
-        self._ownership = ownership
         self._support_nnz = self._sparse.nnz
         self._support_checksum = (
-            _support_checksum(self._sparse) if ownership == "shared" else None
+            _support_checksum(self._sparse) if check_support else None
         )
-        super().__init__(dtype=operator_dtype, shape=representation.shape)
+        super().__init__(dtype=representation.sparse.dtype, shape=representation.shape)
 
     def _check_support(self, *, full: bool) -> None:
         """Raise if support borrowed from the counts changed after fitting.
@@ -940,9 +922,6 @@ class TransformedMatrix(LinearOperator):
             if mask.all()
             else self._representation.select_columns(mask)
         )
-        assert not (return_operator and self._ownership == "transient"), (
-            "a transient transform may borrow caller support"
-        )
         return compute_pca_from_representation(
             representation,
             n_comps,
@@ -954,82 +933,98 @@ class TransformedMatrix(LinearOperator):
             random_state=random_state,
             tol=tol,
             return_operator=return_operator,
-            copy_operator=return_operator
-            and _copies_returned_operator(self._ownership),
+            copy_operator=return_operator,
         )
 
 
-def _transform(
-    data: CountMatrix | AnnData,
+def _prepare_transform(
+    X: CountMatrix,
     method: Transform,
     *,
-    layer: str | None = None,
-    check_values: bool = True,
-    dtype: DTypeLike = "float64",
-    _columns: BoolArray | None = None,
-    _ownership: SupportOwnership = "owned",
-    _obs: Any | None = None,
-) -> TransformedMatrix:
-    """Build a public transform, optionally restricted for a PCA wrapper."""
+    check_values: bool,
+    dtype: DTypeLike,
+    share_structure: bool,
+    columns: BoolArray | None = None,
+    obs: Any | None = None,
+    var: Any | None = None,
+) -> tuple[SparseLowRankMatrix, str, dict[str, Any]]:
+    """Validate counts and fit a requested-dtype representation and metadata.
+
+    Builders fit normalization over all variables before applying ``columns``.
+    An all-selected mask leaves support available for borrowing.
+    """
     if not isinstance(method, Transform):
         raise TypeError("method must be a Transform instance")
     operator_dtype = _normalize_operator_dtype(dtype)
-    if isinstance(data, AnnData):
-        X = _get_count_matrix(data, layer=layer)
-        obs = data.obs
-        var = data.var
-        obs_names = data.obs_names
-        var_names = data.var_names
-    else:
-        if layer is not None:
-            raise TypeError("layer is only valid for AnnData input")
-        X = data
-        obs = _obs
-        var = None
-        obs_names = None
-        var_names = None
     counts = _canonicalize_counts(X, check_values=check_values)
-    if _columns is not None:
+    if columns is not None:
         from ._counts import _validate_boolean_mask
 
-        _columns = _validate_boolean_mask(_columns, counts.shape[1], name="columns")
-        if not _columns.any():
+        columns = _validate_boolean_mask(columns, counts.shape[1], name="columns")
+        if not columns.any():
             raise ValueError("columns selected zero genes")
-        if _columns.all():
-            _columns = None
+        if columns.all():
+            columns = None
     representation, label, params = method._build(
         counts,
         obs=obs,
         var=var,
-        columns=_columns,
+        columns=columns,
         dtype=operator_dtype,
-        share_structure=_borrows_input_support(_ownership),
+        share_structure=share_structure,
     )
     # Empty variables are never dropped: every transform gives them a defined
     # value, so the fitted matrix always keeps the caller's variable universe.
     params = {**params, "n_empty_vars": int(_empty_columns(counts).sum())}
-    if _columns is not None and var_names is not None:
-        var_names = var_names[_columns]
-        var = var.iloc[np.flatnonzero(_columns)]
-    # Only support borrowed from the caller's matrix can change after fitting.
-    if _ownership == "shared" and not (
-        counts is X
-        and any(
-            np.may_share_memory(getattr(representation.sparse, name), getattr(X, name))
-            for name in ("indices", "indptr")
-        )
+    if (
+        representation.sparse.dtype != operator_dtype
+        or representation.left.dtype != operator_dtype
+        or representation.right.dtype != operator_dtype
     ):
-        _ownership = "owned"
-    return TransformedMatrix(
+        representation = SparseLowRankMatrix(
+            representation.sparse.astype(operator_dtype, copy=False),
+            representation.left.astype(operator_dtype, copy=False),
+            representation.right.astype(operator_dtype, copy=False),
+        )
+    return representation, label, params
+
+
+def _compute_transform_pca(
+    X: CountMatrix,
+    method: Transform,
+    n_comps: int,
+    *,
+    columns: BoolArray | None,
+    check_values: bool,
+    dtype: DTypeLike,
+    solver: Solver,
+    random_state: int | None,
+    tol: float,
+    return_operator: bool,
+    obs: Any | None = None,
+) -> PCAResult:
+    """Fit and decompose a private representation without a reusable transform."""
+    representation, label, params = _prepare_transform(
+        X,
+        method,
+        columns=columns,
+        obs=obs,
+        check_values=check_values,
+        dtype=dtype,
+        share_structure=not return_operator,
+    )
+    return compute_pca_from_representation(
         representation,
+        n_comps,
         transform_label=label,
         params=params,
         check_values=check_values,
-        dtype=operator_dtype,
-        obs_names=obs_names,
-        var_names=var_names,
-        var=var,
-        ownership=_ownership,
+        dtype=representation.sparse.dtype,
+        solver=solver,
+        random_state=random_state,
+        tol=tol,
+        return_operator=return_operator,
+        copy_operator=False,
     )
 
 
@@ -1105,11 +1100,43 @@ def transform(
     """
     if not isinstance(share_structure, (bool, np.bool_)):
         raise TypeError("share_structure must be a boolean")
-    return _transform(
-        data,
+    if isinstance(data, AnnData):
+        X = _get_count_matrix(data, layer=layer)
+        obs = data.obs
+        var = data.var
+        obs_names = data.obs_names
+        var_names = data.var_names
+    else:
+        if layer is not None:
+            raise TypeError("layer is only valid for AnnData input")
+        X = data
+        obs = var = obs_names = var_names = None
+    representation, label, params = _prepare_transform(
+        X,
         method,
-        layer=layer,
+        obs=obs,
+        var=var,
         check_values=check_values,
         dtype=dtype,
-        _ownership="shared" if share_structure else "owned",
+        share_structure=share_structure,
+    )
+    # Only support borrowed from the caller's matrix can change after fitting.
+    check_support = (
+        share_structure
+        and sparse.issparse(X)
+        and X.format == "csr"
+        and any(
+            np.may_share_memory(getattr(representation.sparse, name), getattr(X, name))
+            for name in ("indices", "indptr")
+        )
+    )
+    return TransformedMatrix(
+        representation,
+        transform_label=label,
+        params=params,
+        check_values=check_values,
+        obs_names=obs_names,
+        var_names=var_names,
+        var=var,
+        check_support=check_support,
     )

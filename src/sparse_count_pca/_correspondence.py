@@ -29,12 +29,7 @@ from ._operator import (
     _normalize_operator_dtype,
     _squared_norm_is_numerically_zero,
 )
-from ._representation import (
-    SparseLowRankMatrix,
-    _borrows_input_support,
-    _copies_returned_operator,
-    _one_step_ownership,
-)
+from ._representation import SparseLowRankMatrix
 from ._residual_pca import _resolve_alpha, _serialize_alpha
 from ._residuals import (
     AlphaLike,
@@ -217,7 +212,6 @@ def _compute_correspondence_analysis(
             stacklevel=3,
         )
 
-    ownership = _one_step_ownership(return_operator)
     representation, row_masses, column_masses = build_correspondence_representation(
         counts,
         model=model,
@@ -225,13 +219,13 @@ def _compute_correspondence_analysis(
         row_totals=row_totals,
         column_totals=column_totals,
         dtype=dtype,
-        share_structure=_borrows_input_support(ownership),
+        share_structure=not return_operator,
     )
     operator = SparseLowRankLinearOperator(
         representation,
         center=False,
         dtype=dtype,
-        copy=_copies_returned_operator(ownership),
+        copy=False,
     )
     total_inertia = operator.frobenius_squared_uncentered()
     if _squared_norm_is_numerically_zero(
