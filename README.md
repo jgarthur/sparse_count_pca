@@ -23,7 +23,7 @@ several more experimental options.
 
 ## Installation
 
-Python 3.10 or newer is required.
+Python 3.11 or newer is required.
 
 ```bash
 pip install sparse-count-pca

@@ -2,11 +2,18 @@
 
 All notable user-facing changes are recorded here.
 
-## 1.0.0 - 2026-10-27
+## 1.0.0 - 2026-10-28
 
 Changes since 1.0.0rc1:
 
 ### Breaking changes
+
+- Python 3.11 or newer is required. Current AnnData and Scanpy releases require
+  Python 3.12 or newer, while installing this project's test extra on Python
+  3.10 selects a Pillow version with known security vulnerabilities through
+  Scanpy's Matplotlib dependency. Python 3.11 supports the patched Pillow
+  release while retaining compatibility with earlier AnnData and Scanpy
+  releases.
 
 - **Residual clipping is enabled by default**, using `clip="seurat"`
   (`sqrt(n_obs / 30)`). Pass `clip=None` to recover the previous unclipped
@@ -57,6 +64,8 @@ Changes since 1.0.0rc1:
 
 ### Fixes
 
+- Locked test and documentation environments use patched certifi, Pillow,
+  nbconvert, Tornado, and urllib3 dependencies.
 - More accurate gene totals for float32 counts correct the normalization used
   by residual PCA and correspondence analysis. Synthetic regression tests
   recover `100000000 + 1` as `100000001`, where float32 accumulation lost the
