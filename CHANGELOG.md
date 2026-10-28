@@ -31,8 +31,8 @@ Changes since 1.0.0rc1:
 - Add `transform(..., share_structure=True)` to let two-step workflows reuse
   the count matrix's sparsity structure and save memory, as one-step analyses
   do automatically. Inputs that need canonicalization or conversion to CSR,
-  or int32 indices that must widen to int64, are still copied, with a
-  `UserWarning`; residual clipping that adds entries also copies. Sharing is
+  int32 indices that must widen to int64, and residual clipping that adds
+  entries still produce a copy, with a `UserWarning`. Sharing is
   opt-in; do not modify the count matrix's sparsity structure in place, for
   example with `sort_indices()`, while the fitted transform is in use. `pca`
   and `materialize` raise `RuntimeError` if it changed.
