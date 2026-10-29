@@ -260,26 +260,26 @@ For each score and loading column `j`, calculate
 `||candidate[:, j] - reference[:, j]||2 / ||reference[:, j]||2` and require
 the maximum across components to meet the target. A zero reference column norm
 requires zero error. Use `<=` for acceptance. Components are neither reordered
-nor mixed by rotations: individual gene weights are part of the comparison. An entrywise
-`allclose` with an absolute allowance is a different metric and need not enforce
-these relative targets.
+nor mixed by rotations: individual gene weights are part of the comparison.
+An entrywise `allclose` with an absolute allowance is a different metric and
+need not enforce these relative targets.
 
-Whole-matrix relative Frobenius errors and principal angles remain useful
-diagnostics, without separate pass/fail thresholds. For unit-norm loading
+Whole-matrix relative Frobenius errors and principal angles are diagnostics,
+without separate pass/fail thresholds. For unit-norm loading
 columns, the relative Frobenius error is the RMS of component errors; checking
 the maximum prevents a discrepant component from being diluted by the others.
-These vector errors do not bound the relative error of each individual gene
-weight. Variance statistics and transform/operator formulas retain their
-own checks. Same-input, same-environment, same-settings repeatability requires
-bitwise equality separately; alignment is not part of that check.
 
-These targets are informed by the paired UMI subsampling, permutation, and
-archived Scanpy comparisons in the companion repository's
-`projects/scp-tolerance-study/results/findings.md`. They express numerical
-agreement, not conservative nearest-neighbor stability; the study's all-cell
-neighborhood criterion is stricter, especially at float32. Keep that analysis
-outside CI. Use the small dense-SVD and Scanpy tests for routine agreement
-checks, with the shared helper in `tests/_oracles.py`.
+These vector errors do not bound the relative error of each individual gene
+weight. For a unit-norm reference loading column, a relative L2 error at most
+`epsilon` bounds each gene's absolute loading error by `epsilon`. Two genes
+whose reference loading magnitudes differ by more than `2 * epsilon` therefore
+cannot swap order when ranked by magnitude.
+
+Variance statistics and transform/operator formulas have separate checks.
+Same-input, same-environment, same-settings repeatability requires bitwise
+equality separately; alignment is not part of that check. The small dense-SVD
+and Scanpy tests use the shared helper in `tests/_oracles.py` for routine
+agreement checks.
 
 ## External parity tests
 
