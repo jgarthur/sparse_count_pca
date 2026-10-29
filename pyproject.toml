@@ -66,6 +66,7 @@ only-include = [
     "/src",
     "/tests",
     "/CHANGELOG.md",
+    "/CITATION.cff",
     "/examples",
     "/CONTRIBUTING.md",
     "/LICENSE",

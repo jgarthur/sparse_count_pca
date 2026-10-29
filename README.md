@@ -159,6 +159,16 @@ relationship.
 library used by Cell Ranger and contains similar matrix-representation and
 normalization machinery.
 
+## Citation
+
+If you use `sparse-count-pca` in published work, please cite the version you
+used. Citation metadata is in
+[`CITATION.cff`](https://github.com/jgarthur/sparse_count_pca/blob/main/CITATION.cff);
+the **Cite this repository** button on the GitHub page formats it as APA or
+BibTeX. Each GitHub release is archived on Zenodo with its own DOI. Please also
+cite the methods behind the transforms you use; the
+[transform catalog][transform-catalog] lists each one's origin.
+
 ## Development
 
 ```bash
@@ -184,4 +194,5 @@ for project invariants and documentation expectations.
 [scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
 [sctransform-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#sctransform-v2
 [sparse-plus-low-rank]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/sparse-plus-low-rank/
+[transform-catalog]: https://sparse-count-pca.readthedocs.io/en/latest/transforms/
 [transform-reuse]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/

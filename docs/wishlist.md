@@ -15,15 +15,20 @@ efficiency claim and to give the 1.0.0 changelog's performance entries
 identifiable evidence: the dataset, scale, revision, and whether each figure is
 a benchmark or a real-data measurement.
 
-### Citation
+### Citation DOI
 
-- Add a `CITATION.cff` at the repository root so GitHub offers "Cite this
-  repository".
-- Enable Zenodo's GitHub integration before publishing the `v1.0.0` GitHub
-  Release, so the release receives a DOI.
-- Add a short citation section to the README and the documentation home page
-  that points to it and asks users to also cite the methods they use, as
-  listed in the transform catalog.
+Zenodo's GitHub integration is enabled for this repository, so publishing the
+`v1.0.0` GitHub Release archives it and mints a version DOI plus a concept DOI
+that resolves to the latest version. `CITATION.cff` supplies the record's
+metadata; an invalid file blocks archiving, so check it with
+`uvx cffconvert --validate -i CITATION.cff` before releasing.
+
+- Before publishing, set `date-released` in `CITATION.cff` and the `## 1.0.0`
+  heading in `CHANGELOG.md` to the release date.
+- After Zenodo archives the release, add the concept DOI as `doi:` in
+  `CITATION.cff`, add a DOI badge and the DOI to the README's Citation section
+  and the documentation home page's "Citing sparse-count-pca" section, and
+  remove this entry.
 
 ## After 1.0
 
