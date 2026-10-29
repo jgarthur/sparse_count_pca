@@ -106,10 +106,9 @@ Scanpy looks for `obsm["X_pca"]` by name. Pass `use_rep` with your own key if
 you used a custom `key_added`, or `use_rep="X_pca"` if the matrix has 50 or
 fewer variables and Scanpy would otherwise read `.X` directly.
 
-Scanpy plots and tools that use gene values read `.X`, `.raw`, or a chosen
-layer; in this example `.X` still holds counts. To color a UMAP or draw violin
-plots with normalized values, see
-[plot normalized gene values](guides/transform-reuse.md#plot-normalized-gene-values).
+The full matrix of normalized values is not stored, by design. For plotting
+those values and other uses, see
+[normalized values and transform reuse](guides/transform-reuse.md).
 
 ## Next steps
 

@@ -1,10 +1,9 @@
 # Normalized values and transform reuse
 
-The one-step PCA functions write scores, components, and metadata, and leave
-expression values as they were. Gene plots read `.X`, `.raw`, or a chosen
-layer, which may still hold counts. To see normalized values, fit the same
-normalization with `transform` and materialize the genes you need. The
-fitted object can also run PCA several times with different gene masks.
+The full matrix of normalized values is not stored, by design. Use `transform`
+to fit the normalization and materialize the values you need for plotting or
+other uses. The fitted object can also run PCA several times with different
+gene masks.
 
 This guide's [complete example](#complete-example) is
 [`examples/transform_reuse.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/transform_reuse.py).

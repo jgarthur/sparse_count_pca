@@ -47,10 +47,9 @@ scp.residual_pca(
 
 Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
 to `adata.varm["PCs"]`, and variance statistics and parameters to
-`adata.uns["pca"]`. The call leaves expression values unchanged; gene plots
-read `.X`, `.raw`, or a chosen layer. You can extract exact normalized values
-for just the genes you want to plot, without building the full dense matrix:
-see [plot normalized gene values][plot-normalized-values].
+`adata.uns["pca"]`. The full matrix of normalized values is not stored, by
+design. For plotting those values and other uses, see
+[normalized values and transform reuse][transform-reuse].
 
 Pass raw counts: finite, nonnegative, and integer-valued. Floating-point
 counts are accepted within `1e-8` of an integer, and `check_values=False`
@@ -181,7 +180,6 @@ for project invariants and documentation expectations.
 [input-validation]: https://sparse-count-pca.readthedocs.io/en/latest/development/specification/#input-validation
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
 [pflog-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#shifted-clr-pflog-and-cleartools
-[plot-normalized-values]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/#plot-normalized-gene-values
 [scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
 [scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
 [sctransform-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#sctransform-v2

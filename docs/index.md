@@ -35,10 +35,9 @@ scp.residual_pca(
 
 Scores are written to `adata.obsm["X_pca"]`, component vectors to
 `adata.varm["PCs"]`, and variance statistics and parameters to
-`adata.uns["pca"]`. The call leaves expression values unchanged; gene plots
-read `.X`, `.raw`, or a chosen layer. To extract exact normalized values for
-just the genes you want to plot, see
-[plot normalized gene values](guides/transform-reuse.md#plot-normalized-gene-values).
+`adata.uns["pca"]`. The full matrix of normalized values is not stored, by
+design. For plotting those values and other uses, see
+[normalized values and transform reuse](guides/transform-reuse.md).
 
 [Install and run a complete example](getting-started.md)
 
