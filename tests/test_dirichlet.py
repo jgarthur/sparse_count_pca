@@ -17,7 +17,7 @@ from sparse_count_pca._log_transforms import (
     validate_dirichlet_prior,
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
-from tests._oracles import _dense_dirichlet
+from tests._oracles import _assert_pca_agreement, _dense_dirichlet
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
     )
     dense = _dense_dirichlet(counts, concentration, prior, clr=clr)
     dense -= dense.mean(axis=0)
-    _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
+    left, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
 
     np.testing.assert_allclose(
         result.operator @ np.eye(counts.shape[1]),
@@ -81,11 +81,8 @@ def test_dirichlet_pca_matches_dense_svd(counts, pca, clr, transform):
         rtol=0.0,
         atol=1e-12,
     )
-    np.testing.assert_allclose(
-        result.singular_values, singular_values[:2], rtol=1e-10, atol=0.0
-    )
-    np.testing.assert_allclose(
-        np.abs(result.components), np.abs(Vt[:2]), rtol=1e-9, atol=1e-9
+    _assert_pca_agreement(
+        result, singular_values[:2], left[:, :2] * singular_values[:2], Vt[:2]
     )
     assert result.params["transform"] == transform
     assert result.params["shift_domain"] == "dirichlet_prior_counts"
@@ -119,7 +116,7 @@ def test_dirichlet_mask_is_applied_after_full_normalization(adata, pca, clr):
     np.testing.assert_allclose(
         result.uns["dirichlet"]["singular_values"],
         singular_values[:2],
-        rtol=1e-10,
+        rtol=1e-12,
         atol=0.0,
     )
     params = result.uns["dirichlet"]["params"]
