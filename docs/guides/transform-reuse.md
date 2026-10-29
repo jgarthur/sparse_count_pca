@@ -1,13 +1,68 @@
-# Transform once, reuse several times
+# Normalized values and transform reuse
 
-The one-step APIs are the simplest route to PCA, but the two-step API via `transform` allows you
-to inspect transformed values, materialize bounded slices, or reuse one fitted
-normalization with several PCA masks.
+The full matrix of normalized values is not stored, by design. Use `transform`
+to fit the normalization and materialize the values you need for plotting or
+other uses. The fitted object can also run PCA several times with different
+gene masks.
 
 This guide's [complete example](#complete-example) is
 [`examples/transform_reuse.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/transform_reuse.py).
 
+## Plot normalized gene values
+
+Starting from an `adata` that already has PCA, a UMAP, and Leiden clusters,
+fit the transform with the same parameters as the PCA call, collect a few
+genes, and plot them with Scanpy:
+
+```python
+from copy import deepcopy
+
+import scanpy as sc
+from anndata import AnnData
+
+import sparse_count_pca as scp
+
+
+def normalized_for_plotting(adata, transformed, genes):
+    """Return normalized values of genes for adata's cells as a new AnnData.
+
+    genes must be named in both objects and adata's cells in transformed.
+    """
+    return AnnData(
+        X=transformed.materialize(obs=adata.obs_names.tolist(), var=genes),
+        obs=adata.obs.copy(),
+        var=adata.var.loc[genes].copy(),
+        obsm=adata.obsm.copy(),
+        uns=deepcopy(adata.uns),
+    )
+
+
+transformed = scp.transform(
+    adata,
+    scp.Residual(model="poisson", residual="pearson"),
+    layer="counts",
+)
+
+genes = ["CD3E", "MS4A1", "LYZ"]
+plot_data = normalized_for_plotting(adata, transformed, genes)
+
+sc.pl.umap(plot_data, color=genes, cmap="RdBu_r", vcenter=0)
+sc.pl.violin(plot_data, keys=genes, groupby="leiden")
+```
+
+The helper preserves annotations, embeddings, and colors without changing
+`adata`.
+
+Fit `transformed` from AnnData with unique names. Requested genes must be in
+both objects, and plotted cells in `transformed`.
+
+Residuals and CLR coordinates take both signs, so a diverging colormap centered
+at zero, as above, keeps the sign readable.
+
 ## Fit a transform
+
+`transform` accepts the same count sources as the one-step functions and
+returns a `TransformedMatrix`:
 
 ```python
 import sparse_count_pca as scp

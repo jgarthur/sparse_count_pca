@@ -92,8 +92,8 @@ two groups as `result.explained_variance_ratio` and `result.params[...]`.
 
 ## Continue in Scanpy
 
-Because the scores land at Scanpy's own keys, the rest of a standard workflow
-runs unchanged:
+Because the scores land at Scanpy's own keys, steps that start from PCA scores,
+such as the neighbor graph, clustering, and UMAP, run unchanged:
 
 ```python
 import scanpy as sc
@@ -105,6 +105,10 @@ sc.tl.umap(adata)
 Scanpy looks for `obsm["X_pca"]` by name. Pass `use_rep` with your own key if
 you used a custom `key_added`, or `use_rep="X_pca"` if the matrix has 50 or
 fewer variables and Scanpy would otherwise read `.X` directly.
+
+The full matrix of normalized values is not stored, by design. For plotting
+those values and other uses, see
+[normalized values and transform reuse](guides/transform-reuse.md).
 
 ## Next steps
 

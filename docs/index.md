@@ -35,7 +35,9 @@ scp.residual_pca(
 
 Scores are written to `adata.obsm["X_pca"]`, component vectors to
 `adata.varm["PCs"]`, and variance statistics and parameters to
-`adata.uns["pca"]`.
+`adata.uns["pca"]`. The full matrix of normalized values is not stored, by
+design. For plotting those values and other uses, see
+[normalized values and transform reuse](guides/transform-reuse.md).
 
 [Install and run a complete example](getting-started.md)
 
@@ -55,9 +57,9 @@ Scores are written to `adata.obsm["X_pca"]`, component vectors to
   [correspondence analysis](guides/correspondence-analysis.md);
   [AnnData workflows](guides/anndata-workflows.md) covers count sources,
   variable selection, and output keys.
-- **I want to inspect normalized values or reuse one normalization with several
-  PCA masks.** Use the
-  [two-step transform workflow](guides/transform-reuse.md).
+- **I want to plot or inspect normalized values, or reuse one normalization
+  with several PCA masks.** Use the
+  [normalized values and transform reuse guide](guides/transform-reuse.md).
 
 ## Core idea
 

@@ -64,7 +64,8 @@ extra_javascript:
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 exclude_docs: |
-  examples/**
+  examples/*.md
+  examples/.render-cache.json
   history/**
   hooks/**
   wishlist.md
@@ -78,7 +79,7 @@ nav:
       - Residual PCA: guides/residual-pca.md
       - Normalized log1p: guides/log1p-normalization.md
       - Shifted CLR: guides/shifted-clr.md
-      - Transform once, reuse: guides/transform-reuse.md
+      - Normalized values and transform reuse: guides/transform-reuse.md
       - Correspondence analysis: guides/correspondence-analysis.md
       - AnnData workflows: guides/anndata-workflows.md
   - Concepts:

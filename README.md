@@ -47,7 +47,9 @@ scp.residual_pca(
 
 Cell embeddings/scores are written to `adata.obsm["X_pca"]`, component vectors
 to `adata.varm["PCs"]`, and variance statistics and parameters to
-`adata.uns["pca"]`.
+`adata.uns["pca"]`. The full matrix of normalized values is not stored, by
+design. For plotting those values and other uses, see
+[normalized values and transform reuse][transform-reuse].
 
 Pass raw counts: finite, nonnegative, and integer-valued. Floating-point
 counts are accepted within `1e-8` of an integer, and `check_values=False`
@@ -118,9 +120,9 @@ to expose matrix-vector and matrix-matrix products to
   ```
 
 - **Two-step transform API.** `transform` fits a normalization once, so
-  transformed values can be inspected in bounded slices, or several PCA masks
-  can share one fitted state. See
-  [transform once and reuse][transform-reuse].
+  normalized values can be plotted or inspected in bounded slices, or several
+  PCA masks can share one fitted state. See
+  [normalized values and transform reuse][transform-reuse].
 
 ## Important distinctions
 

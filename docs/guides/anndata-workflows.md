@@ -3,7 +3,9 @@
 The AnnData functions are meant to drop into a Scanpy workflow in place of a
 normalization-plus-PCA step. They read counts from `.X` or a layer, resolve the
 same `highly_variable` mask, and write scores and components to the same keys,
-so everything downstream continues unchanged.
+so Scanpy steps that start from PCA scores continue unchanged. The full matrix
+of normalized values is not stored, by design. See
+[downstream Scanpy use](#downstream-scanpy-use).
 
 This guide's [complete example](#complete-example) is
 [`examples/anndata_workflows.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/anndata_workflows.py).
@@ -131,8 +133,9 @@ backed sparse count matrix into memory for canonicalization and fitting. With
 
 ## Downstream Scanpy use
 
-The default PCA score and component keys are compatible with downstream Scanpy
-workflows, so an analysis continues without an intermediate conversion step:
+The default PCA score and component keys are compatible with Scanpy steps that
+start from PCA scores, so the neighbor graph, clustering, and UMAP follow
+without an intermediate conversion step:
 
 ```python
 scp.residual_pca(adata, layer="counts", n_comps=50)
@@ -152,6 +155,9 @@ wrote to:
 ```python
 sc.pp.neighbors(adata, use_rep="X_pca")
 ```
+
+For plotting normalized values and other uses, see
+[normalized values and transform reuse](transform-reuse.md).
 
 The metadata also records the count source, mask resolution, transform
 parameters, calculation dtype, solver, and package version for reproducibility.

@@ -148,6 +148,7 @@ def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
     # Keep docs-only dependencies lazy so test-only environments can import the hook.
     import jupytext
     from nbconvert import MarkdownExporter
+    from nbconvert.filters import path2url
     from nbconvert.preprocessors import ExecutePreprocessor
 
     notebook = jupytext.read(source, fmt="py:percent")
@@ -173,7 +174,10 @@ def _render_example(source: Path) -> tuple[str, dict[str, bytes]]:
         "output_files_dir": f"{source.stem}_files",
         "unique_key": source.stem,
     }
-    markdown, resources = MarkdownExporter().from_notebook_node(
+    exporter = MarkdownExporter()
+    # Guide pages include these fragments; their image paths resolve from docs/guides.
+    exporter.register_filter("path2url", lambda path: f"../examples/{path2url(path)}")
+    markdown, resources = exporter.from_notebook_node(
         notebook,
         resources=resources,
     )

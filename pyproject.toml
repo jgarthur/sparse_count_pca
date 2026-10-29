@@ -53,6 +53,7 @@ docs = [
     "mkdocstrings-python",
     "nbconvert",
     "ruff",
+    "scanpy>=1.10",
 ]
 test = ["pytest", "ruff", "scanpy>=1.10", "zarr"]
 
