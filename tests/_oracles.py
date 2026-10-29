@@ -236,7 +236,7 @@ def _assert_pca_agreement(
     *,
     rtol: float | None = None,
 ) -> None:
-    """Check relative singular values and jointly aligned PCA scores/loadings."""
+    """Compare ordered PCA outputs, allowing only joint score/loading sign flips."""
     if rtol is None:
         rtol = 1e-5 if actual.scores.dtype == np.dtype("float32") else 1e-12
     np.testing.assert_allclose(
@@ -247,13 +247,14 @@ def _assert_pca_agreement(
     )
     candidate_loadings = np.asarray(actual.components, dtype=np.float64).T
     reference_loadings = np.asarray(components, dtype=np.float64).T
-    left, _, right = np.linalg.svd(candidate_loadings.T @ reference_loadings)
-    rotation = left @ right
+    signs = np.where(
+        np.sum(candidate_loadings * reference_loadings, axis=0) < 0, -1.0, 1.0
+    )
     for name, candidate, reference in (
-        ("loadings", candidate_loadings @ rotation, reference_loadings),
+        ("loadings", candidate_loadings * signs, reference_loadings),
         (
             "scores",
-            np.asarray(actual.scores, dtype=np.float64) @ rotation,
+            np.asarray(actual.scores, dtype=np.float64) * signs,
             np.asarray(scores, dtype=np.float64),
         ),
     ):
