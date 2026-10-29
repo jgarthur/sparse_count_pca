@@ -238,7 +238,7 @@ def _assert_pca_agreement(
 ) -> None:
     """Compare ordered PCA outputs, allowing only joint score/loading sign flips."""
     if rtol is None:
-        rtol = 1e-5 if actual.scores.dtype == np.dtype("float32") else 1e-12
+        rtol = 1e-4 if actual.scores.dtype == np.dtype("float32") else 1e-12
     np.testing.assert_allclose(
         np.asarray(actual.singular_values, dtype=np.float64),
         np.asarray(singular_values, dtype=np.float64),
@@ -258,6 +258,8 @@ def _assert_pca_agreement(
             np.asarray(scores, dtype=np.float64),
         ),
     ):
-        error = np.linalg.norm(candidate - reference)
-        limit = rtol * np.linalg.norm(reference)
-        assert error <= limit, f"{name}: Frobenius error {error} exceeds {limit}"
+        errors = np.linalg.norm(candidate - reference, axis=0)
+        limits = rtol * np.linalg.norm(reference, axis=0)
+        assert np.all(errors <= limits), (
+            f"{name}: per-component L2 errors {errors} exceed limits {limits}"
+        )

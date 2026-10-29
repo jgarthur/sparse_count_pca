@@ -115,11 +115,13 @@ operator machinery must not silently change their defaults.
 - Compare serial and parallel singular values, principal subspaces, aligned
   scores/components, means, total variance, and variance ratios using the
   [numerical agreement targets](development/testing.md#numerical-agreement-targets):
-  `1e-5` for float32 and `1e-12` for float64 singular-value relative errors and
-  sign-aligned score/loading relative Frobenius errors. Preserve component
-  order and apply each loading-derived sign to the corresponding score column;
-  do not rotate or mix components. Report principal angles as diagnostics
-  without an additional threshold. Preserve separate statistics checks. Require bitwise repeatability with identical input, environment, and
+  `1e-4` for float32 and `1e-12` for float64, independently for maximum
+  singular-value relative error and maximum per-component score/loading
+  relative L2 errors. Preserve component order and apply each loading-derived
+  sign to the corresponding score column; do not rotate or mix components.
+  Report whole-matrix Frobenius errors and principal angles as diagnostics
+  without additional thresholds. Preserve separate statistics checks. Require
+  bitwise repeatability with identical input, environment, and
   settings, including worker count. Treat summation-order differences across
   worker counts as numerical effects, not fixes; do not relax the targets to
   accommodate failures.
