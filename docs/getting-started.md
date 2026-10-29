@@ -92,8 +92,8 @@ two groups as `result.explained_variance_ratio` and `result.params[...]`.
 
 ## Continue in Scanpy
 
-Because the scores land at Scanpy's own keys, the rest of a standard workflow
-runs unchanged:
+Because the scores land at Scanpy's own keys, steps that start from PCA scores,
+such as the neighbor graph, clustering, and UMAP, run unchanged:
 
 ```python
 import scanpy as sc
@@ -105,6 +105,11 @@ sc.tl.umap(adata)
 Scanpy looks for `obsm["X_pca"]` by name. Pass `use_rep` with your own key if
 you used a custom `key_added`, or `use_rep="X_pca"` if the matrix has 50 or
 fewer variables and Scanpy would otherwise read `.X` directly.
+
+Scanpy plots and tools that use gene values read `.X`, `.raw`, or a chosen
+layer; in this example `.X` still holds counts. To color a UMAP or draw violin
+plots with normalized values, see
+[plot normalized gene values](guides/transform-reuse.md#plot-normalized-gene-values).
 
 ## Next steps
 

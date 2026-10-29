@@ -3,7 +3,9 @@
 The AnnData functions are meant to drop into a Scanpy workflow in place of a
 normalization-plus-PCA step. They read counts from `.X` or a layer, resolve the
 same `highly_variable` mask, and write scores and components to the same keys,
-so everything downstream continues unchanged.
+so Scanpy steps that start from PCA scores continue unchanged. Unlike Scanpy's
+normalization functions, they write no normalized values: `.X` and every layer
+keep what they held. See [downstream Scanpy use](#downstream-scanpy-use).
 
 This guide's [complete example](#complete-example) is
 [`examples/anndata_workflows.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/anndata_workflows.py).
@@ -131,8 +133,9 @@ backed sparse count matrix into memory for canonicalization and fitting. With
 
 ## Downstream Scanpy use
 
-The default PCA score and component keys are compatible with downstream Scanpy
-workflows, so an analysis continues without an intermediate conversion step:
+The default PCA score and component keys are compatible with Scanpy steps that
+start from PCA scores, so the neighbor graph, clustering, and UMAP follow
+without an intermediate conversion step:
 
 ```python
 scp.residual_pca(adata, layer="counts", n_comps=50)
@@ -152,6 +155,13 @@ wrote to:
 ```python
 sc.pp.neighbors(adata, use_rep="X_pca")
 ```
+
+Scanpy functions that use gene values rather than PCA scores, such as
+`sc.pl.umap(adata, color="CD3E")`, `sc.pl.violin`, and
+`sc.tl.rank_genes_groups`, read `.X`, `.raw`, or the layer you name. These
+hold whatever you stored there, often counts, because the PCA functions do not
+write normalized values. To plot normalized values for selected genes, see
+[plot normalized gene values](transform-reuse.md#plot-normalized-gene-values).
 
 The metadata also records the count source, mask resolution, transform
 parameters, calculation dtype, solver, and package version for reproducibility.

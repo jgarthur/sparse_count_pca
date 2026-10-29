@@ -2520,6 +2520,8 @@ docs = [
     { name = "mkdocstrings-python" },
     { name = "nbconvert" },
     { name = "ruff" },
+    { name = "scanpy", version = "1.11.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scanpy", version = "1.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 test = [
     { name = "pytest" },
@@ -2542,6 +2544,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'docs'" },
     { name = "ruff", marker = "extra == 'test'" },
+    { name = "scanpy", marker = "extra == 'docs'", specifier = ">=1.10" },
     { name = "scanpy", marker = "extra == 'test'", specifier = ">=1.10" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "scipy", specifier = ">=1.15.3" },
