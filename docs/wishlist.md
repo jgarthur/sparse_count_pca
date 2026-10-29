@@ -32,12 +32,13 @@ metadata; an invalid file blocks archiving, so check it with
 
 ## After 1.0
 
-### Parallel sparse products for PCA (1.1 candidate)
+### Opt-in parallel sparse products for PCA (1.1 target)
 
 Provide real multicore sparse matrix products through an explicit Python
 option, without requiring users to set environment variables. Keep this work
 separate from the 1.0 release until implementation and validation are complete.
-The proposed API name is `n_jobs`; its name and default are not committed API.
+Target opt-in execution in 1.1, preserving serial sparse products when the
+option is omitted. The proposed API name `n_jobs` is not committed API.
 
 #### User contract and release decision
 
@@ -47,16 +48,14 @@ The proposed API name is `n_jobs`; its name and default are not committed API.
 - Preserve the serial sparse-product path for `n_jobs=1`, including ownership,
   solver, tolerance, dtype, masking, and output contracts. This means no sparse
   worker pool; it does not promise that every native library uses one thread.
-- The conservative 1.1 proposal preserves omitted-argument behavior and makes
-  parallel execution opt-in. Adding an optional argument on those terms does
-  not require a major version change.
-- Evaluate an explicit automatic mode that chooses at most four available
-  CPUs. If automatic execution is to be the default, decide and document the
-  resource-use contract before adopting it. Account for affinity, container
-  CPU quotas, and external process-level parallelism; host CPU count alone is
-  insufficient. Keep an explicit serial escape hatch. Changing a documented
-  serial default needs compatibility review, but this is separate from adding
-  the opt-in feature and is not a reason to rush implementation into 1.0.
+- Preserve omitted-argument behavior in 1.1 and require explicit opt-in for
+  parallel execution. Adding an optional argument on those terms does not
+  require a major version change.
+- An automatic worker count, if offered, must also be explicitly requested;
+  automatic parallel execution is outside the 1.1 default policy. Evaluate
+  choosing at most four available CPUs, accounting for affinity, container CPU
+  quotas, and external process-level parallelism; host CPU count alone is
+  insufficient. Retain explicit one-worker execution.
 - Define validation for supported thread counts and any automatic sentinel;
   do not assume joblib's negative-count semantics just from the name `n_jobs`.
 - Users must be able to enable the feature with the Python API alone, both with
