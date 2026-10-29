@@ -16,6 +16,8 @@ fit the transform with the same parameters as the PCA call, collect a few
 genes, and plot them with Scanpy:
 
 ```python
+from copy import deepcopy
+
 import scanpy as sc
 from anndata import AnnData
 
@@ -23,15 +25,16 @@ import sparse_count_pca as scp
 
 
 def normalized_for_plotting(adata, transformed, genes):
-    """Materialize named genes in an AnnData aligned to adata's named cells.
+    """Return normalized values of genes for adata's cells as a new AnnData.
 
-    Fit transformed from AnnData with unique cell and gene names. Pass genes
-    as a list of names in both objects; adata may subset or reorder fitted cells.
+    genes must be named in both objects and adata's cells in transformed.
     """
     return AnnData(
         X=transformed.materialize(obs=adata.obs_names.tolist(), var=genes),
         obs=adata.obs.copy(),
         var=adata.var.loc[genes].copy(),
+        obsm=adata.obsm.copy(),
+        uns=deepcopy(adata.uns),
     )
 
 
@@ -43,37 +46,19 @@ transformed = scp.transform(
 
 genes = ["CD3E", "MS4A1", "LYZ"]
 plot_data = normalized_for_plotting(adata, transformed, genes)
-plot_data.obsm["X_umap"] = adata.obsm["X_umap"].copy()
 
 sc.pl.umap(plot_data, color=genes, cmap="RdBu_r", vcenter=0)
 sc.pl.violin(plot_data, keys=genes, groupby="leiden")
 ```
 
-`normalized_for_plotting` returns a new, small AnnData object:
+The helper preserves annotations, embeddings, and colors without changing
+`adata`.
 
-| Attribute | Contents |
-| --- | --- |
-| `.X` | dense normalized values, one column per gene in `genes`, rows in `adata.obs_names` order |
-| `.obs` | a copy of `adata.obs`, so clusters and other annotations work as `color` or `groupby` keys |
-| `.var` | the rows of `adata.var` for `genes` |
-
-It copies no embeddings, layers, or `.uns` entries such as `leiden_colors`, so
-assign each embedding you plot, as with `X_umap` above. `adata` is not
-modified.
-
-Cells and genes are selected by name, so `transformed` must be fitted from an
-AnnData object with unique cell and gene names. The `adata` passed to the
-helper may be a subset or reordering of the fitted cells, for example
-`adata[adata.obs["leiden"] == "3"]`; every cell name must exist in the fitted
-object.
-
-`.X` is dense, with `n_obs` values per gene in the transform's dtype: 8 bytes
-each for the default `float64`. For larger selections, see
-[bound materialization memory](#bound-materialization-memory).
+Fit `transformed` from AnnData with unique names. Requested genes must be in
+both objects, and plotted cells in `transformed`.
 
 Residuals and CLR coordinates take both signs, so a diverging colormap centered
-at zero, as above, keeps the sign readable. Normalized log1p values are
-nonnegative and suit Scanpy's default colormap.
+at zero, as above, keeps the sign readable.
 
 ## Fit a transform
 

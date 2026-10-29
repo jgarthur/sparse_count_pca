@@ -5,6 +5,8 @@ Companion notebook for the normalized-values and transform-reuse guide. The
 percent-cell format opens directly as a notebook in Jupyter or VS Code.
 """
 
+from copy import deepcopy
+
 import numpy as np
 import scanpy as sc
 from anndata import AnnData
@@ -32,6 +34,7 @@ adata.layers["counts"] = counts
 adata.obs_names = [f"cell_{i}" for i in range(adata.n_obs)]
 adata.var_names = [f"gene_{i}" for i in range(adata.n_vars)]
 adata.obs["cell_type"] = ["A", "B", "A", "B", "A", "B"]
+adata.uns["cell_type_colors"] = ["#4477AA", "#EE6677"]
 
 # %% [markdown]
 # **Fit the normalization once.** `transform` accepts the same count sources as
@@ -60,30 +63,33 @@ print("observation block:", block.shape)
 print(block.round(3))
 
 # %% [markdown]
-# **Collect selected genes for plotting.** `normalized_for_plotting`
-# materializes the named genes for `adata`'s cells, in `adata`'s order, and
-# returns them with a copy of `adata.obs` in a new AnnData object. `adata` and
-# its counts are unchanged.
+# **Collect selected genes for plotting.** `normalized_for_plotting` returns
+# the named genes' normalized values in a new AnnData object, with copies of
+# `adata`'s `.obs`, `.obsm`, and `.uns`. `adata` is unchanged.
 
 
 # %%
 def normalized_for_plotting(adata, transformed, genes):
-    """Materialize named genes in an AnnData aligned to adata's named cells.
+    """Return normalized values of genes for adata's cells as a new AnnData.
 
-    Fit transformed from AnnData with unique cell and gene names. Pass genes
-    as a list of names in both objects; adata may subset or reorder fitted cells.
+    genes must be named in both objects and adata's cells in transformed.
     """
     return AnnData(
         X=transformed.materialize(obs=adata.obs_names.tolist(), var=genes),
         obs=adata.obs.copy(),
         var=adata.var.loc[genes].copy(),
+        obsm=adata.obsm.copy(),
+        uns=deepcopy(adata.uns),
     )
 
 
 # %% [markdown]
-# **Plot with Scanpy.** Every `adata.obs` column is available for grouping.
+# **Plot with Scanpy.** PCA is stored in `adata` before `plot_data` is built,
+# so the helper copies its scores along with the `cell_type` labels and colors.
 
 # %%
+result = transformed.pca(n_comps=2, mask_var=None)
+adata.obsm["X_pca"] = result.scores
 genes = ["gene_0", "gene_2"]
 plot_data = normalized_for_plotting(adata, transformed, genes)
 sc.pl.violin(plot_data, keys=genes, groupby="cell_type", show=False)
@@ -91,16 +97,12 @@ plt.show()
 plt.close("all")
 
 # %% [markdown]
-# **Color an embedding by gene.** Copy the embedding into the plotting object,
-# then call Scanpy's plotting functions on it. This example colors PCA
-# coordinates so that it needs no neighbor graph or UMAP; with real data, copy
-# `adata.obsm["X_umap"]` the same way and call `sc.pl.umap`. Pearson residuals
-# take both signs, so the colormap is diverging and centered at zero.
+# **Color an embedding by gene.** This example colors PCA coordinates so that
+# it needs no neighbor graph or UMAP; with real data, `sc.pl.umap` uses the
+# copied `X_umap` the same way. Pearson residuals take both signs, so the
+# colormap is diverging and centered at zero.
 
 # %%
-result = transformed.pca(n_comps=2, mask_var=None)
-adata.obsm["X_pca"] = result.scores
-plot_data.obsm["X_pca"] = adata.obsm["X_pca"].copy()
 sc.pl.embedding(
     plot_data,
     basis="pca",
