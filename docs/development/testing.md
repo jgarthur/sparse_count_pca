@@ -228,10 +228,11 @@ low-order bits of factor products and reductions.
 
 ## PCA and subspace equality
 
-Compare singular values, explained variance, and reconstructed subspaces with a
-dense SVD. Individual singular vectors are sign-ambiguous, and repeated or
-nearly repeated singular values make basis vectors within a subspace ambiguous;
-tests should use sign normalization or subspace comparisons as appropriate.
+Compare singular values, scores, loadings, and explained variance with a dense
+SVD. Preserve component order and account for the joint sign ambiguity of each
+score/loading pair. Repeated or nearly repeated singular values can make the
+individual axes unstable; inspect subspace diagnostics when investigating such
+disagreements without rotating the outputs to satisfy the agreement checks.
 
 ### Numerical agreement targets
 
@@ -243,20 +244,24 @@ stricter checks where they verify a more specific invariant.
 | Metric | float32 | float64 |
 | --- | ---: | ---: |
 | Maximum relative singular-value error | `1e-5` | `1e-12` |
-| Aligned score relative Frobenius error | `1e-5` | `1e-12` |
-| Aligned loading relative Frobenius error | `1e-5` | `1e-12` |
+| Sign-aligned score relative Frobenius error | `1e-5` | `1e-12` |
+| Sign-aligned loading relative Frobenius error | `1e-5` | `1e-12` |
 
 Select the threshold by calculation/storage precision, not the dtype of the
 returned singular-value array. Evaluate comparison arithmetic in float64.
 For reference singular values `s`, require `max(abs(s_candidate - s) / abs(s))`
 to meet the target. A zero reference requires an exactly zero candidate.
 
-Let `L` contain genes by components and `S` contain cells by components.
-Find the orthogonal matrix `Q` minimizing `||L_candidate Q - L_reference||F`.
-Apply that same `Q` to candidate scores and compare each aligned matrix using
+Let `L` contain genes by components and `S` contain cells by components. For
+each component in its returned order, choose `-1` if the dot product of the
+candidate and reference loading vectors is negative, and `+1` otherwise.
+Multiply that candidate loading column and its score column by the same sign.
+Compare each resulting matrix using
 `||candidate - reference||F / ||reference||F`. A zero reference norm requires
-zero error. Use `<=` for acceptance. An entrywise `allclose` with an absolute
-allowance is a different metric and need not enforce these relative targets.
+zero error. Use `<=` for acceptance. Components are neither reordered nor mixed
+by rotations: individual gene weights are part of the comparison. An entrywise
+`allclose` with an absolute allowance is a different metric and need not enforce
+these relative targets.
 
 Principal angles remain useful diagnostics, without a separate pass/fail
 threshold. Variance statistics and transform/operator formulas retain their
