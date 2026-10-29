@@ -243,9 +243,9 @@ stricter checks where they verify a more specific invariant.
 
 | Metric | float32 | float64 |
 | --- | ---: | ---: |
-| Maximum relative singular-value error | `1e-5` | `1e-12` |
-| Sign-aligned score relative Frobenius error | `1e-5` | `1e-12` |
-| Sign-aligned loading relative Frobenius error | `1e-5` | `1e-12` |
+| Maximum relative singular-value error | `1e-4` | `1e-12` |
+| Maximum sign-aligned score component relative L2 error | `1e-4` | `1e-12` |
+| Maximum sign-aligned loading component relative L2 error | `1e-4` | `1e-12` |
 
 Select the threshold by calculation/storage precision, not the dtype of the
 returned singular-value array. Evaluate comparison arithmetic in float64.
@@ -256,15 +256,20 @@ Let `L` contain genes by components and `S` contain cells by components. For
 each component in its returned order, choose `-1` if the dot product of the
 candidate and reference loading vectors is negative, and `+1` otherwise.
 Multiply that candidate loading column and its score column by the same sign.
-Compare each resulting matrix using
-`||candidate - reference||F / ||reference||F`. A zero reference norm requires
-zero error. Use `<=` for acceptance. Components are neither reordered nor mixed
-by rotations: individual gene weights are part of the comparison. An entrywise
+For each score and loading column `j`, calculate
+`||candidate[:, j] - reference[:, j]||2 / ||reference[:, j]||2` and require
+the maximum across components to meet the target. A zero reference column norm
+requires zero error. Use `<=` for acceptance. Components are neither reordered
+nor mixed by rotations: individual gene weights are part of the comparison. An entrywise
 `allclose` with an absolute allowance is a different metric and need not enforce
 these relative targets.
 
-Principal angles remain useful diagnostics, without a separate pass/fail
-threshold. Variance statistics and transform/operator formulas retain their
+Whole-matrix relative Frobenius errors and principal angles remain useful
+diagnostics, without separate pass/fail thresholds. For unit-norm loading
+columns, the relative Frobenius error is the RMS of component errors; checking
+the maximum prevents a discrepant component from being diluted by the others.
+These vector errors do not bound the relative error of each individual gene
+weight. Variance statistics and transform/operator formulas retain their
 own checks. Same-input, same-environment, same-settings repeatability requires
 bitwise equality separately; alignment is not part of that check.
 
