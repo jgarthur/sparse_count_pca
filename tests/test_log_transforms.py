@@ -9,6 +9,7 @@ from sparse_count_pca import _log_transforms as log_module
 from sparse_count_pca import _transform as transform_module
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from tests._oracles import (
+    _assert_pca_agreement,
     _dense_count_shifted_clr,
     _dense_dirichlet,
     _dense_log1p_norm,
@@ -137,24 +138,15 @@ def test_log_pca_matches_precast_factor_dense_svd(counts, family, dtype):
     centered = (dense - mean).astype(np.float64)
     left, singular_values, components = np.linalg.svd(centered, full_matrices=False)
     actual = scp.transform(counts, method(**kwargs), dtype=dtype).pca(n_comps=2)
-    signs = np.sign(np.sum(actual.components * components[:2], axis=1))
     tolerance = 2e-6 if dtype == "float32" else 1e-12
 
     np.testing.assert_allclose(actual.mean, mean, rtol=tolerance, atol=tolerance)
-    np.testing.assert_allclose(
-        actual.singular_values, singular_values[:2], rtol=tolerance
-    )
-    np.testing.assert_allclose(
-        actual.components * signs[:, None],
+    _assert_pca_agreement(
+        actual,
+        singular_values[:2],
+        left[:, :2] * singular_values[:2],
         components[:2],
         rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        actual.scores * signs,
-        left[:, :2] * singular_values[:2],
-        rtol=tolerance,
-        atol=tolerance,
     )
     total_variance = np.sum(centered**2) / (counts.shape[0] - 1)
     variance = singular_values[:2] ** 2 / (counts.shape[0] - 1)

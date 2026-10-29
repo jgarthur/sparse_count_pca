@@ -6,6 +6,7 @@ from scipy import sparse
 
 import sparse_count_pca as scp
 from sparse_count_pca import _counts as counts_module
+from tests._oracles import _assert_pca_agreement
 
 
 @pytest.mark.parametrize("position", [1, 2, 5])
@@ -205,19 +206,13 @@ def test_float32_counts_fit_the_same_transform_as_float64_counts(method, dtype):
     actual_pca = actual.pca(n_comps=2)
     expected_pca = expected.pca(n_comps=2)
     tolerance = 2e-6 if dtype == "float32" else 1e-12
-    signs = np.sign(np.sum(actual_pca.components * expected_pca.components, axis=1))
     np.testing.assert_allclose(actual_pca.mean, expected_pca.mean, rtol=tolerance)
-    np.testing.assert_allclose(
-        actual_pca.singular_values, expected_pca.singular_values, rtol=tolerance
-    )
-    np.testing.assert_allclose(
-        actual_pca.components * signs[:, None],
+    _assert_pca_agreement(
+        actual_pca,
+        expected_pca.singular_values,
+        expected_pca.scores,
         expected_pca.components,
         rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        actual_pca.scores * signs, expected_pca.scores, rtol=tolerance, atol=tolerance
     )
     assert actual_pca.total_variance == pytest.approx(
         expected_pca.total_variance, rel=tolerance
@@ -247,6 +242,6 @@ def test_float32_counts_fit_the_same_correspondence_analysis_as_float64_counts(d
     np.testing.assert_array_equal(actual.column_masses, expected.column_masses)
     tolerance = 2e-6 if dtype == "float32" else 1e-12
     np.testing.assert_allclose(
-        actual.singular_values, expected.singular_values, rtol=tolerance
+        actual.singular_values, expected.singular_values, rtol=tolerance, atol=0.0
     )
     assert actual.total_inertia == pytest.approx(expected.total_inertia, rel=tolerance)

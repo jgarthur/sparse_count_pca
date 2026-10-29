@@ -228,20 +228,35 @@ def _materialize_dense_residual(
     return result
 
 
-def _compare_subspaces(
-    left: ArrayLike,
-    right: ArrayLike,
+def _assert_pca_agreement(
+    actual,
+    singular_values: ArrayLike,
+    scores: ArrayLike,
+    components: ArrayLike,
     *,
-    atol: float = 1e-6,
-    rtol: float = 0.0,
-) -> bool:
-    left = np.asarray(left)
-    right = np.asarray(right)
-    left_q = np.linalg.qr(left)[0]
-    right_q = np.linalg.qr(right)[0]
-    return np.allclose(
-        left_q @ left_q.T,
-        right_q @ right_q.T,
-        atol=atol,
+    rtol: float | None = None,
+) -> None:
+    """Check relative singular values and jointly aligned PCA scores/loadings."""
+    if rtol is None:
+        rtol = 1e-5 if actual.scores.dtype == np.dtype("float32") else 1e-12
+    np.testing.assert_allclose(
+        np.asarray(actual.singular_values, dtype=np.float64),
+        np.asarray(singular_values, dtype=np.float64),
         rtol=rtol,
+        atol=0.0,
     )
+    candidate_loadings = np.asarray(actual.components, dtype=np.float64).T
+    reference_loadings = np.asarray(components, dtype=np.float64).T
+    left, _, right = np.linalg.svd(candidate_loadings.T @ reference_loadings)
+    rotation = left @ right
+    for name, candidate, reference in (
+        ("loadings", candidate_loadings @ rotation, reference_loadings),
+        (
+            "scores",
+            np.asarray(actual.scores, dtype=np.float64) @ rotation,
+            np.asarray(scores, dtype=np.float64),
+        ),
+    ):
+        error = np.linalg.norm(candidate - reference)
+        limit = rtol * np.linalg.norm(reference)
+        assert error <= limit, f"{name}: Frobenius error {error} exceeds {limit}"

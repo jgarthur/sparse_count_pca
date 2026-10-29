@@ -46,7 +46,7 @@ EXPECTED_COLUMN_PRINCIPAL = np.array(
 
 def _assert_axes_equal_up_to_sign(actual, expected):
     signs = np.where(np.sum(actual * expected, axis=0) < 0, -1.0, 1.0)
-    np.testing.assert_allclose(actual * signs, expected, rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(actual * signs, expected, rtol=1e-12, atol=0.0)
 
 
 def test_correspondence_analysis_matches_corral(counts):
@@ -56,8 +56,8 @@ def test_correspondence_analysis_matches_corral(counts):
     np.testing.assert_allclose(
         result.singular_values,
         EXPECTED_SINGULAR_VALUES,
-        rtol=1e-10,
-        atol=1e-12,
+        rtol=1e-12,
+        atol=0.0,
     )
     np.testing.assert_allclose(
         result.total_inertia,

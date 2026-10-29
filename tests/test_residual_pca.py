@@ -13,7 +13,7 @@ from sparse_count_pca._counts import COUNT_INTEGER_ATOL, _canonicalize_counts
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from sparse_count_pca._representation import SparseLowRankMatrix
 from sparse_count_pca._residuals import ALPHA_EPS
-from tests._oracles import _compare_subspaces, _materialize_dense_residual
+from tests._oracles import _assert_pca_agreement, _materialize_dense_residual
 
 
 @pytest.mark.parametrize(
@@ -53,11 +53,10 @@ def test_operator_and_svd_match_dense(counts, model, residual, alpha):
     np.testing.assert_allclose(result.operator @ Z, dense @ Z, rtol=0.0, atol=1e-10)
     np.testing.assert_allclose(result.operator.T @ Y, dense.T @ Y, rtol=0.0, atol=1e-10)
 
-    _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
-    np.testing.assert_allclose(
-        result.singular_values, singular_values[:2], rtol=1e-8, atol=0.0
+    left, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
+    _assert_pca_agreement(
+        result, singular_values[:2], left[:, :2] * singular_values[:2], Vt[:2]
     )
-    assert _compare_subspaces(result.components.T, Vt[:2].T, rtol=0.0, atol=1e-7)
     expected_total_variance = np.sum(dense**2) / (counts.shape[0] - 1)
     assert result.total_variance == pytest.approx(
         expected_total_variance, rel=1e-10, abs=0.0

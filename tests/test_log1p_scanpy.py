@@ -7,6 +7,7 @@ from scipy import sparse
 
 from sparse_count_pca import Log1pNormalized, log1p_norm_pca_matrix, transform
 from sparse_count_pca import _operator as operator_module
+from tests._oracles import _assert_pca_agreement
 
 scanpy = pytest.importorskip("scanpy")
 
@@ -72,24 +73,15 @@ def test_rank_zero_log1p_pca_matches_scanpy(monkeypatch, target_nnz, dtype):
     actual = log1p_norm_pca_matrix(counts, n_comps=5, dtype=dtype, random_state=0)
     expected_scores = explicit.obsm["X_pca"]
     expected_components = explicit.varm["PCs"].T
-    signs = np.sign(np.sum(actual.components * expected_components, axis=1))
-    tolerance = 2e-5 if dtype == "float32" else 1e-10
-    np.testing.assert_allclose(
-        actual.scores * signs, expected_scores, rtol=tolerance, atol=tolerance
-    )
-    np.testing.assert_allclose(
-        actual.components * signs[:, None],
-        expected_components,
-        rtol=tolerance,
-        atol=tolerance,
-    )
     expected_variance = explicit.uns["pca"]["variance"]
     expected_ratios = explicit.uns["pca"]["variance_ratio"]
-    np.testing.assert_allclose(
-        actual.singular_values,
-        np.sqrt(expected_variance * (counts.shape[0] - 1)),
-        rtol=tolerance,
+    _assert_pca_agreement(
+        actual,
+        np.sqrt(expected_variance.astype(np.float64) * (counts.shape[0] - 1)),
+        expected_scores,
+        expected_components,
     )
+    tolerance = 2e-5 if dtype == "float32" else 1e-10
     np.testing.assert_allclose(
         actual.explained_variance, expected_variance, rtol=tolerance
     )

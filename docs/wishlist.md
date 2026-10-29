@@ -114,9 +114,14 @@ operator machinery must not silently change their defaults.
   Verify buffer sharing and bound partial-output allocations.
 - Compare serial and parallel singular values, principal subspaces, aligned
   scores/components, means, total variance, and variance ratios using the
-  package's dtype-appropriate criteria. Treat summation-order differences as
-  numerical effects, not fixes; do not require bitwise identity across worker
-  counts or relax accuracy thresholds to accommodate failures.
+  [numerical agreement targets](development/testing.md#numerical-agreement-targets):
+  `1e-5` for float32 and `1e-12` for float64 singular-value relative errors and
+  aligned score/loading relative Frobenius errors. Report principal angles as
+  diagnostics without an additional threshold. Preserve separate statistics
+  checks. Require bitwise repeatability with identical input, environment, and
+  settings, including worker count. Treat summation-order differences across
+  worker counts as numerical effects, not fixes; do not relax the targets to
+  accommodate failures.
 - Check omitted arguments and explicit `n_jobs=1` for serial compatibility,
   including the absence of a pool and unchanged native settings. Exercise
   public wrappers and repeated PCA on a fitted transform.

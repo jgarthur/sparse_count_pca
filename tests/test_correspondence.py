@@ -28,7 +28,7 @@ def test_correspondence_analysis_matches_dense_oracle(counts):
         atol=1e-12,
     )
     np.testing.assert_allclose(
-        result.singular_values, singular_values[:2], rtol=1e-10, atol=0.0
+        result.singular_values, singular_values[:2], rtol=1e-12, atol=0.0
     )
     np.testing.assert_allclose(result.row_masses, row_masses, rtol=1e-14, atol=0.0)
     np.testing.assert_allclose(
@@ -39,14 +39,14 @@ def test_correspondence_analysis_matches_dense_oracle(counts):
     np.testing.assert_allclose(
         np.abs(result.row_principal_coordinates),
         np.abs(U[:, :2] * singular_values[:2] / np.sqrt(row_masses)[:, None]),
-        rtol=1e-9,
-        atol=1e-9,
+        rtol=1e-12,
+        atol=0.0,
     )
     np.testing.assert_allclose(
         np.abs(result.column_principal_coordinates),
         np.abs(Vt[:2].T * singular_values[:2] / np.sqrt(column_masses)[:, None]),
-        rtol=1e-9,
-        atol=1e-9,
+        rtol=1e-12,
+        atol=0.0,
     )
 
 
@@ -133,8 +133,8 @@ def test_ca_row_principal_coordinates_equal_unscaled_pearson_scores_over_sqrt_de
     np.testing.assert_allclose(
         np.abs(result.row_principal_coordinates),
         np.abs(expected_coordinates),
-        rtol=1e-9,
-        atol=1e-9,
+        rtol=1e-12,
+        atol=0.0,
     )
 
 
