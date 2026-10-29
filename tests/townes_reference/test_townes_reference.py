@@ -54,6 +54,6 @@ def test_singular_values_match_townes_reference(
     np.testing.assert_allclose(
         result.singular_values,
         expected,
-        rtol=1e-10,
-        atol=1e-10,
+        rtol=1e-12,
+        atol=0.0,
     )

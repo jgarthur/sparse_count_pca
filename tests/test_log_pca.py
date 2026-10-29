@@ -22,7 +22,7 @@ from sparse_count_pca._log_transforms import (
 )
 from sparse_count_pca._operator import SparseLowRankLinearOperator
 from tests._oracles import (
-    _compare_subspaces,
+    _assert_pca_agreement,
     _dense_count_shifted_clr,
     _dense_log1p_norm,
     _dense_proportion_shifted_clr,
@@ -150,17 +150,16 @@ def test_log_pca_matches_dense_svd(counts, pca, kwargs, dense_transform):
     )
     dense = dense_transform(counts)
     dense -= dense.mean(axis=0)
-    _, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
+    left, singular_values, Vt = np.linalg.svd(dense, full_matrices=False)
     np.testing.assert_allclose(
         result.operator @ np.eye(counts.shape[1]),
         dense,
         rtol=0.0,
         atol=1e-12,
     )
-    np.testing.assert_allclose(
-        result.singular_values, singular_values[:2], rtol=1e-10, atol=0.0
+    _assert_pca_agreement(
+        result, singular_values[:2], left[:, :2] * singular_values[:2], Vt[:2]
     )
-    assert _compare_subspaces(result.components.T, Vt[:2].T, rtol=0.0, atol=1e-9)
 
 
 @pytest.mark.parametrize(
@@ -205,7 +204,7 @@ def test_log_pca_mask_is_applied_after_full_transform(
     np.testing.assert_allclose(
         result.uns["log_pca"]["singular_values"],
         singular_values[:2],
-        rtol=1e-10,
+        rtol=1e-12,
         atol=0.0,
     )
     params = result.uns["log_pca"]["params"]

@@ -233,6 +233,44 @@ dense SVD. Individual singular vectors are sign-ambiguous, and repeated or
 nearly repeated singular values make basis vectors within a subspace ambiguous;
 tests should use sign normalization or subspace comparisons as appropriate.
 
+### Numerical agreement targets
+
+For PCA implementation comparisons on identical counts and equivalent transforms,
+use the following relative-error targets. They are development and benchmark
+checks, not a public guarantee for every dataset or solver tolerance. Preserve
+stricter checks where they verify a more specific invariant.
+
+| Metric | float32 | float64 |
+| --- | ---: | ---: |
+| Maximum relative singular-value error | `1e-5` | `1e-12` |
+| Aligned score relative Frobenius error | `1e-5` | `1e-12` |
+| Aligned loading relative Frobenius error | `1e-5` | `1e-12` |
+
+Select the threshold by calculation/storage precision, not the dtype of the
+returned singular-value array. Evaluate comparison arithmetic in float64.
+For reference singular values `s`, require `max(abs(s_candidate - s) / abs(s))`
+to meet the target. A zero reference requires an exactly zero candidate.
+
+Let `L` contain genes by components and `S` contain cells by components.
+Find the orthogonal matrix `Q` minimizing `||L_candidate Q - L_reference||F`.
+Apply that same `Q` to candidate scores and compare each aligned matrix using
+`||candidate - reference||F / ||reference||F`. A zero reference norm requires
+zero error. Use `<=` for acceptance. An entrywise `allclose` with an absolute
+allowance is a different metric and need not enforce these relative targets.
+
+Principal angles remain useful diagnostics, without a separate pass/fail
+threshold. Variance statistics and transform/operator formulas retain their
+own checks. Same-input, same-environment, same-settings repeatability requires
+bitwise equality separately; alignment is not part of that check.
+
+These targets are informed by the paired UMI subsampling, permutation, and
+archived Scanpy comparisons in the companion repository's
+`projects/scp-tolerance-study/results/findings.md`. They express numerical
+agreement, not conservative nearest-neighbor stability; the study's all-cell
+neighborhood criterion is stricter, especially at float32. Keep that analysis
+outside CI. Use the small dense-SVD and Scanpy tests for routine agreement
+checks, with the shared helper in `tests/_oracles.py`.
+
 ## External parity tests
 
 Pinned references cover:
