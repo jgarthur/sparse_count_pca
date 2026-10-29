@@ -32,6 +32,161 @@ metadata; an invalid file blocks archiving, so check it with
 
 ## After 1.0
 
+### Parallel sparse products for PCA (1.1 candidate)
+
+Provide real multicore sparse matrix products through an explicit Python
+option, without requiring users to set environment variables. Keep this work
+separate from the 1.0 release until implementation and validation are complete.
+The proposed API name is `n_jobs`; its name and default are not committed API.
+
+#### User contract and release decision
+
+- Make the option available consistently on `TransformedMatrix.pca`, one-step
+  matrix PCA functions, and AnnData PCA wrappers. Keep configuration local to
+  a calculation rather than implicitly inheriting Scanpy's global settings.
+- Preserve the serial sparse-product path for `n_jobs=1`, including ownership,
+  solver, tolerance, dtype, masking, and output contracts. This means no sparse
+  worker pool; it does not promise that every native library uses one thread.
+- The conservative 1.1 proposal preserves omitted-argument behavior and makes
+  parallel execution opt-in. Adding an optional argument on those terms does
+  not require a major version change.
+- Evaluate an explicit automatic mode that chooses at most four available
+  CPUs. If automatic execution is to be the default, decide and document the
+  resource-use contract before adopting it. Account for affinity, container
+  CPU quotas, and external process-level parallelism; host CPU count alone is
+  insufficient. Keep an explicit serial escape hatch. Changing a documented
+  serial default needs compatibility review, but this is separate from adding
+  the opt-in feature and is not a reason to rush implementation into 1.0.
+- Define validation for supported thread counts and any automatic sentinel;
+  do not assume joblib's negative-count semantics just from the name `n_jobs`.
+- Users must be able to enable the feature with the Python API alone, both with
+  untouched environments and with native thread limits imposed by a pipeline.
+  Coordinate native thread budgets internally, preserve stricter limits, and
+  restore any temporarily changed limits on success and failure. Never mutate
+  process environment variables as the implementation of a per-call option.
+- Define which settings control sparse workers versus native libraries. Native
+  limits can affect unrelated work in the same process, so nested/concurrent
+  calls need an explicit policy. Establish support for each native backend;
+  do not assume that one threadpool-control mechanism covers Accelerate,
+  OpenBLAS, and OpenMP identically.
+
+Scanpy's documented `settings.n_jobs` default is one, and its ordinary
+in-memory sparse ARPACK PCA path delegates to scikit-learn without consulting
+that setting. It is not evidence for automatically choosing all available
+cores here. See [Scanpy's setting](https://scanpy.readthedocs.io/en/stable/generated/scanpy.settings.n_jobs.html)
+and its [PCA implementation](https://github.com/scverse/scanpy/blob/1.12.4/src/scanpy/preprocessing/_pca/__init__.py).
+
+#### Implementation direction
+
+Parallelize the sparse products inside the linear operator while retaining a
+single ARPACK invocation and the same low-rank and centering corrections.
+Workers are threads in one process sharing immutable matrix buffers, not
+processes with separate copies of the input.
+
+Create one bounded pool per PCA solve and reuse it for every forward and
+transpose product, including matrix-block products. Give each worker a CSR
+row block. Forward products produce disjoint output rows; transpose products
+produce private partial outputs that are reduced in a defined order. Cache
+lightweight block and transpose views for reuse. Avoid copying the full sparse
+matrix or constructing a separate full transpose, and budget partial-output
+storage explicitly. Check buffer sharing rather than relying on `copy=False`.
+Consider nonzero-balanced row boundaries for uneven row densities.
+
+Put this into the operator and shared PCA execution layers, with option
+plumbing through public wrappers. Keep transforms and solver mathematics
+unchanged. Preserve the package's owned/borrowed support contracts: borrowing
+within a solve must not weaken the isolation promised for returned operators.
+Guarantee pool cleanup after exceptions and interrupted solves. Returned
+operators must remain usable after the solve's pool closes, without retaining
+live workers or unexpected references to temporary buffers. Define behavior
+for other supported solvers and correspondence analysis explicitly; sharing
+operator machinery must not silently change their defaults.
+
+#### Correctness and lifecycle tests
+
+- Compare forward/transpose vector and block products with independent dense
+  oracles, including the adjoint identity, for float32 and float64, centered
+  and uncentered operators, and rank-zero and nonzero low-rank corrections.
+- Cover every supported representation reaching the shared operator: residual
+  families/clipping, log1p, CLR, and Dirichlet transforms; include masking and
+  owned/borrowed input support. Check that inputs remain unchanged.
+- Exercise empty rows/blocks, more workers than rows, uneven nonzero counts,
+  tiny matrices, read-only buffers, and supported int32/int64 index layouts.
+  Verify buffer sharing and bound partial-output allocations.
+- Compare serial and parallel singular values, principal subspaces, aligned
+  scores/components, means, total variance, and variance ratios using the
+  package's dtype-appropriate criteria. Treat summation-order differences as
+  numerical effects, not fixes; do not require bitwise identity across worker
+  counts or relax accuracy thresholds to accommodate failures.
+- Check omitted arguments and explicit `n_jobs=1` for serial compatibility,
+  including the absence of a pool and unchanged native settings. Exercise
+  public wrappers and repeated PCA on a fitted transform.
+- Exercise worker failures, solver nonconvergence, interruption, repeated
+  solves, nested/concurrent calls, and returned-operator reuse. Verify thread
+  cleanup and restoration of native settings, including exception paths.
+- Test the supported Python/NumPy/SciPy range; the package's minimum SciPy
+  predates the C ARPACK rewrite. Avoid depending on prototype-only private
+  method replacement or assumptions about solver reentrancy.
+
+#### Performance and ordinary-user validation
+
+Run fresh-process comparisons on Apple Silicon/macOS with Accelerate and
+Linux with OpenBLAS, using the public API of an isolated candidate checkout.
+Record source/input hashes, dependency versions, native backends, resolved
+worker counts, CPU allocation, and whether environment settings were inherited
+or explicitly controlled. Keep concurrent benchmark jobs off each host.
+
+1. First test the actual ordinary-user workflow with relevant BLAS, OpenMP,
+   and Accelerate thread variables unset: omitted option, explicit one worker,
+   four workers, eight workers, and any proposed automatic mode. Environment
+   manipulation belongs in the benchmark launcher, not the package API.
+2. Repeat with inherited native limits of one and larger limits, plus restricted
+   CPU allocations and outer process parallelism. Check that the Python option
+   remains sufficient, caller limits are not increased, and native settings are
+   restored. Compare runtime and CPU consumption to diagnose oversubscription;
+   allocated thread counts alone do not establish simultaneous CPU contention.
+3. Use interleaved repeated runs on real PBMC and larger sparse brain subsets,
+   covering both precisions and residual/log1p PCA. Include small inputs where
+   setup can dominate and skewed sparsity where equal-row splits may underuse
+   workers. Measure pool setup, transform/statistics, solve, and complete
+   calculation separately, with input loading and output writing identified.
+4. Measure process CPU seconds divided by wall time and, where useful,
+   per-thread activity. Demonstrate real multicore work and complete-workflow
+   speedups rather than inferring them from configured limits. Compare Scanpy
+   sparse log1p PCA separately from dense residual PCA, preserving dtype and
+   solver settings and excluding lazy compilation consistently.
+5. Measure sampled peak RSS/high-water memory and paging, not just post-phase
+   RSS. Verify that sparse-buffer storage is not multiplied by worker count.
+   Establish per-worker memory containment before Linux capacity/OOM trials so
+   a failed calculation cannot take down the coordinator. Attribute system-wide
+   swap counters cautiously. Use subsets on the Mac; full-brain Mac execution
+   is outside the benchmark's authorization.
+
+Keep hardware-dependent speed assertions in manual benchmarks rather than
+ordinary CI. Use these results to decide the automatic-mode policy and whether
+four workers are a useful recommendation across input sizes. Separate solver
+and tolerance experiments from threading comparisons so their effects are not
+confounded. Follow the [testing guide](development/testing.md) for baseline
+numerical and ownership contracts.
+
+#### Prototype and evidence locations
+
+The companion `compbio-notebooks` repository contains the executable prototype
+and retained comparisons. These local cross-repository links assume sibling
+checkouts; they are not published documentation URLs:
+
+- [Cross-host findings, raw-output links, and reproduction instructions](../../compbio-notebooks/projects/scp-testing/results/threading-20261029-sparse-validation/findings.md).
+- [Sparse-product prototype](../../compbio-notebooks/projects/scp-testing/scripts/probe_mac_headroom.py)
+  and [sweep driver](../../compbio-notebooks/projects/scp-testing/scripts/validate_sparse_threads.py).
+- [Results index](../../compbio-notebooks/projects/scp-testing/results/index.md),
+  including Mac residual measurements and frozen-source provenance.
+
+The retained runs use a frozen source snapshot, controlled native thread
+budgets, and one small PBMC fixture. They motivate this work but do not satisfy
+its unset-environment, larger-input, supported-version, or production-lifecycle
+acceptance tests. Revalidate against the integration revision after concurrent
+package work settles; keep the separate tolerance study independent.
+
 ### Block-wise inverse reconstruction to count space
 
 Provide native reconstruction from a `PCAResult` without materializing the
