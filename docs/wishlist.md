@@ -32,32 +32,54 @@ metadata; an invalid file blocks archiving, so check it with
 
 ## After 1.0
 
-### Opt-in parallel sparse products for PCA (1.1 target)
+### Parallel sparse products for PCA (1.1 target)
 
-Provide real multicore sparse matrix products through an explicit Python
-option, without requiring users to set environment variables. Keep this work
-separate from the 1.0 release until implementation and validation are complete.
-Target opt-in execution in 1.1, preserving serial sparse products when the
-option is omitted. The proposed API name `n_jobs` is not committed API.
+Provide real multicore sparse matrix products, controlled from Python without
+requiring users to set environment variables. Keep this work separate from the
+1.0 release until implementation and validation are complete. The 1.1
+candidate default is an automatic worker count of at most four. That default
+is conditional on reproducibility: PCA results must not depend on how many
+workers ran. If that cannot be met, ship 1.1 with serial products by default
+and parallel execution as an explicit opt-in. The proposed API name `n_jobs`
+is not committed API.
 
 #### User contract and release decision
 
 - Make the option available consistently on `TransformedMatrix.pca`, one-step
   matrix PCA functions, and AnnData PCA wrappers. Keep configuration local to
   a calculation rather than implicitly inheriting Scanpy's global settings.
-- Preserve the serial sparse-product path for `n_jobs=1`, including ownership,
-  solver, tolerance, dtype, masking, and output contracts. This means no sparse
-  worker pool; it does not promise that every native library uses one thread.
-- Preserve omitted-argument behavior in 1.1 and require explicit opt-in for
-  parallel execution. Adding an optional argument on those terms does not
-  require a major version change.
-- An automatic worker count, if offered, must also be explicitly requested;
-  automatic parallel execution is outside the 1.1 default policy. Evaluate
-  choosing at most four available CPUs, accounting for affinity, container CPU
-  quotas, and external process-level parallelism; host CPU count alone is
-  insufficient. Retain explicit one-worker execution.
-- Define validation for supported thread counts and any automatic sentinel;
-  do not assume joblib's negative-count semantics just from the name `n_jobs`.
+- Resolve the omitted option (a sentinel such as `n_jobs=None`) to
+  `min(4, available CPUs, caller thread limit)`. Explicit `n_jobs=1` runs
+  without a sparse worker pool, preserving ownership, solver, tolerance, dtype,
+  masking, and output contracts; it does not promise that every native library
+  uses one thread. Define whether explicit counts above the available CPUs are
+  honored or capped. Do not assume joblib's negative-count semantics just from
+  the name `n_jobs`.
+- Count available CPUs as those the process may use: CPU affinity
+  (`os.sched_getaffinity` where it exists) and container CPU quotas. Host CPU
+  count (`os.cpu_count()`) is insufficient: a SLURM job allocated one CPU or a
+  Docker container started with `--cpus=2` still reports every host core.
+  Affinity covers cpuset-based allocations; only the cgroup quota covers
+  `--cpus`. Python 3.11 lacks `os.process_cpu_count`, and the standard library
+  does not read cgroup quotas, so plan to port or depend on loky's CPU
+  detection.
+- Treat OpenMP and BLAS limits the caller already set, through environment
+  variables or `threadpoolctl`, as a ceiling on the automatic count. A
+  pipeline that pins native threads to one then stays serial without new
+  configuration. Bound the remaining oversubscription risk, process-level
+  parallelism that sets no limits, through the cap and the benchmarks below.
+- Reproducibility gate for the automatic default: results must be bitwise
+  identical for every worker count, including one, given the same input,
+  host, and environment. Otherwise results would change with the CPU
+  allocation, for example between a laptop and a two-core CI runner. The
+  [implementation direction](#implementation-direction) describes the
+  partition that provides this.
+- Omitted-argument results then differ from 1.0 by summation order only,
+  because the transpose reduction sums block partials. Record that and the
+  higher default CPU use under other changes in the changelog, not fixes;
+  neither requires a major version change. Open question: whether any path
+  must reproduce 1.0 bitwise. A fixed partition used for every worker count,
+  including one, rules that out.
 - Users must be able to enable the feature with the Python API alone, both with
   untouched environments and with native thread limits imposed by a pipeline.
   Coordinate native thread budgets internally, preserve stricter limits, and
@@ -71,9 +93,14 @@ option is omitted. The proposed API name `n_jobs` is not committed API.
 
 Scanpy's documented `settings.n_jobs` default is one, and its ordinary
 in-memory sparse ARPACK PCA path delegates to scikit-learn without consulting
-that setting. It is not evidence for automatically choosing all available
-cores here. See [Scanpy's setting](https://scanpy.readthedocs.io/en/stable/generated/scanpy.settings.n_jobs.html)
+that setting. See [Scanpy's setting](https://scanpy.readthedocs.io/en/stable/generated/scanpy.settings.n_jobs.html)
 and its [PCA implementation](https://github.com/scverse/scanpy/blob/1.12.4/src/scanpy/preprocessing/_pca/__init__.py).
+That setting governs process-level parallelism. Native threading in the same
+stack uses multiple cores by default: this package's dense low-rank products
+already run on multithreaded BLAS, and scikit-learn's OpenMP code uses the
+available cores while honoring `OMP_NUM_THREADS`. In-process sparse workers
+sharing one copy of the matrix resemble native threading more than
+process-level parallelism.
 
 #### Implementation direction
 
@@ -83,13 +110,18 @@ Workers are threads in one process sharing immutable matrix buffers, not
 processes with separate copies of the input.
 
 Create one bounded pool per PCA solve and reuse it for every forward and
-transpose product, including matrix-block products. Give each worker a CSR
-row block. Forward products produce disjoint output rows; transpose products
-produce private partial outputs that are reduced in a defined order. Cache
-lightweight block and transpose views for reuse. Avoid copying the full sparse
-matrix or constructing a separate full transpose, and budget partial-output
-storage explicitly. Check buffer sharing rather than relying on `copy=False`.
-Consider nonzero-balanced row boundaries for uneven row densities.
+transpose product, including matrix-block products. Split the CSR matrix into
+row blocks whose boundaries depend only on the matrix, for example a fixed
+number of nonzero-balanced blocks no smaller than the worker cap, never on the
+worker count; workers take blocks from that partition, and one-worker
+execution runs the same blocks in sequence. Forward products produce disjoint
+output rows, so they match for any partition. Transpose products produce one
+private partial output per block, reduced in block order, which makes results
+independent of the worker count. Cache lightweight block and transpose views
+for reuse. Avoid copying the full sparse matrix or constructing a separate
+full transpose, and budget partial-output storage, which scales with the
+block count, explicitly. Check buffer sharing rather than relying on
+`copy=False`.
 
 Put this into the operator and shared PCA execution layers, with option
 plumbing through public wrappers. Keep transforms and solver mathematics
@@ -112,7 +144,11 @@ operator machinery must not silently change their defaults.
 - Exercise empty rows/blocks, more workers than rows, uneven nonzero counts,
   tiny matrices, read-only buffers, and supported int32/int64 index layouts.
   Verify buffer sharing and bound partial-output allocations.
-- Compare serial and parallel singular values, principal subspaces, aligned
+- Require bitwise-identical PCA results for one worker, every supported worker
+  count, and the automatic count, given identical input, environment, and
+  settings. This is the reproducibility gate for the automatic default.
+- Compare the partitioned products against the unpartitioned 1.0 serial
+  products: singular values, principal subspaces, aligned
   scores/components, means, total variance, and variance ratios using the
   [numerical agreement targets](development/testing.md#numerical-agreement-targets):
   `1e-4` for float32 and `1e-12` for float64, independently for maximum
@@ -120,14 +156,14 @@ operator machinery must not silently change their defaults.
   relative L2 errors. Preserve component order and apply each loading-derived
   sign to the corresponding score column; do not rotate or mix components.
   Report whole-matrix Frobenius errors and principal angles as diagnostics
-  without additional thresholds. Preserve separate statistics checks. Require
-  bitwise repeatability with identical input, environment, and
-  settings, including worker count. Treat summation-order differences across
-  worker counts as numerical effects, not fixes; do not relax the targets to
-  accommodate failures.
-- Check omitted arguments and explicit `n_jobs=1` for serial compatibility,
-  including the absence of a pool and unchanged native settings. Exercise
-  public wrappers and repeated PCA on a fitted transform.
+  without additional thresholds. Preserve separate statistics checks. Treat
+  summation-order differences from 1.0 as numerical effects, not fixes; do
+  not relax the targets to accommodate failures.
+- Check that the omitted option resolves to the documented automatic count
+  under restricted affinity, container quotas, and caller-imposed native
+  limits, and that explicit `n_jobs=1` creates no pool and leaves native
+  settings unchanged. Exercise public wrappers and repeated PCA on a fitted
+  transform.
 - Exercise worker failures, solver nonconvergence, interruption, repeated
   solves, nested/concurrent calls, and returned-operator reuse. Verify thread
   cleanup and restoration of native settings, including exception paths.
@@ -144,8 +180,8 @@ worker counts, CPU allocation, and whether environment settings were inherited
 or explicitly controlled. Keep concurrent benchmark jobs off each host.
 
 1. First test the actual ordinary-user workflow with relevant BLAS, OpenMP,
-   and Accelerate thread variables unset: omitted option, explicit one worker,
-   four workers, eight workers, and any proposed automatic mode. Environment
+   and Accelerate thread variables unset: omitted option (automatic count),
+   explicit one worker, four workers, and eight workers. Environment
    manipulation belongs in the benchmark launcher, not the package API.
 2. Repeat with inherited native limits of one and larger limits, plus restricted
    CPU allocations and outer process parallelism. Check that the Python option
@@ -170,8 +206,9 @@ or explicitly controlled. Keep concurrent benchmark jobs off each host.
    is outside the benchmark's authorization.
 
 Keep hardware-dependent speed assertions in manual benchmarks rather than
-ordinary CI. Use these results to decide the automatic-mode policy and whether
-four workers are a useful recommendation across input sizes. Separate solver
+ordinary CI. Use these results to confirm the cap of four across input sizes
+and that the automatic default does not slow restricted-CPU or outer-parallel
+runs; if it does, fall back to an opt-in release. Separate solver
 and tolerance experiments from threading comparisons so their effects are not
 confounded. Follow the [testing guide](development/testing.md) for baseline
 numerical and ownership contracts.
