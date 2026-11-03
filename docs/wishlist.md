@@ -248,15 +248,19 @@ the number of blocks and genes, not with the stored entries.
 
 - **Reuse statistics across calls.** Each gene's mean and centered squared
   norm depend only on its own column, so PCA over selected genes could slice
-  statistics cached on the `TransformedMatrix`. PCA output must not depend on
-  whether `variable_statistics` ran first. Slices of statistics computed over
-  all genes differ in low-order bits from a computation over only the selected
-  genes. Two things cause this: row-block boundaries follow the selected
-  matrix's stored entries, and dense columns are reconstructed in shared
-  batches. So either PCA always slices statistics over all genes, computing
-  them on first use (a masked PCA run without `variable_statistics` then pays
-  for every gene), or per-column results must stop depending on which other
-  columns are present. Cached values remain valid as long as the support check
+  statistics cached on the `TransformedMatrix`. Slices of statistics computed
+  over all genes differ in low-order bits from a computation over only the
+  selected genes. Two things cause this: row-block boundaries follow the
+  selected matrix's stored entries, and dense columns are reconstructed in
+  shared batches. Open decision: whether PCA output may then depend on whether
+  `variable_statistics` ran first. Allowing it lets PCA slice whatever is
+  cached, with differences within the statistics' documented accuracy.
+  Forbidding it, as the reproducibility gate for parallel products does for
+  worker counts, needs one of two approaches. PCA could always slice
+  statistics over all genes, computing them on first use, so a masked PCA run
+  without `variable_statistics` pays for every gene. Or per-column results
+  could stop depending on which other columns are present. Cached values
+  remain valid as long as the support check
   that `share_structure=True` transforms run before each calculation passes.
 - **Derive the uncentered norms rather than sweeping for them.** A centered
   operator computes norms about zero and about the mean in the same sweep,
@@ -281,16 +285,20 @@ the number of blocks and genes, not with the stored entries.
 - **Cheaper dense-column means.** Columns stored in more than half the cells
   take their means directly, using `math.fsum` per column per block. On the
   profiled input, about 940 such genes made 190k `fsum` calls, which took
-  2.3 s of the 4.0 s. The specification justifies `fsum` because represented
-  values can have mixed signs. However, the block results are then combined
-  with ordinary float64 addition, so the column sums are not exactly rounded
-  anyway. Pairwise `np.sum` within each block, with each column's block
-  partials combined by one `math.fsum` at the end, should be about as
-  accurate. Check this against the accuracy tests and revise the
-  specification's rationale before switching.
+  2.3 s of the 4.0 s. The specification uses `fsum` because represented values
+  can have mixed signs. Block results are combined with ordinary float64
+  addition, so the protection covers cancellation within a block. A plain
+  pairwise `np.sum` gives that up: `test_dense_means_preserve_signed_sum`
+  places the column `[2**60, 1, -2**60]` in one block, and pairwise summation
+  rounds it to 0 instead of 1. A faster reduction must keep this accuracy.
+  One option is pairwise sums with a bound computed from the summed absolute
+  values, which sends only the columns that fail it to `fsum`. That works only
+  if the specification's accuracy requirement permits it.
 
-These changes move means, variances, and PCA totals only in low-order bits,
-which belong under other changes in the changelog. Validate them separately
+Apart from the dense-mean reduction, these changes reorder summation or
+derive values through exact identities. They move means, variances, and PCA
+totals only by rounding, which belongs under other changes in the changelog.
+Validate them separately
 from the [parallel sparse products](#parallel-sparse-products-for-pca-11-target),
 which also change summation order and compare against 1.0 statistics.
 
