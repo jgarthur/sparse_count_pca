@@ -212,8 +212,8 @@ described in [normalization, masking, and centering](../concepts/normalization-m
 
 A string `mask_var`, and the default `"highly_variable"`, are read from
 `adata.var` when `pca` is called, so annotations added after fitting are used.
-If `adata` has since been deleted or subset to other genes, pass a boolean
-array aligned with `transformed.var_names` instead:
+If `adata` has since been subset to other genes, pass a boolean array aligned
+with `transformed.var_names` instead:
 
 ```python
 mask = transformed.var_names.isin(adata.var_names[adata.var["highly_variable"]])
@@ -239,7 +239,9 @@ By default the fitted object owns the sparse support needed to isolate it
 from later mutation of the caller's matrix. It does not keep the AnnData
 object it was fitted from in memory. Once that object is deleted, or if it was
 never assigned to a variable, as in `scp.transform(sc.read_h5ad(path), ...)`,
-`pca` needs a boolean-array `mask_var` or `mask_var=None`.
+`pca` needs a boolean-array `mask_var` or `mask_var=None`. To keep using a
+mask column after deleting `adata`, save it first, for example with
+`mask = adata.var["highly_variable"].to_numpy()`.
 
 The fitted object lives only in the current Python process:
 fitting a transform adds nothing to the AnnData object, so `write_h5ad` does

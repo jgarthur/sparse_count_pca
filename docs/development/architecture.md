@@ -387,8 +387,9 @@ copies its arrays:
   a weak reference to the source AnnData object, whose current `var` resolves
   PCA mask keys after checking `var_names`. The reference is weak so that a
   transform does not hold the AnnData's matrices in memory after the caller
-  deletes it, and so that a mask key never reads an object the caller has
-  replaced, for example with `adata = adata.copy()`. The object stays live
+  deletes it. Once the object is freed, mask keys raise instead of reading it.
+  This catches a replaced object, as after `adata = adata.copy()`, only when
+  nothing else still references the original. The object stays live
   after `pca`, so a returned operator would otherwise share its arrays, and
   through them any borrowed input support. It takes a support-sized copy.
 - One-step PCA, such as `residual_pca_matrix`, calls `_compute_transform_pca`,
