@@ -232,6 +232,68 @@ its unset-environment, larger-input, supported-version, or production-lifecycle
 acceptance tests. Revalidate against the integration revision after concurrent
 package work settles; keep the separate tolerance study independent.
 
+### Faster per-gene statistics (1.1 target)
+
+Make the operator's column statistics cheaper, and let `pca(mask_var=...)`
+reuse the statistics that `variable_statistics` computed. In the
+highly-variable-gene workflow, `TransformedMatrix.variable_statistics` builds
+an operator over every gene, reads its column means and centered squared
+norms, and discards it. `pca(mask_var=...)` then builds a second operator over
+the selected genes, whose constructor recomputes their statistics. In a
+profile on a 100k-cell brain subset (200M stored counts, 20k genes, rank-1
+low-rank part), `variable_statistics` spent 11.6 s in the operator
+constructor: 7.2 s in the norm sweep (`_squared_norms_about`) and 4.0 s in
+column means (`_column_means`). Most of that time is overhead that scales with
+the number of blocks and genes, not with the stored entries.
+
+- **Reuse statistics across calls.** Each gene's mean and centered squared
+  norm depend only on its own column, so PCA over selected genes could slice
+  statistics cached on the `TransformedMatrix`. PCA output must not depend on
+  whether `variable_statistics` ran first. Slices of statistics computed over
+  all genes differ in low-order bits from a computation over only the selected
+  genes. Two things cause this: row-block boundaries follow the selected
+  matrix's stored entries, and dense columns are reconstructed in shared
+  batches. So either PCA always slices statistics over all genes, computing
+  them on first use (a masked PCA run without `variable_statistics` then pays
+  for every gene), or per-column results must stop depending on which other
+  columns are present. Cached values remain valid as long as the support check
+  that `share_structure=True` transforms run before each calculation passes.
+- **Derive the uncentered norms rather than sweeping for them.** A centered
+  operator computes norms about zero and about the mean in the same sweep,
+  which doubles the per-entry work. `centered_variance_is_numerically_zero`
+  still needs the uncentered total as its scale. For each column it follows
+  from the centered norm as
+  $\sum x^2 = \sum (x - c)^2 + c\,(2\sum x - n c)$, with $c$ the stored center
+  and $\sum x$ the float64 column sum from the mean pass. Uncentered
+  operators, which correspondence analysis uses, already sweep about zero
+  only.
+- **Size norm blocks relative to the gene count.** `_STATS_NORM_BLOCK_NNZ`
+  (100,000) gives about 2,000 blocks on the profiled input. Each block
+  allocates partial sums with one entry per gene and center, and runs
+  `bincount` with `minlength=n_vars` four times, so its per-gene cost is about
+  the same as its per-entry work. Dense columns also need a CSC copy of each
+  block, which took 1.4 s in total. Blocks should hold several times `n_vars`
+  stored entries while keeping the scratch bound that motivated the small
+  target: the sweep gathers left- and right-factor rows for every stored
+  entry in a block, so scratch grows with block entries times rank. Update the
+  [budget table](development/architecture.md#bounded-computation-budgets) to
+  match.
+- **Cheaper dense-column means.** Columns stored in more than half the cells
+  take their means directly, using `math.fsum` per column per block. On the
+  profiled input, about 940 such genes made 190k `fsum` calls, which took
+  2.3 s of the 4.0 s. The specification justifies `fsum` because represented
+  values can have mixed signs. However, the block results are then combined
+  with ordinary float64 addition, so the column sums are not exactly rounded
+  anyway. Pairwise `np.sum` within each block, with each column's block
+  partials combined by one `math.fsum` at the end, should be about as
+  accurate. Check this against the accuracy tests and revise the
+  specification's rationale before switching.
+
+These changes move means, variances, and PCA totals only in low-order bits,
+which belong under other changes in the changelog. Validate them separately
+from the [parallel sparse products](#parallel-sparse-products-for-pca-11-target),
+which also change summation order and compare against 1.0 statistics.
+
 ### Block-wise inverse reconstruction to count space
 
 Provide native reconstruction from a `PCAResult` without materializing the
