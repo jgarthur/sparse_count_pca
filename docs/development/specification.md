@@ -100,6 +100,7 @@ scp.transform(adata_or_X, scp.DirichletLog(...))
 scp.transform(adata_or_X, scp.DirichletCLR(...))
 scp.TransformedMatrix
 scp.PCAResult
+scp.VariableStatistics
 scp.CorrespondenceAnalysisResult
 ```
 
@@ -162,7 +163,11 @@ transform.
 `TransformedMatrix` subclasses `scipy.sparse.linalg.LinearOperator` and
 represents the full uncentered transformed matrix. It is an in-process object,
 is not serialized by `write_h5ad`, and must be rebuilt after restarting Python.
-Its public operations are matrix multiplication, `materialize`, and `pca`.
+A transform fitted from AnnData stores copies of `obs_names` and `var_names`
+and a reference to the AnnData object, which it uses only to resolve PCA
+masks.
+Its public operations are matrix multiplication, `materialize`,
+`variable_statistics`, and `pca`.
 
 ```python
 transformed.materialize(
@@ -187,6 +192,38 @@ future out-of-core support may replace the backend without changing the public
 operator and materialization contracts.
 
 ```python
+transformed.variable_statistics(
+    var=None,
+    ddof=1,
+)
+```
+
+Return a `VariableStatistics` with float64 `mean` and `variance` for the
+selected variables, plus `var_names` (AnnData names or `None`), `n_obs`, and
+`ddof`. The values describe the fitted transform, including clipping, over
+every observation:
+
+```math
+\bar R_j = \frac{1}{N}\sum_i R_{ij}, \qquad
+\operatorname{var}_j = \frac{1}{N - \mathrm{ddof}}\sum_i (R_{ij} - \bar R_j)^2.
+```
+
+`var` accepts the selectors of `materialize`, and results follow its order and
+repeats. Selection does not refit normalization. `ddof` must be a Python or
+NumPy integer, not a boolean, with `0 <= ddof < n_obs`; otherwise raise
+`TypeError` or `ValueError`. The default `ddof=1` matches the `n_obs - 1`
+denominator of `total_variance`, so with the same columns and dtype the
+variances sum to the PCA total variance. Constant variables return zero
+variance; the numerical-zero rejection applies only to PCA. Shared support is
+verified as for `materialize`.
+
+The calculation builds a centered operator over the distinct selected columns
+without copying the fitted arrays, reads its per-column statistics (see
+[Explained variance and total variance](#explained-variance-and-total-variance)),
+and discards it. Selecting every variable skips column selection, which
+copies the selected support.
+
+```python
 transformed.pca(
     n_comps=50,
     mask_var=_empty,
@@ -199,7 +236,13 @@ transformed.pca(
 ```
 
 For AnnData-derived transforms, mask resolution matches the one-step AnnData
-API. Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
+API and reads the source object's `adata.var` at call time, so columns added
+after fitting are visible. A key, the default `"highly_variable"` lookup, or
+`use_highly_variable=True` first requires `adata.var_names` to equal the fitted
+`var_names` in order and raises `ValueError` otherwise. A boolean array, which
+must have one entry per fitted variable, `None`, and `use_highly_variable=False`
+do not read `adata.var` and remain usable after its variables change.
+Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
 selects columns only after the full transform has been defined. One transform
 may therefore be reused for several PCA masks or component counts.
 If `TransformedMatrix.pca(return_operator=True)` retains the mutable centered
@@ -1983,6 +2026,18 @@ explained_variance = singular_values**2 / (n_obs - 1)
 explained_variance_ratio = explained_variance / total_variance
 ```
 
+The operator keeps the per-column centered sums of squares whose `math.fsum`
+is `frobenius_centered_squared`, and `variable_statistics` divides them by
+`n_obs - ddof`. The direct-recalculation cutoff above is applied to each column
+separately, so each reported variance carries the expected relative error
+stated above for columns that keep the identity result, or the accuracy of
+direct summation for columns that do not. Deviations are taken from the stored
+operator-dtype center. In
+float64 the rounding of that center is negligible; in float32 it adds about
+$n\,\delta_j^2$ to column $j$'s sum of squares, where
+$|\delta_j| \lesssim \epsilon_{32}|\bar R_j|$, which dominates only for
+nearly constant columns.
+
 ## Verification contracts
 
 ### 1. Dense oracle tests
@@ -2041,6 +2096,12 @@ For Poisson Pearson residuals, compare against Scanpy experimental Pearson resid
 Test residual matrix values on small data.
 
 Then test PCA by running Scanpy PCA on the explicit residual matrix and comparing singular values/subspaces to the implicit package result.
+
+Compare `variable_statistics(ddof=0).variance` of Poisson Pearson residuals
+with Scanpy's `highly_variable_genes(flavor="pearson_residuals",
+theta=np.inf)` `residual_variances`, clipped at `sqrt(n_obs)` and unclipped,
+and check that ranking those variances selects Scanpy's single-batch
+`highly_variable` genes.
 
 ### 4. Deviance oracle tests using scipy.stats
 
@@ -2173,6 +2234,13 @@ np.sum((R - R.mean(axis=0)) ** 2) / (n_obs - 1)
 ```
 
 Also compare explained variance ratio to dense SVD.
+
+Compare each variable's `variable_statistics` mean and variance, for every
+transform family and both `ddof` values, with the dense matrix, including a
+gene without counts and multiple statistics row blocks. Compare columns whose
+support cancels a large baseline against exact sums while a high-variance
+column dominates the total, so that a per-column error cannot hide in the
+aggregate.
 
 ### 9. Townes reference test
 

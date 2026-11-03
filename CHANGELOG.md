@@ -28,6 +28,13 @@ Changes since 1.0.0rc1:
 
 ### New features
 
+- Add `TransformedMatrix.variable_statistics` to compute each gene's mean and
+  variance under a fitted transform without materializing it, for example to
+  select highly variable genes by Pearson-residual variance. Statistics include
+  any residual clipping and default to the `n_obs - 1` denominator used by PCA
+  total variance. With `Residual(model="poisson", clip="scanpy")` and `ddof=0`,
+  the variances agree with Scanpy's Pearson-residual `residual_variances` for
+  `theta=np.inf` in a small synthetic regression test.
 - Add size-factor-normalized `log1p` PCA with `log1p_norm_pca`,
   `log1p_norm_pca_matrix`, and the `Log1pNormalized` transform, using a
   median-depth default, explicit target totals, or supplied size factors,
@@ -76,6 +83,17 @@ Changes since 1.0.0rc1:
 - Squared norms behind total variance, explained-variance ratios, and
   correspondence-analysis inertia are recomputed directly when cancellation
   would leave them accurate to only about eight digits.
+- `TransformedMatrix.pca` reads `mask_var` keys and the default
+  `"highly_variable"` mask from the AnnData object's current `adata.var`, so
+  highly variable genes selected after fitting a transform are used. It
+  previously read a copy taken at fitting, silently selecting every gene when
+  that copy had no `"highly_variable"` column. If the AnnData's genes change
+  after fitting, keys raise `ValueError`; boolean-array masks and
+  `mask_var=None` still work. A transform fitted from AnnData keeps that
+  object in memory.
+- `TransformedMatrix.materialize` raises `IndexError` for a boolean mask whose
+  length does not match its axis, including an empty mask, which previously
+  selected nothing, and for scalar-boolean or two-dimensional selectors.
 
 ### Other changes
 

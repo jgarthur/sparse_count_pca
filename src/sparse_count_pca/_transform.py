@@ -33,7 +33,7 @@ from ._log_transforms import (
     validate_positive_scalar,
     validate_size_factors,
 )
-from ._operator import _normalize_operator_dtype
+from ._operator import SparseLowRankLinearOperator, _normalize_operator_dtype
 from ._pca import PCAResult, compute_pca_from_representation
 from ._representation import SparseLowRankMatrix
 from ._residuals import (
@@ -578,6 +578,12 @@ def _normalize_selector(
     if isinstance(selector, str):
         selector = [selector]
     values = np.asarray(selector) if not isinstance(selector, slice) else None
+    if values is not None and values.ndim > 1:
+        raise IndexError(f"Invalid {axis_name} selector: must be one-dimensional")
+    if values is not None and values.dtype == np.bool_ and values.shape != (size,):
+        raise IndexError(
+            f"Invalid {axis_name} selector: boolean masks must have length {size}"
+        )
     if values is not None and values.size == 0:
         return np.empty(0, dtype=np.intp)
     if values is not None and values.dtype.kind in {"O", "U", "S"}:
@@ -599,6 +605,41 @@ def _normalize_selector(
     return np.atleast_1d(indices).astype(np.intp, copy=False)
 
 
+@dataclass
+class VariableStatistics:
+    """Per-variable means and variances of a fitted transform.
+
+    Returned by ``TransformedMatrix.variable_statistics``. Entries follow the
+    requested variable order.
+
+    Attributes:
+        mean: Mean transformed value of each variable over all observations,
+            in float64.
+        variance: Each variable's sum of squared deviations from its mean,
+            divided by ``n_obs - ddof``, in float64.
+        var_names: Names of the selected variables for a transform fitted from
+            AnnData, or ``None`` for matrix input.
+        n_obs: Number of observations, which is every observation the
+            transform was fitted on.
+        ddof: Delta degrees of freedom in the variance denominator.
+    """
+
+    mean: NDArray[np.float64]
+    variance: NDArray[np.float64]
+    var_names: Any | None
+    n_obs: int
+    ddof: int
+
+
+def _validate_ddof(ddof: Any, n_obs: int) -> int:
+    """Return ``ddof`` as an int after checking it leaves a positive divisor."""
+    if isinstance(ddof, bool) or not isinstance(ddof, (int, np.integer)):
+        raise TypeError(f"ddof must be an integer; got {ddof!r}")
+    if not 0 <= ddof < n_obs:
+        raise ValueError(f"ddof must satisfy 0 <= ddof < n_obs={n_obs}; got {ddof}")
+    return int(ddof)
+
+
 class TransformedMatrix(LinearOperator):
     """Uncentered implicit transformed matrix with inspection and PCA methods.
 
@@ -608,6 +649,12 @@ class TransformedMatrix(LinearOperator):
     the input's CSR indices and row pointers, which must not be modified in
     place while this object is alive; see ``transform``. It exists only in the
     current Python process and is not serialized with AnnData.
+
+    A transform fitted from AnnData keeps a reference to that object, which
+    therefore stays in memory while the transform does. ``pca`` reads
+    ``mask_var`` keys, including the default ``"highly_variable"``, from the
+    object's ``adata.var`` when it is called, so annotations added after
+    fitting are used.
 
     Attributes:
         shape: Transformed matrix shape ``(n_obs, n_vars)``.
@@ -636,7 +683,7 @@ class TransformedMatrix(LinearOperator):
         check_values: bool,
         obs_names: Any | None = None,
         var_names: Any | None = None,
-        var: Any | None = None,
+        adata: AnnData | None = None,
         check_support: bool = False,
     ) -> None:
         self._representation = representation
@@ -648,12 +695,29 @@ class TransformedMatrix(LinearOperator):
         self.check_values = check_values
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
-        self._var = var.copy() if var is not None else None
+        self._adata = adata
         self._support_nnz = self._sparse.nnz
         self._support_checksum = (
             _support_checksum(self._sparse) if check_support else None
         )
         super().__init__(dtype=representation.sparse.dtype, shape=representation.shape)
+
+    def _current_var(self) -> Any:
+        """Return the source AnnData's ``var``, checked against the fitted genes.
+
+        Raises:
+            ValueError: If ``adata.var_names`` differ from ``var_names``.
+        """
+        assert self._adata is not None
+        var = self._adata.var
+        if not var.index.equals(self.var_names):
+            raise ValueError(
+                "adata.var_names no longer match the genes this transform was "
+                "fitted on, so mask_var cannot be read from adata.var. Pass "
+                "mask_var as a boolean array aligned with transformed.var_names, "
+                "or mask_var=None for every fitted gene, or refit the transform."
+            )
+        return var
 
     def _check_support(self, *, full: bool) -> None:
         """Raise if support borrowed from the counts changed after fitting.
@@ -839,6 +903,117 @@ class TransformedMatrix(LinearOperator):
             np.copyto(destination[start:stop], sparse_values, casting="same_kind")
         return destination
 
+    def variable_statistics(
+        self,
+        *,
+        var: Any = None,
+        ddof: int = 1,
+    ) -> VariableStatistics:
+        """Return the mean and variance of each selected variable.
+
+        The statistics describe the fitted transformed values, including any
+        residual clipping, over every observation. Selecting variables does not
+        refit the normalization. They are computed in bounded passes over the
+        sparse representation, as for PCA total variance, without
+        materializing the matrix. With the default ``ddof=1``, the variances of
+        the variables passed to ``pca`` sum to its ``total_variance``.
+
+        For a ``float32`` transform, each variance is taken about the mean
+        rounded to float32, which adds an error of order
+        ``(eps * abs(mean)) ** 2``, where ``eps`` is float32 machine epsilon;
+        it is visible only for nearly constant variables.
+
+        Args:
+            var: Variable selector with the same forms as in ``materialize``:
+                positions, a slice, a boolean mask, or AnnData names. Order and
+                repeats are preserved. ``None`` selects every variable.
+            ddof: Delta degrees of freedom: the variance denominator is
+                ``n_obs - ddof``. Must be an integer with
+                ``0 <= ddof < n_obs``. ``ddof=0`` gives the population variance
+                that NumPy's ``var`` and Scanpy's ``residual_variances`` use.
+
+        Returns:
+            Means and variances in the selected variable order.
+
+        Raises:
+            IndexError: If the variable selector is invalid.
+            KeyError: If a named AnnData selector is unknown.
+            TypeError: If named selection is used for matrix input or ``ddof``
+                is not an integer.
+            ValueError: If ``ddof`` is outside ``0 <= ddof < n_obs``.
+            RuntimeError: If support shared with ``share_structure=True``
+                changed after fitting.
+
+        Examples:
+            Rank genes by Pearson-residual variance:
+
+            >>> import numpy as np
+            >>> from anndata import AnnData
+            >>> from scipy.sparse import csr_matrix
+            >>> adata = AnnData(
+            ...     csr_matrix([[9, 0, 1], [0, 3, 1], [1, 1, 2], [0, 2, 1]])
+            ... )
+            >>> adata.var_names = ["gene_a", "gene_b", "gene_c"]
+            >>> transformed = transform(adata, Residual(clip="scanpy"))
+            >>> stats = transformed.variable_statistics()
+            >>> stats.var_names[np.argsort(-stats.variance)].tolist()
+            ['gene_a', 'gene_b', 'gene_c']
+
+            Selections follow ``materialize``; ``ddof`` sets the denominator:
+
+            >>> selected = transformed.variable_statistics(var=["gene_c", "gene_a"])
+            >>> selected.var_names.tolist()
+            ['gene_c', 'gene_a']
+            >>> population = transformed.variable_statistics(ddof=0)
+            >>> bool(np.allclose(population.variance, stats.variance * 3 / 4))
+            True
+        """
+        n_obs, n_vars = self.shape
+        ddof = _validate_ddof(ddof, n_obs)
+        self._check_support(full=True)
+        columns = _normalize_selector(
+            var, n_vars, names=self.var_names, axis_name="variable"
+        )
+        names = None if self.var_names is None else self.var_names[columns]
+
+        # Statistics run once per distinct column; repeats and order are
+        # restored by indexing the results. Selecting every column skips the
+        # copy that column selection makes.
+        if var is None:
+            mask, order = None, None
+        else:
+            selected, order = np.unique(columns, return_inverse=True)
+            if selected.size == n_vars:
+                mask, order = None, columns
+            else:
+                mask = np.zeros(n_vars, dtype=bool)
+                mask[selected] = True
+        if columns.size == 0:
+            empty = np.empty(0, dtype=np.float64)
+            return VariableStatistics(empty, empty.copy(), names, n_obs, ddof)
+        representation = (
+            self._representation
+            if mask is None
+            else self._representation.select_columns(mask)
+        )
+        # The operator only reads the representation and is discarded before
+        # returning, so it can use the fitted arrays without copying them.
+        operator = SparseLowRankLinearOperator(
+            representation, center=True, dtype=self.dtype, copy=False
+        )
+        mean = operator.column_means()
+        squared = operator.column_squared_norms_centered()
+        if order is not None:
+            mean = mean[order]
+            squared = squared[order]
+        return VariableStatistics(
+            mean=mean,
+            variance=squared / (n_obs - ddof),
+            var_names=names,
+            n_obs=n_obs,
+            ddof=ddof,
+        )
+
     def pca(
         self,
         n_comps: int = 50,
@@ -861,9 +1036,13 @@ class TransformedMatrix(LinearOperator):
                 ``1 <= n_comps < min(n_obs, n_nonempty_vars)``, where
                 ``n_nonempty_vars`` counts selected variables that are not
                 identically zero.
-            mask_var: Boolean array or, for AnnData-derived transforms, an
-                ``adata.var`` key. When omitted, use ``"highly_variable"`` if
-                present; explicit ``None`` selects every variable.
+            mask_var: Boolean array over the fitted variables or, for
+                AnnData-derived transforms, a column of the source object's
+                current ``adata.var``. When omitted, use ``"highly_variable"``
+                if that column is present when ``pca`` is called; explicit
+                ``None`` selects every variable. Keys and the default require
+                ``adata.var_names`` to still equal the fitted ``var_names``;
+                arrays and ``None`` do not read ``adata.var``.
             use_highly_variable: Deprecated Scanpy-compatible mask selector,
                 available only for AnnData-derived transforms.
             solver: SVD solver. Only ``"arpack"`` is supported.
@@ -881,7 +1060,8 @@ class TransformedMatrix(LinearOperator):
         Raises:
             TypeError: If AnnData-only mask features are used for matrix input.
             ValueError: If the mask, dimensions, or centered variance are
-                invalid.
+                invalid, or if a key or the default mask must be read after
+                ``adata.var_names`` changed.
             RuntimeError: If support shared with ``share_structure=True``
                 changed after fitting.
 
@@ -890,7 +1070,7 @@ class TransformedMatrix(LinearOperator):
         """
         self._check_support(full=True)
         params = dict(self.params)
-        if self._var is None:
+        if self._adata is None:
             if use_highly_variable is not None:
                 raise TypeError(
                     "use_highly_variable requires a transform built from AnnData"
@@ -908,7 +1088,15 @@ class TransformedMatrix(LinearOperator):
                 if not mask.any():
                     raise ValueError("mask_var selected zero genes")
         else:
-            resolved_mask = _resolve_mask_var(self._var, mask_var, use_highly_variable)
+            reads_var = isinstance(mask_var, str) or (
+                mask_var is _empty and use_highly_variable is not False
+            )
+            resolved_mask = _resolve_mask_var(
+                self._current_var() if reads_var else None,
+                mask_var,
+                use_highly_variable,
+                n_vars=self.shape[1],
+            )
             mask = resolved_mask.values
             params.update(
                 {
@@ -1149,6 +1337,6 @@ def transform(
         check_values=check_values,
         obs_names=obs_names,
         var_names=var_names,
-        var=var,
+        adata=data if isinstance(data, AnnData) else None,
         check_support=check_support,
     )

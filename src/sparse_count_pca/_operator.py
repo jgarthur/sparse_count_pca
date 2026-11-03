@@ -161,8 +161,9 @@ class SparseLowRankLinearOperator(LinearOperator):
                 dense_columns,
             )
             centered = uncentered
-        self._frobenius_squared_uncentered_float64 = uncentered
-        self._frobenius_squared_centered_float64 = centered
+        self._column_squared_centered_float64 = centered
+        self._frobenius_squared_uncentered_float64 = math.fsum(uncentered)
+        self._frobenius_squared_centered_float64 = math.fsum(centered)
 
     def _rank_zero_statistics(self) -> None:
         """Compute sparse means and direct norms without low-rank reconstruction.
@@ -224,8 +225,10 @@ class SparseLowRankLinearOperator(LinearOperator):
         if self.center:
             assert self.mean is not None
             centered += (n_obs - column_counts) * np.square(self.mean, dtype=np.float64)
+            self._column_squared_centered_float64 = centered
             self._frobenius_squared_centered_float64 = math.fsum(centered)
         else:
+            self._column_squared_centered_float64 = uncentered
             self._frobenius_squared_centered_float64 = (
                 self._frobenius_squared_uncentered_float64
             )
@@ -482,12 +485,16 @@ class SparseLowRankLinearOperator(LinearOperator):
         self,
         centers: Sequence[FloatArray],
         dense_columns: NDArray[np.bool_],
-    ) -> list[float]:
-        """Return stable squared norms about each center in bounded CSR passes.
+    ) -> NDArray[np.float64]:
+        """Return stable per-column squared norms about each center.
 
         Implements the support-replacement identities from the specification
         section "Explained variance and total variance"
-        (``docs/development/specification.md``).
+        (``docs/development/specification.md``) in bounded CSR passes.
+
+        Returns:
+            Array with shape ``(len(centers), n_vars)``; row ``k`` holds each
+            column's sum of squared deviations from ``centers[k]``.
         """
         n_obs, n_vars = self.shape
         centers_cast = [np.asarray(center, dtype=self.dtype) for center in centers]
@@ -538,7 +545,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             column_norms[:, fallback_column_indices] = self._direct_column_squared_sums(
                 centers_cast, fallback_column_indices
             )
-        return [math.fsum(norms) for norms in column_norms]
+        return column_norms
 
     def _matvec(self, z: ArrayLike) -> FloatArray:
         """Multiply the represented matrix by a vector.
@@ -619,6 +626,26 @@ class SparseLowRankLinearOperator(LinearOperator):
     def frobenius_squared_centered(self) -> float:
         """Return the squared Frobenius norm after column centering."""
         return self._frobenius_squared_centered_float64
+
+    def column_means(self) -> NDArray[np.float64]:
+        """Return the float64 column means that ``mean`` rounds.
+
+        Raises:
+            ValueError: If the operator is not centered.
+        """
+        if not self.center:
+            raise ValueError("Column means are computed only for centered operators")
+        return self._mean_float64
+
+    def column_squared_norms_centered(self) -> NDArray[np.float64]:
+        """Return each column's squared norm after centering, in float64.
+
+        Deviations are taken from the stored operator-dtype ``mean``, and the
+        values sum to ``frobenius_squared_centered()`` under ``math.fsum``. An
+        uncentered operator returns its uncentered column norms, as
+        ``frobenius_squared_centered()`` returns the uncentered total.
+        """
+        return self._column_squared_centered_float64
 
     def centered_variance_is_numerically_zero(self) -> bool:
         """Return whether centered variation is indistinguishable from rounding."""

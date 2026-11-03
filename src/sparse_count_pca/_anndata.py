@@ -79,15 +79,20 @@ def _resolve_mask_var(
     var: Any,
     mask_var: Any = _empty,
     use_highly_variable: bool | None = None,
+    *,
+    n_vars: int | None = None,
 ) -> _ResolvedMask:
     """Resolve Scanpy-compatible variable-selection arguments.
 
     Args:
-        var: AnnData variable metadata.
+        var: AnnData variable metadata. It may be ``None`` when ``n_vars`` is
+            given and the request reads no metadata column: an array or
+            ``None`` mask, or ``use_highly_variable=False``.
         mask_var: Variable metadata key, boolean vector, ``None`` for all
             genes, or the private default sentinel.
         use_highly_variable: Deprecated alias controlling use of
             ``var["highly_variable"]``.
+        n_vars: Number of variables, required when ``var`` is ``None``.
 
     Returns:
         Boolean values together with their standard and detailed metadata.
@@ -114,14 +119,15 @@ def _resolve_mask_var(
         selector = "highly_variable" if "highly_variable" in var else None
     else:
         selector = mask_var
+    size = var.shape[0] if var is not None else n_vars
     if selector is None:
-        mask = np.ones(var.shape[0], dtype=bool)
+        mask = np.ones(size, dtype=bool)
     elif isinstance(selector, str):
         if selector not in var:
             raise KeyError(f"{selector!r} not found in adata.var")
-        mask = _validate_boolean_mask(var[selector], var.shape[0], name="mask_var")
+        mask = _validate_boolean_mask(var[selector], size, name="mask_var")
     else:
-        mask = _validate_boolean_mask(selector, var.shape[0], name="mask_var")
+        mask = _validate_boolean_mask(selector, size, name="mask_var")
 
     n_vars_used = int(mask.sum())
     if n_vars_used == 0:

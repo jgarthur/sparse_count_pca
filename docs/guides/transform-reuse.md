@@ -2,8 +2,9 @@
 
 The full matrix of normalized values is not stored, by design. Use `transform`
 to fit the normalization and materialize the values you need for plotting or
-other uses. The fitted object can also run PCA several times with different
-gene masks.
+other uses. The fitted object can also report each gene's mean and variance,
+for example to select highly variable genes, and run PCA several times with
+different gene masks.
 
 This guide's [complete example](#complete-example) is
 [`examples/transform_reuse.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/transform_reuse.py).
@@ -154,6 +155,54 @@ This bounds temporary output memory, but it does not make the current fitting
 backend out of core: backed sparse inputs are loaded into an in-memory CSR
 matrix during count canonicalization.
 
+## Rank genes by variance
+
+Highly variable gene (HVG) selection keeps the genes whose normalized values
+vary most across cells. `variable_statistics` returns each gene's mean and
+variance under the fitted transform without materializing it. This selects
+the 2,000 genes with the largest Pearson-residual variance and runs PCA on
+them:
+
+```python
+import numpy as np
+
+stats = transformed.variable_statistics()
+
+highly_variable = np.zeros(adata.n_vars, dtype=bool)
+highly_variable[np.argsort(-stats.variance)[:2000]] = True
+adata.var["highly_variable"] = highly_variable
+adata.var["residual_variance"] = stats.variance
+
+result = transformed.pca(n_comps=50)
+```
+
+`pca` uses `adata.var["highly_variable"]` by default, including a column added
+after the transform was fitted.
+
+The statistics have these properties:
+
+- **They describe the fitted values, including any residual clipping.**
+- **The default `ddof=1` divides by `n_obs - 1`,** as PCA's `total_variance`
+  does, so the variances of the genes passed to `pca` sum to its
+  `total_variance`. Scanpy's `residual_variances` divide by `n_obs`; pass
+  `ddof=0` to match them. The choice does not change the ranking.
+- **`var=` selects genes without refitting the normalization.** It accepts the
+  same selectors as `materialize`, and results follow the selection's order.
+- **Genes with no counts** have zero variance under residuals and normalized
+  `log1p`. Under CLR and Dirichlet transforms their values still vary with
+  each cell's log mean or total, so their variance is generally positive.
+- **The cost is about that of PCA setup without the decomposition.** The
+  calculation passes over stored entries in bounded blocks. Genes stored in
+  more than half the cells are evaluated at every cell, still in bounded
+  blocks. Fitting itself holds the transformed sparse matrix in memory, as
+  [above](#bound-materialization-memory).
+
+Scanpy's `highly_variable_genes(flavor="pearson_residuals")` with
+`theta=np.inf` uses the same Poisson residuals; its default `theta=100` model
+is not available here, as the [compatibility
+reference](../reference/compatibility.md#the-shared-theta-model-is-not-offered)
+explains.
+
 ## Reuse normalization with different PCA masks
 
 ```python
@@ -164,6 +213,19 @@ second = transformed.pca(n_comps=20, mask_var=my_alternative_mask)
 Normalization state was fitted once on the full count matrix. Each `pca` call
 selects variables and then computes its own column mean. This ordering is
 described in [normalization, masking, and centering](../concepts/normalization-masking-and-centering.md).
+
+A string `mask_var`, and the default `"highly_variable"`, are read from
+`adata.var` when `pca` is called, so annotations added after fitting are used.
+Reading them requires `adata.var_names` to still list the fitted genes in the
+same order. If the genes changed, for example after subsetting `adata` in
+place, `pca` raises `ValueError`. A boolean array aligned with
+`transformed.var_names`, or `mask_var=None`, still works, because neither
+reads `adata.var`:
+
+```python
+mask = transformed.var_names.isin(adata.var_names[adata.var["highly_variable"]])
+result = transformed.pca(n_comps=20, mask_var=mask)
+```
 
 Unlike the one-step APIs, `pca` **returns** a `PCAResult` and writes nothing
 back, even when the transform was fitted from an `AnnData` object. That is what
@@ -181,8 +243,10 @@ full-width `varm` array needs the unselected rows filled with `np.nan`.
 ## Lifetime and ownership
 
 By default the fitted object owns the sparse support needed to isolate it
-from later mutation of the caller's matrix. It lives only in the current
-Python process:
+from later mutation of the caller's matrix. A transform fitted from AnnData
+also keeps a reference to that object for mask lookup, so the AnnData stays
+in memory while the transform does. The fitted object lives only in the
+current Python process:
 fitting a transform adds nothing to the AnnData object, so `write_h5ad` does
 not store it, and it has to be refitted after reloading the file or restarting
 Python. Only PCA results written to `.obsm`, `.varm`, and `.uns` persist.
