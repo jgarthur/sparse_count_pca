@@ -42,4 +42,5 @@ implementation pinned; see the [transform catalog](../../transforms.md) for vali
     options:
       members:
         - materialize
+        - variable_statistics
         - pca

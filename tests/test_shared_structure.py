@@ -326,7 +326,7 @@ def _move_first_entry(counts):
 
 @pytest.mark.parametrize("mutate", [_remove_first_entry, _move_first_entry])
 def test_shared_transform_rejects_changed_structure(counts, mutate):
-    """PCA and materialization refuse support that changed after sharing."""
+    """PCA, statistics, and materialization refuse support changed after sharing."""
     transformed = scp.transform(counts, scp.Log1pNormalized(), share_structure=True)
     mutate(counts)
 
@@ -334,6 +334,8 @@ def test_shared_transform_rejects_changed_structure(counts, mutate):
         transformed.materialize()
     with pytest.raises(RuntimeError, match="sparsity structure changed"):
         transformed.pca(2)
+    with pytest.raises(RuntimeError, match="sparsity structure changed"):
+        transformed.variable_statistics()
 
 
 def test_shared_transform_products_reject_removed_entries(counts):

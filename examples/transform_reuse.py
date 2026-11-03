@@ -116,6 +116,23 @@ plt.show()
 plt.close("all")
 
 # %% [markdown]
+# **Rank genes by variance.** `variable_statistics` returns each gene's mean
+# and variance under the fitted transform. `pca` reads
+# `adata.var["highly_variable"]` when it is called, so the genes selected here
+# become its default mask.
+
+# %%
+stats = transformed.variable_statistics()
+highly_variable = np.zeros(adata.n_vars, dtype=bool)
+highly_variable[np.argsort(-stats.variance)[:3]] = True
+adata.var["highly_variable"] = highly_variable
+
+print("residual variances:", stats.variance.round(3))
+print("highly variable genes:", stats.var_names[highly_variable].tolist())
+ranked = transformed.pca(n_comps=2)
+print("PCA genes:", ranked.params["pca_n_vars"])
+
+# %% [markdown]
 # **Reuse the fitted normalization with different PCA masks.** Each call
 # selects variables and then computes its own column mean.
 

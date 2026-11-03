@@ -205,9 +205,6 @@ None of these change public behavior:
   values and support only for PCA-selected genes.
 - Normalize explicit selectors that equal the full ordered axis to the same
   fast path as `obs=None` or `var=None` during materialization.
-- Revisit the full `adata.var` snapshot retained by `TransformedMatrix`.
-  Preserving stable later mask resolution is useful, but retaining only names
-  and required metadata columns could be substantially smaller.
 - Consolidate the private implementation of the two shifted-CLR wrapper pairs
   while keeping their scientifically distinct public names.
 
@@ -260,6 +257,8 @@ clipping guide keep the migration note.
   wraps less. Minor polish.
 - Quick recipes to reproduce Seurat, Cell Ranger, scanpy, BHGP, correspondence analysis recommendations
 - Skill.md for agentic usage. recommend shifted clr and possibly correpondence analysis
-- Highly variable gene selection based on residual variance.
+- A highly variable gene selection function built on
+  `TransformedMatrix.variable_statistics`, including per-batch fitting and
+  rank combination.
 - Dask-backed inputs and block-aware transformations.
 - Additional SVD solvers if they preserve deterministic and dtype contracts.

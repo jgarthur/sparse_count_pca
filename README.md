@@ -120,8 +120,9 @@ to expose matrix-vector and matrix-matrix products to
   ```
 
 - **Two-step transform API.** `transform` fits a normalization once, so
-  normalized values can be plotted or inspected in bounded slices, or several
-  PCA masks can share one fitted state. See
+  normalized values can be plotted or inspected in bounded slices, per-gene
+  variances can rank highly variable genes, or several PCA masks can share one
+  fitted state. See
   [normalized values and transform reuse][transform-reuse].
 
 ## Important distinctions

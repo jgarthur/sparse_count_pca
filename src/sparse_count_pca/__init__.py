@@ -30,6 +30,7 @@ from ._transform import (
     ShiftedCLR,
     Transform,
     TransformedMatrix,
+    VariableStatistics,
     transform,
 )
 from ._version import __version__
@@ -45,6 +46,7 @@ __all__ = [
     "ShiftedCLR",
     "Transform",
     "TransformedMatrix",
+    "VariableStatistics",
     "__version__",
     "correspondence_analysis",
     "correspondence_analysis_matrix",

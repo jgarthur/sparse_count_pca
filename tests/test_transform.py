@@ -1,5 +1,8 @@
 """Tests for the public two-step transformed-matrix API."""
 
+import gc
+import weakref
+
 import numpy as np
 import pytest
 from anndata import AnnData
@@ -289,6 +292,35 @@ def test_full_variable_access_warns_for_csr_backend(counts):
     assert column.shape == (counts.shape[0], 1)
 
 
+@pytest.mark.parametrize("source", ["matrix", "anndata"])
+@pytest.mark.parametrize(
+    ("selector", "match"),
+    [
+        (True, "boolean masks must have length"),
+        (np.array([], dtype=bool), "boolean masks must have length"),
+        ([True, False], "boolean masks must have length"),
+        ([[0, 1]], "must be one-dimensional"),
+    ],
+    ids=["scalar-boolean", "empty-mask", "short-mask", "two-dimensional"],
+)
+def test_materialize_rejects_selectors_outside_the_contract(
+    counts, adata, source, selector, match
+):
+    """Scalar booleans, wrong-length masks, and 2-D selectors raise IndexError.
+
+    An empty mask is checked for length rather than treated as an empty
+    selection.
+    """
+    transformed = scp.transform(
+        counts if source == "matrix" else adata, scp.Residual(clip=None)
+    )
+
+    with pytest.raises(IndexError, match=match):
+        transformed.materialize(obs=slice(0, 2), var=selector)
+    with pytest.raises(IndexError, match=match):
+        transformed.materialize(obs=selector)
+
+
 def test_materialize_validates_out_and_block_size(counts):
     """Materialization validates destination shape, dtype, and block size."""
     transformed = scp.transform(counts, scp.ShiftedCLR(count_shift=1.0))
@@ -357,6 +389,85 @@ def test_matrix_transform_records_normalization_and_pca_widths(counts):
 
     assert result.params["normalization_n_vars"] == counts.shape[1]
     assert result.params["pca_n_vars"] == int(mask.sum())
+
+
+def _pca_without_metadata_lookup(transformed, mask):
+    """Return PCA for an explicit boolean mask, which does not read adata.var."""
+    return transformed.pca(n_comps=2, mask_var=np.asarray(mask))
+
+
+@pytest.mark.parametrize("mask_var", ["default", "highly_variable"])
+def test_transformed_pca_reads_annotations_added_after_fitting(adata, mask_var):
+    """A highly-variable column written after fitting selects the PCA genes.
+
+    The column is read when pca is called, so a later change to its values is
+    used too.
+    """
+    transformed = scp.transform(adata, scp.Residual(clip=None))
+    kwargs = {} if mask_var == "default" else {"mask_var": mask_var}
+
+    for values in ([True, True, False, True], [False, True, True, True]):
+        adata.var["highly_variable"] = values
+        actual = transformed.pca(n_comps=2, **kwargs)
+        expected = _pca_without_metadata_lookup(transformed, values)
+
+        np.testing.assert_array_equal(actual.scores, expected.scores)
+        assert actual.params["pca_n_vars"] == 3
+        assert actual.params["mask_var"] == "highly_variable"
+
+
+def test_changed_genes_require_a_mask_that_does_not_read_metadata(adata):
+    """After adata.var_names change, keys raise while arrays and None work."""
+    adata.var["highly_variable"] = [True, True, False, True]
+    transformed = scp.transform(adata, scp.Residual(clip=None))
+    adata.var_names = ["w", "x", "y", "z"]
+
+    for kwargs in (
+        {},
+        {"mask_var": "highly_variable"},
+        {"use_highly_variable": True},
+    ):
+        with pytest.raises(ValueError, match="no longer match the genes"):
+            transformed.pca(n_comps=2, **kwargs)
+
+    mask = np.array([True, True, False, True])
+    assert transformed.pca(n_comps=2, mask_var=mask).params["pca_n_vars"] == 3
+    assert transformed.pca(n_comps=2, mask_var=None).params["pca_n_vars"] == 4
+    with pytest.warns(FutureWarning, match="use_highly_variable is deprecated"):
+        everything = transformed.pca(n_comps=2, use_highly_variable=False)
+    assert everything.params["pca_n_vars"] == 4
+
+
+@pytest.mark.parametrize("release", ["del", "rebind"])
+def test_released_anndata_requires_a_mask_that_does_not_read_metadata(adata, release):
+    """The transform does not keep its source AnnData alive.
+
+    After the last reference is deleted, or the name is rebound to a copy that
+    then gets the highly-variable column, keys and the default mask raise
+    instead of reading a released object. Arrays and None still work.
+    """
+    source = adata.copy()
+    transformed = scp.transform(source, scp.Residual(clip=None))
+    source_ref = weakref.ref(source)
+    if release == "del":
+        del source
+    else:
+        source = source.copy()
+        source.var["highly_variable"] = [True, True, False, True]
+    gc.collect()
+    assert source_ref() is None
+
+    for kwargs in (
+        {},
+        {"mask_var": "highly_variable"},
+        {"use_highly_variable": True},
+    ):
+        with pytest.raises(ValueError, match="no longer exists"):
+            transformed.pca(n_comps=2, **kwargs)
+
+    mask = np.array([True, True, False, True])
+    assert transformed.pca(n_comps=2, mask_var=mask).params["pca_n_vars"] == 3
+    assert transformed.pca(n_comps=2, mask_var=None).params["pca_n_vars"] == 4
 
 
 def test_transformed_pca_resolves_anndata_mask(adata):

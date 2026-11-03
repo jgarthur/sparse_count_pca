@@ -105,10 +105,12 @@ It exports complete one-step analyses plus an explicit two-step transform API:
   variants;
 - correspondence analysis;
 - transform specifications and `transform`;
-- `TransformedMatrix`, `PCAResult`, and `CorrespondenceAnalysisResult`.
+- `TransformedMatrix`, `PCAResult`, `VariableStatistics`, and
+  `CorrespondenceAnalysisResult`.
 
 `TransformedMatrix` is an uncentered SciPy `LinearOperator` backed by an exact
-sparse-plus-low-rank representation. It supports block materialization and PCA.
+sparse-plus-low-rank representation. It supports block materialization,
+per-variable means and variances, and PCA.
 The named one-step PCA functions build the same transform and immediately run
 PCA. Correspondence analysis stays separate because masking changes its table
 margins and its coordinate semantics differ from PCA.
@@ -347,6 +349,13 @@ followed by one sweep that computes both uncentered and centered norms;
 expanding centered squares from raw moments would save a pass but reintroduce
 cancellation.
 
+The rank-zero and nonzero-rank paths both produce a centered sum of squares
+for every column before summing them, and the operator keeps that per-column
+array. `TransformedMatrix.variable_statistics` builds a centered operator over
+the fitted representation with `copy=False`, reads the per-column means and
+sums, and discards the operator, so per-gene variances cost the statistics
+sweeps of PCA setup without ARPACK.
+
 Pay particular attention to:
 
 - operator dtype versus float64 summary-statistic dtype;
@@ -374,8 +383,13 @@ differ in whether a centered operator returned with `return_operator=True`
 copies its arrays:
 
 - Public `transform` wraps the representation in a reusable
-  `TransformedMatrix`, which keeps copied AnnData names and variable
-  annotations for inspection and later mask resolution. The object stays live
+  `TransformedMatrix`, which keeps copied AnnData names for inspection and
+  a weak reference to the source AnnData object, whose current `var` resolves
+  PCA mask keys after checking `var_names`. The reference is weak so that a
+  transform does not hold the AnnData's matrices in memory after the caller
+  deletes it. Once the object is freed, mask keys raise instead of reading it.
+  This catches a replaced object, as after `adata = adata.copy()`, only when
+  nothing else still references the original. The object stays live
   after `pca`, so a returned operator would otherwise share its arrays, and
   through them any borrowed input support. It takes a support-sized copy.
 - One-step PCA, such as `residual_pca_matrix`, calls `_compute_transform_pca`,

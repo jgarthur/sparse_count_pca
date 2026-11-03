@@ -6,6 +6,12 @@
     options:
       members: false
 
+## Variable statistics
+
+::: sparse_count_pca.VariableStatistics
+    options:
+      members: false
+
 ## Correspondence-analysis results
 
 ::: sparse_count_pca.CorrespondenceAnalysisResult
