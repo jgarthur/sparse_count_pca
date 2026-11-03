@@ -261,9 +261,8 @@ the number of blocks and genes, not with the stored entries.
   per-column results could stop depending on which other columns are present.
   If both cost too much, the alternative is to let PCA slice whatever is
   cached, with differences within the statistics' documented accuracy. Cached
-  values
-  remain valid as long as the support check
-  that `share_structure=True` transforms run before each calculation passes.
+  values remain valid as long as the support check that
+  `share_structure=True` transforms run before each calculation passes.
 - **Derive the uncentered norms rather than sweeping for them.** A centered
   operator computes norms about zero and about the mean in the same sweep,
   which doubles the per-entry work. `centered_variance_is_numerically_zero`
