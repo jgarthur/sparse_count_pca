@@ -1,5 +1,8 @@
 """Tests for the public two-step transformed-matrix API."""
 
+import gc
+import weakref
+
 import numpy as np
 import pytest
 from anndata import AnnData
@@ -433,6 +436,38 @@ def test_changed_genes_require_a_mask_that_does_not_read_metadata(adata):
     with pytest.warns(FutureWarning, match="use_highly_variable is deprecated"):
         everything = transformed.pca(n_comps=2, use_highly_variable=False)
     assert everything.params["pca_n_vars"] == 4
+
+
+@pytest.mark.parametrize("release", ["del", "rebind"])
+def test_released_anndata_requires_a_mask_that_does_not_read_metadata(adata, release):
+    """The transform does not keep its source AnnData alive.
+
+    After the last reference is deleted, or the name is rebound to a copy that
+    then gets the highly-variable column, keys and the default mask raise
+    instead of reading a released object. Arrays and None still work.
+    """
+    source = adata.copy()
+    transformed = scp.transform(source, scp.Residual(clip=None))
+    source_ref = weakref.ref(source)
+    if release == "del":
+        del source
+    else:
+        source = source.copy()
+        source.var["highly_variable"] = [True, True, False, True]
+    gc.collect()
+    assert source_ref() is None
+
+    for kwargs in (
+        {},
+        {"mask_var": "highly_variable"},
+        {"use_highly_variable": True},
+    ):
+        with pytest.raises(ValueError, match="no longer exists"):
+            transformed.pca(n_comps=2, **kwargs)
+
+    mask = np.array([True, True, False, True])
+    assert transformed.pca(n_comps=2, mask_var=mask).params["pca_n_vars"] == 3
+    assert transformed.pca(n_comps=2, mask_var=None).params["pca_n_vars"] == 4
 
 
 def test_transformed_pca_resolves_anndata_mask(adata):

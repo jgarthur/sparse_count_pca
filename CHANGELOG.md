@@ -22,6 +22,12 @@ Changes since 1.0.0rc1:
   `2.0`) times the input's stored entries; for example, pass
   `clip_mode="upper"`, which never grows support. The `clip_mode` and
   `clip_max_nnz_ratio` defaults are unchanged.
+- `TransformedMatrix.pca` raises `ValueError` when it must read a `mask_var`
+  key or the default `"highly_variable"` column after the AnnData object it was
+  fitted from no longer exists. This includes a transform fitted from an
+  AnnData that was never assigned to a variable, as in
+  `scp.transform(sc.read_h5ad(path), ...)`. Pass a boolean-array `mask_var` or
+  `mask_var=None`. The transform does not keep the AnnData in memory.
 - **Stricter validation:** composition-scale shifted CLR now raises `ValueError`
   when multiplying the shift by a cell's total count overflows float64, instead
   of silently collapsing transformed nonzero counts to zero.
@@ -89,8 +95,7 @@ Changes since 1.0.0rc1:
   previously read a copy taken at fitting, silently selecting every gene when
   that copy had no `"highly_variable"` column. If the AnnData's genes change
   after fitting, keys raise `ValueError`; boolean-array masks and
-  `mask_var=None` still work. A transform fitted from AnnData keeps that
-  object in memory.
+  `mask_var=None` still work.
 - `TransformedMatrix.materialize` raises `IndexError` for a boolean mask whose
   length does not match its axis, including an empty mask, which previously
   selected nothing, and for scalar-boolean or two-dimensional selectors.

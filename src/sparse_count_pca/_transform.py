@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -650,11 +651,11 @@ class TransformedMatrix(LinearOperator):
     place while this object is alive; see ``transform``. It exists only in the
     current Python process and is not serialized with AnnData.
 
-    A transform fitted from AnnData keeps a reference to that object, which
-    therefore stays in memory while the transform does. ``pca`` reads
-    ``mask_var`` keys, including the default ``"highly_variable"``, from the
-    object's ``adata.var`` when it is called, so annotations added after
-    fitting are used.
+    A transform fitted from AnnData holds a weak reference to that object, so
+    it does not keep the AnnData in memory. While the object exists, ``pca``
+    reads ``mask_var`` keys, including the default ``"highly_variable"``, from
+    its ``adata.var`` when it is called, so annotations added after fitting are
+    used.
 
     Attributes:
         shape: Transformed matrix shape ``(n_obs, n_vars)``.
@@ -695,7 +696,9 @@ class TransformedMatrix(LinearOperator):
         self.check_values = check_values
         self.obs_names = obs_names.copy() if obs_names is not None else None
         self.var_names = var_names.copy() if var_names is not None else None
-        self._adata = adata
+        # A weak reference, so that deleting the AnnData frees it even while
+        # this transform is alive; mask lookups raise once it is gone.
+        self._adata_ref = weakref.ref(adata) if adata is not None else None
         self._support_nnz = self._sparse.nnz
         self._support_checksum = (
             _support_checksum(self._sparse) if check_support else None
@@ -706,10 +709,20 @@ class TransformedMatrix(LinearOperator):
         """Return the source AnnData's ``var``, checked against the fitted genes.
 
         Raises:
-            ValueError: If ``adata.var_names`` differ from ``var_names``.
+            ValueError: If the AnnData no longer exists or ``adata.var_names``
+                differ from ``var_names``.
         """
-        assert self._adata is not None
-        var = self._adata.var
+        assert self._adata_ref is not None
+        adata = self._adata_ref()
+        if adata is None:
+            raise ValueError(
+                "The AnnData object this transform was fitted from no longer "
+                "exists, and the transform does not keep it alive, so mask_var "
+                "cannot be read from adata.var. Pass mask_var as a boolean array "
+                "aligned with transformed.var_names, or mask_var=None for every "
+                "fitted gene."
+            )
+        var = adata.var
         if not var.index.equals(self.var_names):
             raise ValueError(
                 "adata.var_names no longer match the genes this transform was "
@@ -1041,8 +1054,9 @@ class TransformedMatrix(LinearOperator):
                 current ``adata.var``. When omitted, use ``"highly_variable"``
                 if that column is present when ``pca`` is called; explicit
                 ``None`` selects every variable. Keys and the default require
-                ``adata.var_names`` to still equal the fitted ``var_names``;
-                arrays and ``None`` do not read ``adata.var``.
+                the source AnnData to still exist, with ``adata.var_names``
+                equal to the fitted ``var_names``; arrays and ``None`` do not
+                read ``adata.var``.
             use_highly_variable: Deprecated Scanpy-compatible mask selector,
                 available only for AnnData-derived transforms.
             solver: SVD solver. Only ``"arpack"`` is supported.
@@ -1061,7 +1075,7 @@ class TransformedMatrix(LinearOperator):
             TypeError: If AnnData-only mask features are used for matrix input.
             ValueError: If the mask, dimensions, or centered variance are
                 invalid, or if a key or the default mask must be read after
-                ``adata.var_names`` changed.
+                the source AnnData was deleted or its ``var_names`` changed.
             RuntimeError: If support shared with ``share_structure=True``
                 changed after fitting.
 
@@ -1070,7 +1084,7 @@ class TransformedMatrix(LinearOperator):
         """
         self._check_support(full=True)
         params = dict(self.params)
-        if self._adata is None:
+        if self._adata_ref is None:
             if use_highly_variable is not None:
                 raise TypeError(
                     "use_highly_variable requires a transform built from AnnData"

@@ -164,8 +164,8 @@ transform.
 represents the full uncentered transformed matrix. It is an in-process object,
 is not serialized by `write_h5ad`, and must be rebuilt after restarting Python.
 A transform fitted from AnnData stores copies of `obs_names` and `var_names`
-and a reference to the AnnData object, which it uses only to resolve PCA
-masks.
+and a weak reference to the AnnData object, which it uses only to resolve PCA
+masks and which does not keep that object alive.
 Its public operations are matrix multiplication, `materialize`,
 `variable_statistics`, and `pca`.
 
@@ -238,10 +238,11 @@ transformed.pca(
 For AnnData-derived transforms, mask resolution matches the one-step AnnData
 API and reads the source object's `adata.var` at call time, so columns added
 after fitting are visible. A key, the default `"highly_variable"` lookup, or
-`use_highly_variable=True` first requires `adata.var_names` to equal the fitted
-`var_names` in order and raises `ValueError` otherwise. A boolean array, which
-must have one entry per fitted variable, `None`, and `use_highly_variable=False`
-do not read `adata.var` and remain usable after its variables change.
+`use_highly_variable=True` first requires the source object to still exist and
+its `adata.var_names` to equal the fitted `var_names` in order, and raises
+`ValueError` otherwise. A boolean array, which must have one entry per fitted
+variable, `None`, and `use_highly_variable=False` do not read `adata.var` and
+remain usable after the object is deleted or its variables change.
 Matrix-derived transforms accept a boolean `mask_var` or `None`. The mask
 selects columns only after the full transform has been defined. One transform
 may therefore be reused for several PCA masks or component counts.
