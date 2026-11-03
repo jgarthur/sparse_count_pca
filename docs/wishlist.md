@@ -23,8 +23,9 @@ that resolves to the latest version. `CITATION.cff` supplies the record's
 metadata; an invalid file blocks archiving, so check it with
 `uvx cffconvert --validate -i CITATION.cff` before releasing.
 
-- Before publishing, set `date-released` in `CITATION.cff` and the `## 1.0.0`
-  heading in `CHANGELOG.md` to the release date.
+- `date-released` in `CITATION.cff` and the `## 1.0.0` heading in
+  `CHANGELOG.md` give 2026-11-03. If the release is published later, update
+  both to the publication date.
 - After Zenodo archives the release, add the concept DOI as `doi:` in
   `CITATION.cff`, add a DOI badge and the DOI to the README's Citation section
   and the documentation home page's "Citing sparse-count-pca" section, and
