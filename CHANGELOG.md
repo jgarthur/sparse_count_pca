@@ -2,7 +2,7 @@
 
 All notable user-facing changes are recorded here.
 
-## 1.0.0 - 2026-10-28
+## 1.0.0 - 2026-11-03
 
 Changes since 1.0.0rc1:
 
@@ -112,6 +112,9 @@ Changes since 1.0.0rc1:
 - Clarify transform formulas, shift scales, and overdispersion parameters across
   the public API, including how PFlog's dataset-wide `alpha` differs from
   per-gene `scaled_nb` overdispersion and how PFlog relates to `cleartools`.
+- Add citation metadata in `CITATION.cff` and citation instructions to the
+  README and documentation home page; releases are archived on Zenodo with a
+  DOI.
 
 ## 1.0.0rc1 - 2026-08-05
 
