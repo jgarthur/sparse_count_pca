@@ -252,14 +252,16 @@ the number of blocks and genes, not with the stored entries.
   over all genes differ in low-order bits from a computation over only the
   selected genes. Two things cause this: row-block boundaries follow the
   selected matrix's stored entries, and dense columns are reconstructed in
-  shared batches. Open decision: whether PCA output may then depend on whether
-  `variable_statistics` ran first. Allowing it lets PCA slice whatever is
-  cached, with differences within the statistics' documented accuracy.
-  Forbidding it, as the reproducibility gate for parallel products does for
-  worker counts, needs one of two approaches. PCA could always slice
-  statistics over all genes, computing them on first use, so a masked PCA run
-  without `variable_statistics` pays for every gene. Or per-column results
-  could stop depending on which other columns are present. Cached values
+  shared batches. Tentatively, PCA output must not depend on whether
+  `variable_statistics` ran first, matching the reproducibility gate for
+  parallel products. The decision stays open until the implementation
+  measures what that costs. Meeting it needs one of two approaches. PCA could
+  always slice statistics over all genes, computing them on first use, so a
+  masked PCA run without `variable_statistics` pays for every gene. Or
+  per-column results could stop depending on which other columns are present.
+  If both cost too much, the alternative is to let PCA slice whatever is
+  cached, with differences within the statistics' documented accuracy. Cached
+  values
   remain valid as long as the support check
   that `share_structure=True` transforms run before each calculation passes.
 - **Derive the uncentered norms rather than sweeping for them.** A centered
