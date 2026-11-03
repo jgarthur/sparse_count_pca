@@ -72,6 +72,17 @@ decomposes the result without allocating every entry.
 
 [Read the sparse-plus-low-rank explanation](concepts/sparse-plus-low-rank.md)
 
+## Citing sparse-count-pca
+
+If you use `sparse-count-pca` in published work, please cite the version you
+used. Each GitHub release is archived on Zenodo with its own DOI, and the
+repository's
+[`CITATION.cff`](https://github.com/jgarthur/sparse_count_pca/blob/main/CITATION.cff)
+holds the citation metadata, which the **Cite this repository** button on
+[GitHub](https://github.com/jgarthur/sparse_count_pca) formats as APA or
+BibTeX. Please also cite the methods behind the transforms you use; the
+[transform catalog](transforms.md) lists each one's origin.
+
 ## For contributors and reviewers
 
 The [architecture guide](development/architecture.md) explains the

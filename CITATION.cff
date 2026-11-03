@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the version you used."
+type: software
+title: sparse-count-pca
+abstract: >-
+  PCA and correspondence analysis of sparse count matrices, computed from exact
+  sparse-plus-low-rank representations of count transforms without
+  materializing the dense transformed matrix.
+authors:
+  - family-names: Arthur
+    given-names: Joseph
+    orcid: "https://orcid.org/0000-0002-4875-0367"
+version: 1.0.0
+date-released: 2026-10-28
+license: MIT
+repository-code: https://github.com/jgarthur/sparse_count_pca
+url: https://sparse-count-pca.readthedocs.io/
+keywords:
+  - anndata
+  - bioinformatics
+  - dimensionality reduction
+  - principal component analysis
+  - single-cell
+  - sparse matrix
