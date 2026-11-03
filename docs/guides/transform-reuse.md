@@ -1,10 +1,10 @@
 # Normalized values and transform reuse
 
 The full matrix of normalized values is not stored, by design. Use `transform`
-to fit the normalization and materialize the values you need for plotting or
-other uses. The fitted object can also report each gene's mean and variance,
-for example to select highly variable genes, and run PCA several times with
-different gene masks.
+to fit the normalization once. The fitted object can then materialize the
+values you need for plotting or other uses, compute each gene's variance to
+select highly variable genes, and run PCA several times with different gene
+masks.
 
 This guide's [complete example](#complete-example) is
 [`examples/transform_reuse.py`](https://github.com/jgarthur/sparse_count_pca/blob/main/examples/transform_reuse.py).
@@ -158,10 +158,9 @@ matrix during count canonicalization.
 ## Rank genes by variance
 
 Highly variable gene (HVG) selection keeps the genes whose normalized values
-vary most across cells. `variable_statistics` returns each gene's mean and
-variance under the fitted transform without materializing it. This selects
-the 2,000 genes with the largest Pearson-residual variance and runs PCA on
-them:
+vary most across cells. `variable_statistics` efficiently computes each gene's
+mean and variance under the fitted transform. This selects the 2,000 genes
+with the largest Pearson-residual variance and runs PCA on them:
 
 ```python
 import numpy as np
@@ -185,21 +184,18 @@ The statistics have these properties:
 - **The default `ddof=1` divides by `n_obs - 1`,** as PCA's `total_variance`
   does, so the variances of the genes passed to `pca` sum to its
   `total_variance`. Scanpy's `residual_variances` divide by `n_obs`; pass
-  `ddof=0` to match them. The choice does not change the ranking.
+  `ddof=0` to match them. The choice of `ddof` does not change the ranking.
 - **`var=` selects genes without refitting the normalization.** It accepts the
   same selectors as `materialize`, and results follow the selection's order.
 - **Genes with no counts** have zero variance under residuals and normalized
-  `log1p`. Under CLR and Dirichlet transforms their values still vary with
-  each cell's log mean or total, so their variance is generally positive.
-- **The cost is about that of PCA setup without the decomposition.** The
-  calculation passes over stored entries in bounded blocks. Genes stored in
-  more than half the cells are evaluated at every cell, still in bounded
-  blocks. Fitting itself holds the transformed sparse matrix in memory, as
-  [above](#bound-materialization-memory).
+  `log1p`, and generally positive variance under CLR and Dirichlet transforms.
 
 Scanpy's `highly_variable_genes(flavor="pearson_residuals")` with
-`theta=np.inf` uses the same Poisson residuals; its default `theta=100` model
-is not available here, as the [compatibility
+`theta=np.inf` uses the same Poisson residuals. For negative-binomial
+residuals, use `Residual(model="scaled_nb")`. Unlike Scanpy's default
+`theta=100`, which applies one overdispersion to every gene and cell, its
+per-gene overdispersion scales inversely with cell depth, as the
+[compatibility
 reference](../reference/compatibility.md#the-shared-theta-model-is-not-offered)
 explains.
 
@@ -216,11 +212,8 @@ described in [normalization, masking, and centering](../concepts/normalization-m
 
 A string `mask_var`, and the default `"highly_variable"`, are read from
 `adata.var` when `pca` is called, so annotations added after fitting are used.
-Reading them requires `adata.var_names` to still list the fitted genes in the
-same order. If the genes changed, for example after subsetting `adata` in
-place, `pca` raises `ValueError`. A boolean array aligned with
-`transformed.var_names`, or `mask_var=None`, still works, because neither
-reads `adata.var`:
+If `adata` has since been subset to other genes, pass a boolean array aligned
+with `transformed.var_names` instead:
 
 ```python
 mask = transformed.var_names.isin(adata.var_names[adata.var["highly_variable"]])
