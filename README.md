@@ -102,6 +102,36 @@ to expose matrix-vector and matrix-matrix products to
 `scipy.sparse.linalg.svds`, using the ARPACK solver. See
 [sparse plus low rank][sparse-plus-low-rank] for more details.
 
+## Performance
+
+Residual PCA never stores the dense residual matrix, so its memory grows with
+the number of stored counts rather than with cells × genes. Normalized `log1p`
+values are sparse in both this package and Scanpy, so the two have similar
+costs there.
+
+The table compares `sparse-count-pca` 1.0.0 with Scanpy 1.12.4 on 22,111 PBMCs
+× 29,157 genes from four 10x donors, with 72 million stored counts. Each
+calculation computes 30 components in float64 on one thread of a Linux server
+with a 26 GiB memory limit; figures are medians of three runs. Memory is the
+process's peak resident memory, including the loaded counts. Residuals are
+clipped at Scanpy's ±√n_cells threshold in both packages.
+
+| Calculation | Scanpy | sparse-count-pca |
+| --- | --- | --- |
+| Pearson residual PCA | 35.6 s, 20.8 GiB | 15.6 s, 1.5 GiB |
+| Normalized `log1p` PCA | 10.1 s, 2.7 GiB | 10.8 s, 1.5 GiB |
+
+On random subsets of 10x's 1.3-million-cell E18 mouse brain dataset, the same
+server selected 5,000 highly variable genes by Pearson residual variance and
+then computed PCA, in float32:
+
+- At 199,412 cells × 20,840 genes, `sparse-count-pca` took 55 s and 7.4 GiB.
+  Scanpy's `recipe_pearson_residuals` took 90 s and 23.5 GiB.
+- At 398,833 cells, `recipe_pearson_residuals` exceeded the 26 GiB limit.
+- At 598,268 cells × 22,084 genes, with 1.2 billion stored counts,
+  `sparse-count-pca` took 161 s and 21.7 GiB. The same calculation in float64
+  exceeded the limit.
+
 ## API structure
 
 - **One-step AnnData API.** Functions such as `residual_pca`,

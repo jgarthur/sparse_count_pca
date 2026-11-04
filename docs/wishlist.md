@@ -7,14 +7,6 @@ documentation; do not leave completed work described as a wish.
 
 ## Before the 1.0.0 release
 
-### Final benchmarks and the claims that cite them
-
-Run the final Scanpy comparison on the Mac and on a remote machine, possibly
-with a larger dataset there. Use the results to quantify the README's
-efficiency claim and to give the 1.0.0 changelog's performance entries
-identifiable evidence: the dataset, scale, revision, and whether each figure is
-a benchmark or a real-data measurement.
-
 ### Citation DOI
 
 Zenodo's GitHub integration is enabled for this repository, so publishing the
