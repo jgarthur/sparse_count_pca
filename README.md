@@ -1,5 +1,7 @@
 # sparse-count-pca
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23958796.svg)](https://doi.org/10.5281/zenodo.23958796)
+
 ## [Read the documentation →](https://sparse-count-pca.readthedocs.io/en/latest/)
 
 Single-cell transcriptomics data reaches the user as a large, very sparse
@@ -199,8 +201,10 @@ If you use `sparse-count-pca` in published work, please cite the version you
 used. Citation metadata is in
 [`CITATION.cff`](https://github.com/jgarthur/sparse_count_pca/blob/main/CITATION.cff);
 the **Cite this repository** button on the GitHub page formats it as APA or
-BibTeX. Each GitHub release is archived on Zenodo with its own DOI. Please also
-cite the methods behind the transforms you use; the
+BibTeX. Each GitHub release is archived on Zenodo with its own DOI. The DOI
+[10.5281/zenodo.23958796][zenodo-doi] always resolves to the latest
+release, and its Zenodo page lists the DOI of each version. Please also cite
+the methods behind the transforms you use; the
 [transform catalog][transform-catalog] lists each one's origin.
 
 ## Development
@@ -236,3 +240,4 @@ for project invariants and documentation expectations.
 [sparse-plus-low-rank]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/sparse-plus-low-rank/
 [transform-catalog]: https://sparse-count-pca.readthedocs.io/en/latest/transforms/
 [transform-reuse]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/
+[zenodo-doi]: https://doi.org/10.5281/zenodo.23958796

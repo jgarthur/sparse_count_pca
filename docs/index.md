@@ -75,8 +75,10 @@ decomposes the result without allocating every entry.
 ## Citing sparse-count-pca
 
 If you use `sparse-count-pca` in published work, please cite the version you
-used. Each GitHub release is archived on Zenodo with its own DOI, and the
-repository's
+used. Each GitHub release is archived on Zenodo with its own DOI. The DOI
+[10.5281/zenodo.23958796](https://doi.org/10.5281/zenodo.23958796)
+always resolves to the latest release, and its Zenodo page lists the DOI of
+each version. The repository's
 [`CITATION.cff`](https://github.com/jgarthur/sparse_count_pca/blob/main/CITATION.cff)
 holds the citation metadata, which the **Cite this repository** button on
 [GitHub](https://github.com/jgarthur/sparse_count_pca) formats as APA or
