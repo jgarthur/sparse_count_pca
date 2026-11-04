@@ -122,9 +122,10 @@ Figures here and below are medians of three runs. Memory is the process's peak
 resident memory, including the loaded counts. Residuals are clipped at Scanpy's
 ±√n_cells threshold in both packages.
 
-To measure scaling, each package selected 5,000 highly variable genes by
-Pearson residual variance and computed PCA on them, in float32 with a 26 GiB
-memory limit. Inputs are random subsets of 10x's
+To measure scaling, each package selected 5,000
+[highly variable genes][hvg-selection] by Pearson residual variance and
+computed PCA on them, in float32 with a 26 GiB memory limit. Inputs are random
+subsets of 10x's
 [1.3 million brain cells from E18 mice][brain-data]; quality filtering removed
 about 0.3% of each subset's cells.
 
@@ -133,9 +134,6 @@ about 0.3% of each subset's cells.
 | 200,000 | 90 s, 23.5 GiB | 55 s, 7.4 GiB |
 | 400,000 | out of memory | 120 s, 14.6 GiB |
 | 600,000 | out of memory | 161 s, 21.7 GiB |
-
-The 600,000-cell subset has 1.2 billion stored counts. In float64,
-`sparse-count-pca` also ran out of memory on it.
 
 ## API structure
 
@@ -224,6 +222,7 @@ for project invariants and documentation expectations.
 [calculation-dtype]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/#calculation-dtype
 [clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
 [correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
+[hvg-selection]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/#rank-genes-by-variance
 [input-validation]: https://sparse-count-pca.readthedocs.io/en/latest/development/specification/#input-validation
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
 [pbmc-1]: https://www.10xgenomics.com/datasets/5k_Human_Donor1_PBMC_3p_gem-x
