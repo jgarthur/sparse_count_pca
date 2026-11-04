@@ -7,14 +7,6 @@ documentation; do not leave completed work described as a wish.
 
 ## Before the 1.0.0 release
 
-### Final benchmarks and the claims that cite them
-
-Run the final Scanpy comparison on the Mac and on a remote machine, possibly
-with a larger dataset there. Use the results to quantify the README's
-efficiency claim and to give the 1.0.0 changelog's performance entries
-identifiable evidence: the dataset, scale, revision, and whether each figure is
-a benchmark or a real-data measurement.
-
 ### Citation DOI
 
 Zenodo's GitHub integration is enabled for this repository, so publishing the
@@ -24,7 +16,7 @@ metadata; an invalid file blocks archiving, so check it with
 `uvx cffconvert --validate -i CITATION.cff` before releasing.
 
 - `date-released` in `CITATION.cff` and the `## 1.0.0` heading in
-  `CHANGELOG.md` give 2026-11-03. If the release is published later, update
+  `CHANGELOG.md` give 2026-11-04. If the release is published later, update
   both to the publication date.
 - After Zenodo archives the release, add the concept DOI as `doi:` in
   `CITATION.cff`, add a DOI badge and the DOI to the README's Citation section

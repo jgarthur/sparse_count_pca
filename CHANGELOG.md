@@ -2,7 +2,7 @@
 
 All notable user-facing changes are recorded here.
 
-## 1.0.0 - 2026-11-03
+## 1.0.0 - 2026-11-04
 
 Changes since 1.0.0rc1:
 
@@ -63,10 +63,19 @@ Changes since 1.0.0rc1:
 
 ### Performance
 
-- Faster PCA setup, especially for normalized `log1p`, whose variance
-  statistics are computed directly from sparse data.
-- Substantially lower peak memory use for large sparse inputs and when
-  constructing clipped residual transforms.
+- **Faster PCA setup** for large sparse inputs, with lower peak memory.
+  Centering statistics are computed from sparse row blocks instead of a full
+  column-major copy of the transform. In a synthetic benchmark of unclipped
+  float64 Poisson Pearson residuals on 100,000 × 30,000 counts with 71.8
+  million stored entries, building the centered operator took 1.9 s instead of
+  12.5 s with 1.0.0rc1, and the process's peak memory fell from 2.6 to 1.6 GiB
+  (single runs at revision `3bf8c2e`, one thread).
+- **Lower peak memory for residual PCA,** especially with clipping. Residuals
+  are built in bounded row blocks directly in the requested dtype. On real
+  data, 22,111 PBMCs × 29,157 genes with 71.8 million stored counts, clipped
+  Poisson Pearson residual PCA peaked at 2.1 GiB in float32 and 3.2 GiB in
+  float64, compared with about 5.2 and 4.8 GiB for 1.0.0rc1 (single runs at
+  revision `425238c` on an M2 MacBook Air).
 - Count validation and log, CLR, and Dirichlet fitting process arithmetic in
   blocks, reducing temporary memory, especially with `dtype="float32"`
   storage.
@@ -107,6 +116,8 @@ Changes since 1.0.0rc1:
 
 ### Documentation
 
+- Add a Performance section to the README comparing time and memory with
+  Scanpy on real PBMC and mouse brain data.
 - Add a log1p normalization guide and worked example, and expand `materialize()`
   examples for its supported selectors.
 - Clarify transform formulas, shift scales, and overdispersion parameters across

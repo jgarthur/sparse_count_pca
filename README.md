@@ -102,6 +102,39 @@ to expose matrix-vector and matrix-matrix products to
 `scipy.sparse.linalg.svds`, using the ARPACK solver. See
 [sparse plus low rank][sparse-plus-low-rank] for more details.
 
+## Performance
+
+Residual PCA never stores the dense residual matrix, so its memory grows with
+the number of stored counts rather than with cells × genes. Scanpy's normalized
+`log1p` is also sparse, so there the two packages perform similarly.
+
+On 22,111 cells × 29,157 genes with 72 million stored counts, pooled from
+10x's 5k Human PBMC 3' GEM-X donors [1][pbmc-1], [2][pbmc-2], [3][pbmc-3], and
+[4][pbmc-4], `sparse-count-pca` 1.0.0 and Scanpy 1.12.4 computed 30 components
+in float64 on one thread of a Linux server:
+
+| Calculation | Scanpy | sparse-count-pca |
+| --- | --- | --- |
+| Pearson residual PCA | 35.6 s, 20.8 GiB | 15.6 s, 1.5 GiB |
+| Normalized `log1p` PCA | 10.1 s, 2.7 GiB | 10.8 s, 1.5 GiB |
+
+Figures here and below are medians of three runs. Memory is the process's peak
+resident memory, including the loaded counts. Residuals are clipped at Scanpy's
+±√n_cells threshold in both packages.
+
+To measure scaling, each package selected 5,000
+[highly variable genes][hvg-selection] by Pearson residual variance and
+computed PCA on them, in float32 with a 26 GiB memory limit. Inputs are random
+subsets of 10x's
+[1.3 million brain cells from E18 mice][brain-data]; quality filtering removed
+about 0.3% of each subset's cells.
+
+| Cells sampled | Scanpy `recipe_pearson_residuals` | sparse-count-pca |
+| ---: | --- | --- |
+| 200,000 | 90 s, 23.5 GiB | 55 s, 7.4 GiB |
+| 400,000 | out of memory | 120 s, 14.6 GiB |
+| 600,000 | out of memory | 161 s, 21.7 GiB |
+
 ## API structure
 
 - **One-step AnnData API.** Functions such as `residual_pca`,
@@ -185,11 +218,17 @@ See
 for project invariants and documentation expectations.
 
 [anndata-workflows]: https://sparse-count-pca.readthedocs.io/en/latest/guides/anndata-workflows/
+[brain-data]: https://www.10xgenomics.com/datasets/1-3-million-brain-cells-from-e-18-mice-2-standard-1-3-0
 [calculation-dtype]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/#calculation-dtype
 [clipping-and-precision]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/clipping-and-precision/
 [correspondence-analysis-guide]: https://sparse-count-pca.readthedocs.io/en/latest/guides/correspondence-analysis/
+[hvg-selection]: https://sparse-count-pca.readthedocs.io/en/latest/guides/transform-reuse/#rank-genes-by-variance
 [input-validation]: https://sparse-count-pca.readthedocs.io/en/latest/development/specification/#input-validation
 [normalization-masking-centering]: https://sparse-count-pca.readthedocs.io/en/latest/concepts/normalization-masking-and-centering/
+[pbmc-1]: https://www.10xgenomics.com/datasets/5k_Human_Donor1_PBMC_3p_gem-x
+[pbmc-2]: https://www.10xgenomics.com/datasets/5k_Human_Donor2_PBMC_3p_gem-x
+[pbmc-3]: https://www.10xgenomics.com/datasets/5k_Human_Donor3_PBMC_3p_gem-x
+[pbmc-4]: https://www.10xgenomics.com/datasets/5k_Human_Donor4_PBMC_3p_gem-x
 [pflog-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#shifted-clr-pflog-and-cleartools
 [scaled-nb-model]: https://sparse-count-pca.readthedocs.io/en/latest/reference/scaled-nb-model/
 [scanpy-compatibility]: https://sparse-count-pca.readthedocs.io/en/latest/reference/compatibility/#coming-from-scanpy
