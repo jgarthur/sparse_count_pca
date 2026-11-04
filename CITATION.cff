@@ -11,7 +11,7 @@ authors:
     given-names: Joseph
     orcid: "https://orcid.org/0000-0002-4875-0367"
 version: 1.0.0
-date-released: 2026-11-03
+date-released: 2026-11-04
 license: MIT
 repository-code: https://github.com/jgarthur/sparse_count_pca
 url: https://sparse-count-pca.readthedocs.io/

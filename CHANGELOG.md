@@ -2,7 +2,7 @@
 
 All notable user-facing changes are recorded here.
 
-## 1.0.0 - 2026-11-03
+## 1.0.0 - 2026-11-04
 
 Changes since 1.0.0rc1:
 

@@ -16,7 +16,7 @@ metadata; an invalid file blocks archiving, so check it with
 `uvx cffconvert --validate -i CITATION.cff` before releasing.
 
 - `date-released` in `CITATION.cff` and the `## 1.0.0` heading in
-  `CHANGELOG.md` give 2026-11-03. If the release is published later, update
+  `CHANGELOG.md` give 2026-11-04. If the release is published later, update
   both to the publication date.
 - After Zenodo archives the release, add the concept DOI as `doi:` in
   `CITATION.cff`, add a DOI badge and the DOI to the README's Citation section
