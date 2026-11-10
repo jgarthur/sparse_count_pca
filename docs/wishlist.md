@@ -295,6 +295,87 @@ Validate them separately
 from the [parallel sparse products](#parallel-sparse-products-for-pca-11-target),
 which also change summation order and compare against 1.0 statistics.
 
+### Float32 accuracy of residual PCA
+
+Find out why float32 Pearson-residual PCA departs further from its float64
+result than Scanpy's float32 does, and reduce the gap without giving up the
+memory float32 saves. The comparison metric is the one in the
+[numerical agreement targets](development/testing.md#numerical-agreement-targets):
+the maximum sign-aligned per-component relative L2 error of loadings and
+scores, here measured between float32 and float64 runs of the same
+implementation on the same counts.
+
+The scp-bench sweep of sparse-count-pca 1.0.0 on the 10x E18 mouse brain
+measured these errors. Runs used 1 thread on a Hetzner CCX43, 30 components,
+residual PCA on 5,000 highly variable genes selected inside each workflow,
+and log1p PCA on all genes. Singular values agreed with float64 to about
+1e-6 everywhere, so the error is in the individual axes.
+
+| Cells | SCP residual, max loading error | SCP residual, median over components | Scanpy residual, max loading error |
+| ---: | ---: | ---: | ---: |
+| 50k | 7.1e-5 | 1.5e-5 | 5.2e-5 |
+| 100k | 3.9e-4 | 1.5e-5 | 1.4e-4 |
+| 200k | 1.6e-4 | 3.0e-5 | out of memory |
+| 400k | 2.8e-4 | 5.7e-5 | out of memory |
+| 600k | 5.4e-4 | 7.8e-5 | out of memory |
+| 800k | 3.9e-4 | 1.0e-4 | out of memory |
+
+For log1p, SCP and Scanpy float32 errors are about equal at every size and
+grow similarly, reaching 9.2e-5 (SCP) and 1.2e-4 (Scanpy) at 1M cells. The
+worst residual components are not those with the smallest relative
+singular-value gaps: at 200k cells and above, the worst component's gap to
+its nearest neighbor is about 3e-2, while the smallest gap among the 30 is
+2e-3 to 5e-3. The scp-bench runs retain every float32 and float64 output, so
+these numbers can be recomputed per component from saved files.
+
+Statistics are not the cause: column means and centered norms are computed
+in float64 with `math.fsum` (`_operator.py`). Every operator product runs in
+the operator dtype, though, and three float32 effects are candidates:
+
+- **Cancellation between terms.** The residual representation is sparse plus
+  rank one (`left = -sqrt(n)`, `right = sqrt(p / variance_scale)` in
+  `_residuals.py`), then centered. `_matvec`, `_rmatvec`, `_matmat`, and
+  `_rmatmat` add the sparse product, the rank-one product, and the centering
+  correction in float32. Each term can be much larger than their sum, so
+  float32 rounding in each term is amplified relative to the result. The
+  log1p representation has rank zero, which fits log1p matching Scanpy while
+  residuals do not.
+- **Long float32 accumulations.** `self.S.T @ y` sums over every cell for
+  each gene, and SciPy's sparse kernels accumulate in the data dtype. The
+  centering term uses `np.sum(y, dtype=self.dtype)`, and `self.mean` is the
+  float64 mean rounded to float32. Accumulation error grows with the number
+  of cells, which fits the rising median error.
+- **Single-precision Lanczos.** `svds` on a float32 operator runs ARPACK in
+  single precision with `tol=0`, so the Krylov basis and its
+  reorthogonalization carry float32 error independent of the products.
+
+Separate the three with ablations that each change one thing and keep the
+transformed matrix stored in float32:
+
+1. Combine the sparse, rank-one, and centering terms in float64 and cast the
+   product once. The rank-one and centering terms are vectors or `n x rank`
+   arrays, so this costs little memory.
+2. Accumulate sparse products in float64 while reading float32 data. Check
+   first whether SciPy copies `S.data` to float64 for a float32 matrix times
+   a float64 vector. Such a copy would forfeit the memory float32 saves, so a
+   kernel reading float32 values into float64 accumulators would be needed.
+3. Run ARPACK in float64 on the float32-stored operator by returning float64
+   products, isolating solver precision from product precision.
+4. Use the float64 mean, and a float64 sum of `y`, in the centering term.
+
+For each ablation, report on the same brain subsets (50k, 100k, 400k, and
+800k cells, prepared and selected as scp-bench does) the per-component
+loading and score errors against float64, both maximum and median. Also
+report median wall time and peak RSS at 400k, and singular values and total
+variance against float64. A change is worth keeping if it brings SCP's
+float32 residual error to Scanpy's or below where Scanpy fits (50k and 100k),
+keeps the median error from growing with cell count, and keeps float32 peak
+memory clearly below float64's; at 800k they were 28.9 and 37.4 GiB. If
+ablation 1 alone closes the gap, it is the cheapest fix. Add a regression
+test that fails at 1.0's error on a synthetic residual input where the
+rank-one term dominates the represented values. Changes that only reorder
+float32 arithmetic belong under other changes in the changelog, not fixes.
+
 ### Block-wise inverse reconstruction to count space
 
 Provide native reconstruction from a `PCAResult` without materializing the
