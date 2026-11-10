@@ -2,6 +2,17 @@
 
 All notable user-facing changes are recorded here.
 
+## Unreleased
+
+### Other changes
+
+- Float32 PCA and correspondence analysis accumulate operator products in
+  float64 to reduce summation and cancellation error. Sparse storage, solver
+  precision, and output dtypes stay float32. Sparse products use bounded row
+  blocks, trading additional conversion work for accuracy without a full
+  float64 copy of the sparse data. Residual means and variance statistics
+  use the same reconstruction precision as the products.
+
 ## 1.0.0 - 2026-11-04
 
 Changes since 1.0.0rc1:

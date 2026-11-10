@@ -183,7 +183,17 @@ tests also cover explicit stored zeros, read-only borrowed data, skipped mean
 work for uncentered operators, and subtraction rounding in float32.
 
 Transpose products are independent contracts. A correct forward product does
-not establish a correct adjoint.
+not establish a correct adjoint. Float32 product regressions use high-depth
+Poisson residuals whose sparse and rank-one terms nearly cancel. Compare
+each vector or block-product column against the dense matrix reconstructed
+from the stored factors in float64. Exercise multiple sparse row blocks,
+both centering modes, and both directions. Check that sparse promotion stays
+bounded with read-only int32 and int64 CSR support.
+At the sparse multiplication boundary, assert actual memory sharing for both
+data and indices, including strided buffers and transpose products. A bounded
+peak allocation alone does not establish that block construction borrows its
+inputs. Run these sharing checks with the minimum supported SciPy as well as
+later releases.
 
 ### Operator batch-size measurements
 

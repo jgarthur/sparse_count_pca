@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
+import sparse_count_pca as scp
 from sparse_count_pca import _operator as operator_module
 from sparse_count_pca._operator import (
     SparseLowRankLinearOperator,
@@ -121,6 +122,145 @@ def test_rank_k_operator_matches_dense(rank, center, dtype):
     assert operator.frobenius_squared_centered() == pytest.approx(
         expected_squared, rel=tolerance, abs=0.0
     )
+
+
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("transpose", [False, True])
+@pytest.mark.parametrize("matrix_rhs", [False, True])
+def test_float32_residual_products_preserve_cancellation(
+    monkeypatch, center, transpose, matrix_rhs
+):
+    """High-depth Pearson products retain precision when large terms cancel."""
+    rng = np.random.default_rng(40)
+    counts = sparse.csr_matrix(rng.poisson(100.0, size=(4096, 64)))
+    transformed = scp.transform(counts, scp.Residual(clip=None), dtype="float32")
+    operator = SparseLowRankLinearOperator(
+        transformed._representation, center=center, dtype="float32"
+    )
+    monkeypatch.setattr(operator_module, "_PRODUCT_BLOCK_NNZ", 10_000)
+
+    # Evaluate the stored matrix entry by entry, independently of the factored
+    # products. Storage rounding is part of this matrix, not accumulation error.
+    expected = operator.S.toarray().astype(np.float64)
+    expected += operator.left.astype(np.float64) @ operator.right.astype(np.float64).T
+    if center:
+        expected -= operator.mean.astype(np.float64)
+    if transpose:
+        operator = operator.T
+        expected = expected.T
+
+    values = rng.normal(size=(expected.shape[1], 3)).astype(np.float32)
+    values[:, 0] += 1.0
+    if not matrix_rhs:
+        values = values[:, 0]
+    reference = expected @ values.astype(np.float64)
+    actual = operator @ values
+    assert actual.dtype == np.dtype(np.float32)
+    relative_error = np.linalg.norm(actual - reference, axis=0) / np.linalg.norm(
+        reference, axis=0
+    )
+    # Double accumulation leaves the final float32 cast as the main error;
+    # two epsilons also allow float64 summation error under cancellation.
+    assert np.all(relative_error < 2 * np.finfo(np.float32).eps)
+
+
+@pytest.mark.parametrize("transpose", [False, True])
+@pytest.mark.parametrize("matrix_rhs", [False, True])
+@pytest.mark.parametrize("index_dtype", [np.int32, np.int64])
+@pytest.mark.parametrize("strided", [False, True])
+def test_float32_product_blocks_share_readonly_buffers(
+    monkeypatch, transpose, matrix_rhs, index_dtype, strided
+):
+    """Forward and transpose kernels receive views of the original CSR storage."""
+    rng = np.random.default_rng(48)
+    counts = rng.integers(0, 5, size=(100, 12))
+    counts[::10] = 0
+    counts[-1] = 0
+    matrix = sparse.csr_matrix(counts, dtype=np.float32)
+    matrix.indices = matrix.indices.astype(index_dtype)
+    matrix.indptr = matrix.indptr.astype(index_dtype)
+    if strided:
+        for name in ("data", "indices"):
+            values = getattr(matrix, name)
+            backing = np.empty(2 * values.size, dtype=values.dtype)
+            backing[::2] = values
+            setattr(matrix, name, backing[::2])
+    for name in ("data", "indices", "indptr"):
+        getattr(matrix, name).flags.writeable = False
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
+    )
+    operator = SparseLowRankLinearOperator(
+        representation, center=False, dtype="float32", copy=False
+    )
+    monkeypatch.setattr(operator_module, "_PRODUCT_BLOCK_NNZ", 50)
+    block_type = sparse.csc_array if transpose else sparse.csr_array
+    multiply = block_type.__matmul__
+    blocks_seen = 0
+
+    def checked_multiply(block, values):
+        nonlocal blocks_seen
+        blocks_seen += 1
+        for name in ("data", "indices"):
+            actual = getattr(block, name)
+            original = getattr(matrix, name)
+            assert np.shares_memory(actual, original)
+            assert actual.dtype == original.dtype
+            assert not actual.flags.writeable
+        assert block.indptr.dtype == matrix.indptr.dtype
+        assert block.indptr[0] == 0
+        assert block.indptr[-1] == block.data.size == block.indices.size
+        return multiply(block, values)
+
+    monkeypatch.setattr(block_type, "__matmul__", checked_multiply)
+    expected = matrix.toarray().astype(np.float64)
+    if transpose:
+        operator = operator.T
+        expected = expected.T
+    shape = (operator.shape[1], 3) if matrix_rhs else (operator.shape[1],)
+    values = rng.normal(size=shape).astype(np.float32)
+    reference = (expected @ values.astype(np.float64)).astype(np.float32)
+    np.testing.assert_allclose(operator @ values, reference, rtol=1e-7, atol=1e-7)
+    assert blocks_seen > 1
+
+
+@pytest.mark.parametrize("transpose", [False, True])
+@pytest.mark.parametrize("matrix_rhs", [False, True])
+@pytest.mark.parametrize("index_dtype", [np.int32, np.int64])
+def test_float32_products_bound_sparse_conversion_memory(
+    monkeypatch, transpose, matrix_rhs, index_dtype
+):
+    """Products borrow read-only CSR blocks without promoting all sparse data."""
+    matrix = sparse.csr_matrix(np.ones((20_000, 100), dtype=np.float32))
+    matrix.indices = matrix.indices.astype(index_dtype)
+    matrix.indptr = matrix.indptr.astype(index_dtype)
+    representation = SparseLowRankMatrix(
+        matrix, np.empty((matrix.shape[0], 0)), np.empty((matrix.shape[1], 0))
+    )
+    operator = SparseLowRankLinearOperator(
+        representation, center=False, dtype="float32", copy=False
+    )
+    for name in ("data", "indices", "indptr"):
+        getattr(operator.S, name).flags.writeable = False
+    monkeypatch.setattr(operator_module, "_PRODUCT_BLOCK_NNZ", 50_000)
+    if transpose:
+        operator = operator.T
+    shape = (operator.shape[1], 3) if matrix_rhs else (operator.shape[1],)
+    values = np.ones(shape, dtype=np.float32)
+
+    tracemalloc.start()
+    try:
+        actual = operator @ values
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    # A whole-matrix promotion alone takes 16 MB; bounded blocks plus the
+    # dense inputs and outputs fit below 4 MB for these dimensions.
+    assert peak < 4_000_000
+    assert actual.dtype == np.dtype(np.float32)
+    np.testing.assert_array_equal(actual, np.full(actual.shape, operator.shape[1]))
+    np.testing.assert_array_equal(matrix.data, 1.0)
 
 
 def test_duplicate_sparse_entries_are_rejected():
@@ -422,6 +562,7 @@ def test_batched_statistics_match_dense_across_boundaries(
     right[0] = 0.0
     representation = SparseLowRankMatrix(sparse.csr_matrix(stored), left, right)
     monkeypatch.setattr(operator_module, "_STATS_DENSE_BATCH_VALUES", 17)
+    monkeypatch.setattr(operator_module, "_PRODUCT_BLOCK_NNZ", 48)
     _set_stats_block_nnz(monkeypatch, 48)
 
     operator = SparseLowRankLinearOperator(representation, center=center, dtype=dtype)
@@ -449,6 +590,14 @@ def test_batched_statistics_match_dense_across_boundaries(
     )
     np.testing.assert_allclose(
         operator.T @ y, expected.T @ y, rtol=tolerance, atol=tolerance
+    )
+    Z = rng.normal(size=(n_vars, 3)).astype(dtype)
+    Y = rng.normal(size=(n_obs, 3)).astype(dtype)
+    np.testing.assert_allclose(
+        operator @ Z, expected @ Z, rtol=tolerance, atol=tolerance
+    )
+    np.testing.assert_allclose(
+        operator.T @ Y, expected.T @ Y, rtol=tolerance, atol=tolerance
     )
 
 
@@ -591,7 +740,7 @@ def test_dense_means_preserve_signed_sum(monkeypatch, rank, dtype):
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 def test_rank_zero_zero_matrix_statistics(monkeypatch, dtype):
-    """An empty sparse matrix has zero means, norms, and numerical variance."""
+    """An empty sparse matrix has zero statistics and forward/transpose products."""
     _set_stats_block_nnz(monkeypatch, 1)
     representation = SparseLowRankMatrix(
         sparse.csr_matrix((7, 5)), np.empty((7, 0)), np.empty((5, 0))
@@ -602,6 +751,11 @@ def test_rank_zero_zero_matrix_statistics(monkeypatch, dtype):
     assert operator.frobenius_squared_uncentered() == 0.0
     assert operator.frobenius_squared_centered() == 0.0
     assert operator.centered_variance_is_numerically_zero()
+    for direction in (operator, operator.T):
+        for shape in ((direction.shape[1],), (direction.shape[1], 3)):
+            actual = direction @ np.ones(shape, dtype=dtype)
+            np.testing.assert_array_equal(actual, 0.0)
+            assert actual.dtype == np.dtype(dtype)
 
 
 def test_rank_zero_centering_subtracts_in_float32(monkeypatch):

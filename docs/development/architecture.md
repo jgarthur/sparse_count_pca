@@ -51,8 +51,8 @@ center, measure, and decompose `S + U @ V.T`.
 
 ### Bounded computation budgets
 
-There are eight internal size controls and one public materialization default.
-Their units differ because each operation creates different temporary arrays.
+Internal size controls and the public materialization default use different
+units because each operation creates different temporary arrays.
 
 | Operation | Control | Default | Unit |
 | --- | --- | ---: | --- |
@@ -61,6 +61,7 @@ Their units differ because each operation creates different temporary arrays.
 | Statistics means | `_STATS_MEAN_BLOCK_NNZ` | 1,000,000 | Nonzeros in complete CSR rows |
 | Statistics norms | `_STATS_NORM_BLOCK_NNZ` | 100,000 | Nonzeros in complete CSR rows |
 | Dense statistics reconstruction | `_STATS_DENSE_BATCH_VALUES` | 262,144 | Represented dense values |
+| Float32 sparse products | `_PRODUCT_BLOCK_NNZ` | 1,000,000 | Nonzeros in complete CSR rows |
 | Residual construction | `_RESIDUAL_SUPPORT_BLOCK_SIZE` | 1,000,000 | Nonzeros in complete CSR rows |
 | Clipping candidates | `_CANDIDATE_CHUNK_SIZE` | 65,536 | Candidate columns per row |
 | Shared-support checksum | `_SUPPORT_CHECKSUM_CHUNK_SIZE` | 1,000,000 | Index entries |
@@ -311,8 +312,28 @@ A = S + U @ V.T - 1 @ mean.T
 
 when PCA column centering is enabled.
 
-The multiplication paths are straightforward; the numerically delicate part
-is calculating means and Frobenius norms. Sparse corrections and low-rank
+All four product paths accumulate in float64 and cast the combined result
+once to the operator dtype. Float32 sparse storage is traversed in borrowed
+CSR row blocks because SciPy promotes sparse data when multiplying by a
+float64 right-hand side. Each block's temporary promoted data needs at most
+eight bytes per stored entry, with one longer row allowed to exceed the
+block target. Dense input, result, and partial-product buffers also use
+float64. Low-rank products reuse the float64 factors held for statistics;
+centering uses the stored operator mean. Float64 sparse storage uses the
+ordinary unblocked SciPy product. The solver receives the requested dtype.
+
+Product blocks attach data and index views to an empty CSR container for
+forward multiplication or an empty CSC container for transpose multiplication.
+Only the row pointers need rebasing: complete rows of a canonical CSR parent
+already supply valid compressed storage in either orientation. Constructing
+from the three-buffer tuple, or calling `block.T`, can copy short views during
+SciPy's format checks even with `copy=False`. See
+[SciPy's constructor and pruning path](https://github.com/scipy/scipy/blob/v1.15.3/scipy/sparse/_compressed.py)
+and [transpose construction](https://github.com/scipy/scipy/blob/v1.15.3/scipy/sparse/_csr.py).
+These local views are used only for multiplication and never mutate the
+parent's buffers.
+
+Means and Frobenius norms also require care. Sparse corrections and low-rank
 baselines can be individually large and nearly cancel. The implementation
 therefore computes actual represented values on stored support and treats
 sparse and nearly dense columns differently instead of subtracting large
@@ -333,8 +354,9 @@ blocks of complete CSR rows. Sparse-column corrections and nonnegative squared t
 and block order under severe mixed-sign cancellation. Columns with more than
 half their entries stored instead use direct represented values grouped by a
 block-local CSC and reconstructed in bounded NumPy column batches. Each column
-is contiguous in the dense batch. Direct means use `math.fsum`; direct norms
-subtract the stored center in the operator dtype, then square and reduce
+is contiguous in the dense batch. Reconstruction and center subtraction use
+float64, then deviations are rounded to the operator dtype to match product
+output. Direct means use `math.fsum`; direct norms square and reduce
 nonnegative deviations in `float64`. CSR row blocks are sized by
 `_STATS_MEAN_BLOCK_NNZ` and `_STATS_NORM_BLOCK_NNZ`. Column batches are
 sized separately by `_STATS_DENSE_BATCH_VALUES`, counted as

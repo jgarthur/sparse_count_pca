@@ -96,6 +96,13 @@ choosing float32 reduces storage and operator precision while retaining
 float64 accumulation. CLR row means are fitted from float64 transformed values
 before storage casting.
 
+Operator products accumulate sparse, low-rank, and centering terms in float64
+and cast the combined result to the requested dtype. With float32 storage,
+sparse products use bounded row blocks to limit temporary conversion memory.
+ARPACK still runs in float32. See the
+[operator implementation](../development/architecture.md#5-linear-operator-and-numerical-statistics)
+for the accumulation and memory contracts.
+
 ## Degenerate inputs
 
 The package rejects a transformed matrix whose centered variance is

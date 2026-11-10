@@ -22,6 +22,7 @@ _STATS_MEAN_BLOCK_NNZ = 1_000_000
 _STATS_NORM_BLOCK_NNZ = 100_000
 _STATS_DENSE_BATCH_VALUES = 262_144
 _STATS_MIN_NORM_TERM_RATIO = 1e-4
+_PRODUCT_BLOCK_NNZ = 1_000_000
 
 
 def _normalize_operator_dtype(dtype: DTypeLike) -> np.dtype[np.floating[Any]]:
@@ -122,7 +123,7 @@ class SparseLowRankLinearOperator(LinearOperator):
     def _low_rank_statistics(self) -> None:
         """Compute means and norms using support replacement and direct columns.
 
-        Sets the float64 factor summaries that only nonzero-rank statistics use.
+        Keeps float64 factors for both summary statistics and matrix products.
         """
         self._left_float64 = self.left.astype(np.float64, copy=False)
         self._right_float64 = self.right.astype(np.float64, copy=False)
@@ -275,7 +276,7 @@ class SparseLowRankLinearOperator(LinearOperator):
         Yields:
             The batch's offset into ``column_indices``, its selected column
             indices, and represented values with shape
-            ``(len(columns), row_stop - row_start)`` in the operator dtype.
+            ``(len(columns), row_stop - row_start)`` in float64.
         """
         block = self._csc_row_block(
             row_start,
@@ -284,10 +285,11 @@ class SparseLowRankLinearOperator(LinearOperator):
             value_stop,
         )
         batch_width = max(1, _STATS_DENSE_BATCH_VALUES // (row_stop - row_start))
-        left = self.left[row_start:row_stop]
+        left = self.left[row_start:row_stop].astype(np.float64, copy=False)
         for start in range(0, column_indices.size, batch_width):
             columns = column_indices[start : start + batch_width]
-            values = np.ascontiguousarray(self.right[columns] @ left.T)
+            right = self.right[columns].astype(np.float64, copy=False)
+            values = np.ascontiguousarray(right @ left.T)
             values += block[:, columns].toarray().T
             yield start, columns, values
 
@@ -352,9 +354,12 @@ class SparseLowRankLinearOperator(LinearOperator):
             dense_column_indices,
         ):
             for center_index, center in enumerate(centers):
-                deviations = (values - center[columns, None]).astype(
-                    np.float64,
-                    copy=False,
+                # Round as a product with a coordinate vector would, then
+                # accumulate its squared entries without float32 summation.
+                deviations = (
+                    (values - center[columns, None])
+                    .astype(self.dtype, copy=False)
+                    .astype(np.float64, copy=False)
                 )
                 np.square(deviations, out=deviations)
                 partial[center_index, start : start + columns.size] = np.sum(
@@ -434,15 +439,7 @@ class SparseLowRankLinearOperator(LinearOperator):
             self._left_float64[rows],
             self._right_float64[columns],
         )
-        if self.dtype == np.dtype(np.float64):
-            baseline = baseline_float64
-        else:
-            baseline = np.einsum(
-                "ij,ij->i",
-                self.left[rows],
-                self.right[columns],
-            )
-        actual = np.asarray(baseline + stored, dtype=self.dtype)
+        actual = baseline_float64 + stored
 
         sparse_support = ~dense_columns[columns]
         sparse_columns = columns[sparse_support]
@@ -454,9 +451,10 @@ class SparseLowRankLinearOperator(LinearOperator):
                 np.float64,
                 copy=False,
             )
-            actual_deviations = (sparse_actual - center[sparse_columns]).astype(
-                np.float64,
-                copy=False,
+            actual_deviations = (
+                (sparse_actual - center[sparse_columns])
+                .astype(self.dtype, copy=False)
+                .astype(np.float64, copy=False)
             )
             removed_partial[index] = np.bincount(
                 sparse_columns,
@@ -547,6 +545,35 @@ class SparseLowRankLinearOperator(LinearOperator):
             )
         return column_norms
 
+    def _sparse_product(
+        self, values: NDArray[np.float64], *, transpose: bool = False
+    ) -> NDArray[np.float64]:
+        """Multiply in float64, bounding sparse dtype-conversion scratch space."""
+        if self.dtype == np.dtype(np.float64):
+            return (self.S.T if transpose else self.S) @ values
+
+        # SciPy promotes all sparse data when multiplying by float64 values.
+        # Borrow one row block at a time so the temporary copy stays bounded.
+        output_rows = self.shape[1] if transpose else self.shape[0]
+        result = np.zeros((output_rows, *values.shape[1:]), dtype=np.float64)
+        block_type = sparse.csc_array if transpose else sparse.csr_array
+        for row_start, row_stop, start, stop in _support_row_blocks(
+            self.S, _PRODUCT_BLOCK_NNZ
+        ):
+            shape = (row_stop - row_start, self.shape[1])
+            block = block_type(shape[::-1] if transpose else shape, dtype=self.dtype)
+            # Complete rows of the canonical parent need only rebased pointers.
+            # Attach views after construction: SciPy's constructor and transpose
+            # prune short views into copies even with copy=False.
+            block.data = self.S.data[start:stop]
+            block.indices = self.S.indices[start:stop]
+            block.indptr = self.S.indptr[row_start : row_stop + 1] - start
+            if transpose:
+                result += block @ values[row_start:row_stop]
+            else:
+                result[row_start:row_stop] = block @ values
+        return result
+
     def _matvec(self, z: ArrayLike) -> FloatArray:
         """Multiply the represented matrix by a vector.
 
@@ -556,10 +583,10 @@ class SparseLowRankLinearOperator(LinearOperator):
         Returns:
             A vector with length ``n_obs`` in the operator dtype.
         """
-        z = np.asarray(z, dtype=self.dtype)
-        result = self.S @ z
+        z = np.asarray(z, dtype=self.dtype).astype(np.float64, copy=False)
+        result = self._sparse_product(z)
         if self.right.shape[1]:
-            result += self.left @ (self.right.T @ z)
+            result += self._left_float64 @ (self._right_float64.T @ z)
         if self.center:
             assert self.mean is not None
             result -= np.dot(self.mean, z)
@@ -574,13 +601,13 @@ class SparseLowRankLinearOperator(LinearOperator):
         Returns:
             A vector with length ``n_vars`` in the operator dtype.
         """
-        y = np.asarray(y, dtype=self.dtype)
-        result = self.S.T @ y
+        y = np.asarray(y, dtype=self.dtype).astype(np.float64, copy=False)
+        result = self._sparse_product(y, transpose=True)
         if self.right.shape[1]:
-            result += self.right @ (self.left.T @ y)
+            result += self._right_float64 @ (self._left_float64.T @ y)
         if self.center:
             assert self.mean is not None
-            result -= self.mean * np.sum(y, dtype=self.dtype)
+            result -= self.mean * np.sum(y, dtype=np.float64)
         return np.asarray(result, dtype=self.dtype)
 
     def _matmat(self, Z: ArrayLike) -> FloatArray:
@@ -592,10 +619,10 @@ class SparseLowRankLinearOperator(LinearOperator):
         Returns:
             A matrix with ``n_obs`` rows in the operator dtype.
         """
-        Z = np.asarray(Z, dtype=self.dtype)
-        result = self.S @ Z
+        Z = np.asarray(Z, dtype=self.dtype).astype(np.float64, copy=False)
+        result = self._sparse_product(Z)
         if self.right.shape[1]:
-            result += self.left @ (self.right.T @ Z)
+            result += self._left_float64 @ (self._right_float64.T @ Z)
         if self.center:
             assert self.mean is not None
             result -= (self.mean @ Z)[None, :]
@@ -610,13 +637,13 @@ class SparseLowRankLinearOperator(LinearOperator):
         Returns:
             A matrix with ``n_vars`` rows in the operator dtype.
         """
-        Y = np.asarray(Y, dtype=self.dtype)
-        result = self.S.T @ Y
+        Y = np.asarray(Y, dtype=self.dtype).astype(np.float64, copy=False)
+        result = self._sparse_product(Y, transpose=True)
         if self.right.shape[1]:
-            result += self.right @ (self.left.T @ Y)
+            result += self._right_float64 @ (self._left_float64.T @ Y)
         if self.center:
             assert self.mean is not None
-            result -= self.mean[:, None] * np.sum(Y, axis=0, dtype=self.dtype)[None, :]
+            result -= self.mean[:, None] * np.sum(Y, axis=0, dtype=np.float64)[None, :]
         return np.asarray(result, dtype=self.dtype)
 
     def frobenius_squared_uncentered(self) -> float:

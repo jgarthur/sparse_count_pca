@@ -746,7 +746,9 @@ precision rather than merely downcasting returned arrays.
 - `S.data`, `u`, `v`, `mean` are cast to the requested `dtype` for storage
   and operator use.
 - `_matvec`, `_rmatvec`, `_matmat`, `_rmatmat` outputs use the operator
-  dtype.
+  dtype. Sparse products, low-rank products, and centering corrections
+  accumulate in float64 before a single output cast. Float32 sparse products
+  use bounded complete-row blocks rather than a full-nnz float64 conversion.
 - `singular_values`, `explained_variance`, `explained_variance_ratio`,
   `total_variance` are returned as `float64`.
 
@@ -1359,6 +1361,10 @@ Dtype rules:
 - `S.data`, `left`, `right`, `mean` are stored in the operator `dtype` (default
   `float64`).
 - `_matvec(z)` and `_rmatvec(y)` return arrays of the operator `dtype`.
+- All four product methods accumulate in float64, including transpose sums
+  and the combination of sparse, low-rank, and centering terms. The stored
+  operator-dtype mean defines the center. Sparse float32 data are promoted
+  one complete-row block at a time; input and output work arrays use float64.
 - Computations that build the representation, mean, and Frobenius norms are
   performed in `float64`; the cast to `dtype` happens at storage time.
 
@@ -1923,7 +1929,7 @@ support in $O(\mathit{nnz})$ for fixed representation rank.
 Direct reconstruction groups each CSR row block by column in a block-local
 CSC matrix, then processes selected columns in bounded dense batches. Each
 batch stores columns as contiguous rows of a dense array and computes
-`right[selected] @ left[row_start:row_stop].T` in the operator dtype before
+`right[selected] @ left[row_start:row_stop].T` in float64 before
 adding the sparse corrections. The rank-zero signed-mean backstop can also
 use this reconstruction with zero-width factors.
 
@@ -1942,9 +1948,10 @@ matrix. The default targets are listed under
 
 Direct means use `math.fsum` for each reconstructed column because its
 represented values may have mixed signs. For direct squared norms, subtract
-the stored center in the operator dtype, convert deviations to `float64`,
-square them, and reduce along each contiguous column with NumPy's pairwise
-sum. These terms are nonnegative. Low-order bits may depend on the batch size
+the stored center in float64, round deviations to the operator dtype to
+match product output, then convert to float64, square them, and reduce along
+each contiguous column with NumPy's pairwise sum. These terms are nonnegative.
+Low-order bits may depend on the batch size
 and on how factor products are evaluated; bitwise equivalence across batch
 sizes is not required. The numerical-zero criterion and accuracy checks still
 apply.
